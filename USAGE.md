@@ -220,6 +220,15 @@ If you don't like it: delete the branch. The harness never auto-merges.
 
 The session log lives at `{{your projects folder}}/tilth/sessions/<id>/events.jsonl` — every model call, tool call, validator run, judge verdict, and AGENTS.md update is recorded. Useful for audit, blame, and future article writing.
 
+For a more readable view, render the log as a chat-style HTML page:
+
+```bash
+uv run tilth --visualize               # most recent session
+uv run tilth --visualize <session_id>  # or name one explicitly
+```
+
+Writes a single self-contained file (inline CSS, no JS) to `sessions/<id>/chat.html`. Events are grouped by task — model calls become meta strips, tool calls/results become bubbles, validator runs and judge verdicts become coloured cards. Read-only and runs over the saved `events.jsonl`, so it's safe to invoke against a finished or in-progress session.
+
 ## 5. Caveats worth being upfront about
 
 - **It's Python-centric.** `post_edit` lints `.py` files. `validators` runs `pytest` and `ruff`. JavaScript / Rust / Go projects need `tilth/validators.py` and `tilth/hooks/post_edit.py` adapted to your toolchain — not deep work, but not zero.

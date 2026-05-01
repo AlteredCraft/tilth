@@ -70,6 +70,15 @@ uv run tilth --reset --yes            # skip the y/N confirmation
 
 If you run `uv run tilth <workspace>` (no flags) and a resumable session exists for that same workspace, the harness prints a heads-up listing your `--resume` / `--reset` options and pauses 5 seconds before starting fresh — Ctrl-C during the pause to switch course.
 
+Visualize a session as a chat-style HTML page (writes `sessions/<id>/chat.html`):
+
+```bash
+uv run tilth --visualize                # most recent session
+uv run tilth --visualize <session_id>   # or name one explicitly
+```
+
+The output is a single self-contained file (inline CSS, no JS) that renders `events.jsonl` as a conversation — model calls, tool calls/results, validator runs, judge verdicts, AGENTS.md updates, commits, and stops, grouped by task. Easier to skim than `jq`-ing the raw log.
+
 ## Using it on your own project
 
 See **[USAGE.md](./USAGE.md)** for the full logistics: how to prep your repo (`prd.json`, `AGENTS.md`, `progress.txt`, `tests/`), what happens during a run, how to review and merge, provider/model selection, and the caveats worth knowing up front.

@@ -42,7 +42,8 @@ tilth/
 │   ├── validators.py      # ruff + pytest runners
 │   ├── tools/             # bash, files, search — registered in __init__.py
 │   ├── hooks/             # pre_tool, post_edit
-│   └── prompts/           # system.md, judge.md, agents_update.md
+│   ├── prompts/           # system.md, judge.md, agents_update.md
+│   └── visualize/         # --visualize: events.jsonl → chat.html
 └── sessions/              # per-run state (gitignored)
 ```
 
@@ -100,6 +101,10 @@ uv run tilth --resume <session_id>
 uv run tilth --reset
 uv run tilth --reset <session_id>
 uv run tilth --reset --yes  # skip the confirmation prompt
+
+# Render a session's events.jsonl as a chat-style HTML page (sessions/<id>/chat.html)
+uv run tilth --visualize
+uv run tilth --visualize <session_id>
 
 # Inspect a session log
 jq -c . sessions/<session_id>/events.jsonl | head -40
