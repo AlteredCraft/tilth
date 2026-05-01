@@ -39,7 +39,7 @@ So: "Ralph loop = outer, tool-use loop = inner, the iterations env var caps the 
 Each iteration is **exactly one worker `client.chat()` call**, plus whatever the harness does in response. Three branches per iteration:
 
 1. **Model emits tool calls.** Harness executes them (with `pre_tool` hook gating, `post_edit` follow-up), appends results as tool messages, `continue` to next iteration.
-2. **Model emits no tool calls (claims done).** Harness runs validators (`ruff`, `pytest`).
+2. **Model emits no tool calls (claims done).** Harness runs validators (`ruff`, `pytest`). pytest is **filtered to the current task's tests** by filename convention (`tests/test_<task-id-lower>_*.py`); other tests are not run during this task's validation, so a future task's failing tests can't masquerade as the current task's failure and pull the worker into building out-of-scope code.
    - Validators pass → judge call. Judge accepts → `return "done"`. Judge rejects → append rejection as a user message, fall through to next iteration.
    - Validators fail → append failure report as a user message, fall through to next iteration.
 3. **Loop falls off the end** — N iterations consumed, model still hasn't both declared done *and* satisfied validators+judge → `return "iter_cap"`. Task gets marked `failed` in `prd.json`, the run halts.
@@ -323,9 +323,9 @@ The detection is read-only — no files modified, no state mutated. It exists pu
 2. **Recover paths.** `_read_checkpoint()` gives `workspace` (worktree) and `branch`. `_source_for_session()` scans `events.jsonl` for the `session_start` event to recover the source repo (the path is already in the log, so no checkpoint schema change was needed for this).
 3. **Confirm.** `input("Continue? [y/N] ")` unless `--yes` is passed. The prompt is the default; `--yes` is the override.
 4. **Tear down via `ws.reset_session_state()`:**
-   - `git worktree remove <worktree>` against the source. **Refuses on a dirty worktree** (no `--force` is passed) — the function returns early with a `worktree remove FAILED` note and the CLI surfaces a hint about manual cleanup.
+   - `git worktree remove --force <worktree>` against the source. Force is always passed: `--reset`'s whole purpose is to discard a session's work, and the user already confirmed via the `[y/N]` prompt (or `--yes`). Refusing on dirty would defeat the user's stated intent. A failure here now indicates a true filesystem-level problem (locks, perms) rather than uncommitted changes.
    - `git branch -D session/<id>` against the source (force-delete is correct for the `session/*` namespace, which is never auto-merged).
    - `shutil.rmtree(sessions/<id>/)` for whatever's left on the harness side.
 5. Each step is **idempotent** — already-missing pieces are reported as skipped, not errored. You can run `--reset` against a half-cleaned-up state and it'll finish the job.
 
-There's no `--reset --all`, no "keep events" mode, no `--force`. Either you target one specific session and live with what `git worktree remove` will and won't do, or you fall back to manual cleanup.
+There's no `--reset --all` and no "keep events" mode. The `[y/N]` prompt is the only safety gate; once you confirm, the session is gone.

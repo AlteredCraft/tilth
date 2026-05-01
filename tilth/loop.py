@@ -501,7 +501,7 @@ def _run_task(
         content = (msg.get("content") or "").strip()
         console.print(f"[dim]task {task['id']} model summary:[/dim] {content[:200]}")
 
-        results = validators.run_all(worktree)
+        results = validators.run_all(worktree, task["id"])
         passed = validators.all_passed(results)
         session.log(
             "validator_run",
@@ -694,9 +694,8 @@ def _do_reset(session_id: str, assume_yes: bool) -> int:
         if note.startswith("worktree remove FAILED"):
             console.print(f"[red]✗ {note}[/red]")
             console.print(
-                "[yellow]hint: the worktree may have uncommitted changes. "
-                "cd in and commit/stash, or remove manually with "
-                "`git worktree remove --force <path>`.[/yellow]"
+                "[yellow]hint: investigate the worktree path manually — "
+                "permissions, locks, or other filesystem state may be blocking removal.[/yellow]"
             )
             return 3
         console.print(f"  {note}")
@@ -738,9 +737,9 @@ def main() -> int:
         default=None,
         metavar="SESSION_ID",
         help=(
-            "Tear down a session: remove its worktree, delete its session/<id> branch "
-            "from the source repo, and drop sessions/<id>/. With no value, targets the "
-            "most recent session. Refuses if the worktree has uncommitted changes."
+            "Tear down a session: remove its worktree (even if dirty), delete its "
+            "session/<id> branch from the source repo, and drop sessions/<id>/. "
+            "With no value, targets the most recent session."
         ),
     )
     parser.add_argument(

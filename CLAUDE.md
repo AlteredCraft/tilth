@@ -116,7 +116,7 @@ uv run tilth --reset                # most recent session
 uv run tilth --reset <session_id>   # explicit
 ```
 
-`--reset` reads the session's checkpoint and `session_start` event to recover the source repo + worktree path + branch, runs `git worktree remove` and `git branch -D` against the source repo, and deletes `sessions/<id>/`. Refuses if the worktree is dirty — investigate first.
+`--reset` reads the session's checkpoint and `session_start` event to recover the source repo + worktree path + branch, runs `git worktree remove --force` and `git branch -D` against the source repo, and deletes `sessions/<id>/`. Force-removes a dirty worktree by design — its whole purpose is to discard a session's work; the `[y/N]` prompt is the safety gate.
 
 If `--reset` itself can't run (e.g., session metadata missing), the manual fallback is:
 

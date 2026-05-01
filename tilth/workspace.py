@@ -81,14 +81,14 @@ def reset_session_state(
     """Tear down a session's git artifacts and remove its directory.
 
     Idempotent — already-missing pieces are reported as skipped, not errored.
-    Refuses to remove a dirty worktree (no `--force`); the caller can investigate
-    and re-run after committing or stashing.
+    Forces worktree removal even if dirty: --reset's whole purpose is to discard
+    a session's work, and the caller has already confirmed via the CLI prompt.
     """
     notes: list[str] = []
 
     if worktree is not None and source is not None:
         if worktree.exists():
-            proc = _git(["worktree", "remove", str(worktree)], source)
+            proc = _git(["worktree", "remove", "--force", str(worktree)], source)
             if proc.returncode == 0:
                 notes.append(f"removed worktree {worktree}")
             else:

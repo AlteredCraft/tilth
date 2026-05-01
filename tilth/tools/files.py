@@ -98,7 +98,9 @@ def read(args: dict[str, Any], workspace: Path) -> str:
 
 
 def write(args: dict[str, Any], workspace: Path) -> str:
-    content = args.get("content", "")
+    if "content" not in args:
+        return "ERROR: 'content' is required (pass an empty string for an empty file)"
+    content = args["content"]
     if not isinstance(content, str):
         return "ERROR: 'content' must be a string"
     if len(content) > MAX_WRITE_CHARS:

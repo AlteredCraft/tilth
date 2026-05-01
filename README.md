@@ -66,7 +66,7 @@ uv run tilth --reset <session_id>     # or name one explicitly
 uv run tilth --reset --yes            # skip the y/N confirmation
 ```
 
-Refuses if the worktree has uncommitted changes — investigate, commit/stash, then retry. Reset and resume are mutually exclusive on a single invocation.
+`--reset` is destructive by design — it force-removes the worktree even if dirty, since its whole purpose is to discard a session's work. The `[y/N]` prompt (or `--yes` to skip) is the safety gate. Reset and resume are mutually exclusive on a single invocation.
 
 If you run `uv run tilth <workspace>` (no flags) and a resumable session exists for that same workspace, the harness prints a heads-up listing your `--resume` / `--reset` options and pauses 5 seconds before starting fresh — Ctrl-C during the pause to switch course.
 
@@ -83,7 +83,7 @@ See **[deep-dives.md](./deep-dives.md)** for code-level walk-throughs of the mec
 - Iteration cap per task (default 8)
 - Wall-clock cap per run (default 120 min)
 - Token cap (configurable)
-- `pre_tool` hook blocks `rm -rf`, `git push --force`, `sudo`, etc.
+- `pre_tool` hook blocks `git push --force`, `git reset --hard`, `git clean -f`, `sudo`, `curl | sh`, fork bombs.
 - Worktree branch is **never auto-merged** — open a PR and review like any other branch.
 
 ## Status

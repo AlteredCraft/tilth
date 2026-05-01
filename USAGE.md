@@ -117,6 +117,8 @@ Start it empty. The harness appends one line per task outcome. The most recent ~
 
 At least one test per task in `prd.json`, asserting the acceptance criteria.
 
+**Name files `test_<task-id-lower>_*.py`** — e.g., `test_t001_hello.py` for task `T-001`, `test_t002_package.py` for `T-002`. The harness filters pytest to only the files matching the *active* task, so failing tests for *future* tasks don't get fed back as failures of the current task. (Without this, the worker reads the failing future tests, builds them, and silently overflows scope.) A task with no matching test files skips pytest entirely and relies on the judge.
+
 **Without tests the only objective validator is `ruff`**, which collapses verification down to "code looks clean and the judge model says it's fine." The judge is good but not bulletproof. Write tests upfront — that is the test ratchet.
 
 ### Commit all four to `main`
@@ -177,7 +179,7 @@ uv run tilth --reset --yes         # skip the y/N confirmation
 This is the codified version of the three-step manual cleanup (`rm -rf sessions/<id>` + `git worktree prune` + `git branch -D session/<id>`). It:
 
 1. Reads `sessions/<id>/checkpoint.json` to recover the worktree path and branch name; reads the `session_start` event for the source repo path.
-2. Runs `git worktree remove <path>` in the source repo (which both deletes the working files and prunes the admin pointer). **Refuses if the worktree is dirty** — investigate first, then re-run.
+2. Runs `git worktree remove --force <path>` in the source repo (force-removes the worktree even if dirty — `--reset`'s whole purpose is to discard a session's work, and the `[y/N]` prompt is the safety gate).
 3. Runs `git branch -D session/<id>` in the source repo (force-delete is the right default for the `session/*` namespace, which is never auto-merged).
 4. Removes `sessions/<id>/`.
 

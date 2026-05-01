@@ -5,6 +5,7 @@ Subjective evaluation lives in the judge call (see prompts/judge.md, slice 5).
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -41,10 +42,29 @@ def _run(cmd: list[str], cwd: Path) -> tuple[int, str]:
     return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
 
 
-def run_pytest(workspace: Path) -> ValidatorResult:
-    if not (workspace / "tests").is_dir():
+def _task_test_glob(task_id: str) -> str:
+    """Translate a task ID like 'T-001' into a test-file glob: 'test_t001_*.py'."""
+    slug = re.sub(r"[^a-z0-9]", "", task_id.lower())
+    return f"test_{slug}_*.py"
+
+
+def run_pytest(workspace: Path, task_id: str | None = None) -> ValidatorResult:
+    tests_dir = workspace / "tests"
+    if not tests_dir.is_dir():
         return ValidatorResult("pytest", True, "(no tests/ dir; skipping)")
-    rc, out = _run([sys.executable, "-m", "pytest", "-x", "-q"], workspace)
+
+    if task_id:
+        pattern = _task_test_glob(task_id)
+        matches = sorted(str(p.relative_to(workspace)) for p in tests_dir.glob(pattern))
+        if not matches:
+            return ValidatorResult(
+                "pytest", True, f"(no tests matching {pattern}; skipping)"
+            )
+        cmd = [sys.executable, "-m", "pytest", "-x", "-q", *matches]
+    else:
+        cmd = [sys.executable, "-m", "pytest", "-x", "-q"]
+
+    rc, out = _run(cmd, workspace)
     return ValidatorResult("pytest", rc == 0, out)
 
 
@@ -53,8 +73,8 @@ def run_ruff(workspace: Path) -> ValidatorResult:
     return ValidatorResult("ruff", rc == 0, out)
 
 
-def run_all(workspace: Path) -> list[ValidatorResult]:
-    return [run_ruff(workspace), run_pytest(workspace)]
+def run_all(workspace: Path, task_id: str | None = None) -> list[ValidatorResult]:
+    return [run_ruff(workspace), run_pytest(workspace, task_id)]
 
 
 def all_passed(results: list[ValidatorResult]) -> bool:

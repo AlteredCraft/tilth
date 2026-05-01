@@ -24,7 +24,7 @@ SCHEMA: dict[str, Any] = {
             "Run a bash command in the current workspace. "
             "Returns combined stdout+stderr with the exit code on the last line. "
             "Output truncated past 8KB. Timeout 120s. "
-            "Destructive commands (rm -rf, git push --force, sudo, curl to non-allow-listed hosts) "
+            "Destructive commands (git push --force, sudo, curl piped to a shell) "
             "are blocked by a safety hook."
         ),
         "parameters": {

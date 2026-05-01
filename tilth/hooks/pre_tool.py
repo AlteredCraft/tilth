@@ -16,8 +16,6 @@ from typing import Any
 # Patterns that block execution outright. Order doesn't matter — first match wins
 # in the loop, but every pattern is independent.
 _BASH_DENY: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"\brm\s+-[rR]f?\b"), "destructive recursive delete (rm -rf)"),
-    (re.compile(r"\brm\s+-[fF]r?\b"), "destructive force delete (rm -f variants)"),
     (re.compile(r"\bgit\s+push\b.*?(?:--force-with-lease|--force|(?<!\S)-f)\b"), "force push"),
     (re.compile(r"\bgit\s+reset\s+--hard\b"), "git reset --hard"),
     (re.compile(r"\bgit\s+clean\s+-[fFdDxX]"), "git clean (force)"),
