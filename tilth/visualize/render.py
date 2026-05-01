@@ -100,13 +100,39 @@ def _render_model_call(_typ: str, ts: str, p: dict[str, Any]) -> str:
     pt = int(p.get("prompt_tokens", 0) or 0)
     et = int(p.get("eval_tokens", 0) or 0)
     total = int(p.get("tokens_used_total", 0) or 0)
-    return (
+    strip = (
         '<div class="meta-strip">'
         f'<span class="badge">iter {html.escape(str(iter_n))}</span>'
         f'<span class="meta">prompt {pt:,} · eval {et:,} · total {total:,}</span>'
         f'<span class="ts">{html.escape(ts)}</span>'
         '</div>'
     )
+    reasoning = _reasoning_text(p)
+    if not reasoning:
+        return strip
+    return strip + (
+        '<details class="reasoning">'
+        '<summary>reasoning</summary>'
+        f'<div class="reasoning-body">{html.escape(reasoning)}</div>'
+        '</details>'
+    )
+
+
+def _reasoning_text(p: dict[str, Any]) -> str:
+    details = p.get("reasoning_details")
+    if isinstance(details, list) and details:
+        parts = [
+            (block.get("text") or "").strip()
+            for block in details
+            if isinstance(block, dict)
+        ]
+        joined = "\n\n".join(part for part in parts if part)
+        if joined:
+            return joined
+    flat = p.get("reasoning")
+    if isinstance(flat, str) and flat.strip():
+        return flat.strip()
+    return ""
 
 
 def _render_tool_call(_typ: str, ts: str, p: dict[str, Any]) -> str:

@@ -77,7 +77,7 @@ uv run tilth --visualize                # most recent session
 uv run tilth --visualize <session_id>   # or name one explicitly
 ```
 
-The output is a single self-contained file (inline CSS, no JS) that renders `events.jsonl` as a conversation — model calls, tool calls/results, validator runs, judge verdicts, AGENTS.md updates, commits, and stops, grouped by task. Easier to skim than `jq`-ing the raw log.
+The output is a single self-contained file (inline CSS, no JS) that renders `events.jsonl` as a conversation — model calls (with collapsible reasoning blocks where the model emitted any), tool calls/results, validator runs, judge verdicts, AGENTS.md updates, commits, and stops, grouped by task. Easier to skim than `jq`-ing the raw log.
 
 ## Using it on your own project
 

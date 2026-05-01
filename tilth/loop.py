@@ -474,18 +474,23 @@ def _run_task(
         prompt_tokens = int(usage.get("prompt_tokens") or 0)
         eval_tokens = int(usage.get("completion_tokens") or 0)
         session.add_tokens(prompt_tokens + eval_tokens)
-        session.log(
-            "model_call",
-            {
-                "task_id": task["id"],
-                "iter": iter_n + 1,
-                "prompt_tokens": prompt_tokens,
-                "eval_tokens": eval_tokens,
-                "tokens_used_total": session.tokens_used,
-            },
-        )
 
         msg = resp.get("message") or {}
+        model_call_payload: dict[str, Any] = {
+            "task_id": task["id"],
+            "iter": iter_n + 1,
+            "prompt_tokens": prompt_tokens,
+            "eval_tokens": eval_tokens,
+            "tokens_used_total": session.tokens_used,
+        }
+        if reasoning_details := msg.get("reasoning_details"):
+            model_call_payload["reasoning_details"] = reasoning_details
+        else:
+            reasoning = msg.get("reasoning")
+            if isinstance(reasoning, str) and reasoning.strip():
+                model_call_payload["reasoning"] = reasoning
+        session.log("model_call", model_call_payload)
+
         messages.append(_assistant_history_message(msg))
 
         tool_calls = msg.get("tool_calls") or []

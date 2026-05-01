@@ -4,7 +4,11 @@ A session is an append-only events.jsonl file plus a checkpoint.json that snapsh
 just enough state (last completed task, worktree branch) to resume on a fresh process.
 
 Event types:
-    model_call         — request/response metadata for an Ollama call
+    model_call         — request/response metadata for a worker call. Carries
+                         `reasoning_details` (the OpenRouter-normalised
+                         structured form) when the model emitted any, falling
+                         back to a flat `reasoning` string. Either is omitted
+                         when absent so non-thinking models keep slim events.
     tool_call          — a tool invocation by the model
     tool_result        — the harness's response to a tool call
     pre_tool_block     — pre_tool hook vetoed a tool call

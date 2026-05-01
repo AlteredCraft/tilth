@@ -244,6 +244,7 @@ This is a load-bearing design choice, not a convenience. Worth understanding bef
 | **Judge / self-improvement** | **Never sees them.** The judge is a separate fresh-context call; self-improvement is a separate prompt. The worker has no idea its work is being evaluated or reflected on. |
 | **Validators** | Sees the *failure report* when validators fail (injected as the next user message). Sees nothing when they pass. |
 | **Tool registry** | Sees the JSON schemas of all registered tools on every call (passed via the `tools=` parameter). The system prompt does *not* enumerate them — schemas are the canonical source. |
+| **Reasoning blocks** | Sees its *own* prior reasoning, echoed across iterations in the in-memory message history (load-bearing for thinking-mode continuity — see `_assistant_history_message`). The harness mirrors it into `events.jsonl` for the visualizer, but the agent never reads from there. |
 
 ### Why this separation is deliberate
 

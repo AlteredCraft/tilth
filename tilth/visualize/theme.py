@@ -143,6 +143,38 @@ header.page-head .count {
 }
 .meta-strip .ts { margin-left: auto; }
 
+details.reasoning {
+  margin: 4px 0 14px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--tool-line);
+  background: var(--tool);
+  border-radius: 0 6px 6px 0;
+}
+details.reasoning summary {
+  cursor: pointer;
+  color: var(--muted);
+  font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  list-style: none;
+}
+details.reasoning summary::-webkit-details-marker { display: none; }
+details.reasoning summary::before {
+  content: "▸ ";
+  display: inline-block;
+}
+details.reasoning[open] summary::before {
+  content: "▾ ";
+}
+.reasoning-body {
+  margin-top: 8px;
+  font-style: italic;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--tool-fg);
+  font-size: 13px;
+}
+
 .bubble {
   border-radius: 12px;
   padding: 12px 14px;

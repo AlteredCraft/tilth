@@ -35,7 +35,7 @@ Optional env vars:
 - `TILTH_JUDGE_MODEL` — model that reviews finished tasks (default: same as worker)
 - `TILTH_JUDGE_BASE_URL`, `TILTH_JUDGE_API_KEY` — point judge at a *different* provider for stronger independence (e.g. worker = open model on Ollama Cloud, judge = Claude on OpenRouter). See ["Picking a judge model"](#picking-a-judge-model) below.
 - `TILTH_MAX_ITERATIONS_PER_TASK`, `TILTH_MAX_WALL_CLOCK_MINUTES`, `TILTH_MAX_TOKENS` — safety caps
-- `TILTH_REASONING_ENABLED` (default `true`) — sends `reasoning: { enabled: true }` ([OpenRouter normalised parameter](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens)) so reasoning-mode models always return `reasoning_details` for the harness to echo back. Required for OpenRouter routes through providers that enforce reasoning-content round-tripping (e.g., SiliconFlow's DeepSeek thinking-mode route — without it, parallel-tool-call turns crash with HTTP 400 *"reasoning_content must be passed back to the API"*). Set to `false` if your provider rejects unknown body fields.
+- `TILTH_REASONING_ENABLED` (default `true`) — opts into [OpenRouter's normalised reasoning parameter](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens) so thinking-mode models emit reasoning content the harness echoes back across iterations (the worker's chain-of-thought is preserved across the tool-use cycle, not just within a single response). Required for routes that enforce round-tripping — without it, parallel-tool-call turns on e.g. SiliconFlow's DeepSeek can crash with HTTP 400 *"reasoning_content must be passed back to the API"*. Set `false` if your provider rejects unknown body fields.
 
 ### Provider strings
 
@@ -228,7 +228,7 @@ uv run tilth --visualize               # most recent session
 uv run tilth --visualize <session_id>  # or name one explicitly
 ```
 
-Writes a single self-contained file (inline CSS, no JS) to `sessions/<id>/chat.html`. Events are grouped by task — model calls become meta strips, tool calls/results become bubbles, validator runs and judge verdicts become coloured cards. Read-only and runs over the saved `events.jsonl`, so it's safe to invoke against a finished or in-progress session.
+Writes a single self-contained file (inline CSS, no JS) to `sessions/<id>/chat.html`. Events are grouped by task — model calls become meta strips with a collapsible reasoning block where the model emitted any, tool calls/results become bubbles, validator runs and judge verdicts become coloured cards. Read-only and runs over the saved `events.jsonl`, so it's safe to invoke against a finished or in-progress session.
 
 ## 5. Caveats worth being upfront about
 
