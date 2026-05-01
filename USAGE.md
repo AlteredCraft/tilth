@@ -43,7 +43,7 @@ Tested / expected-to-work combinations:
 
 | Provider | `TILTH_BASE_URL` | Example `TILTH_WORKER_MODEL` |
 |---|---|---|
-| Ollama Cloud | `https://ollama.com/v1` | `gpt-oss:120b-cloud` |
+| Ollama Cloud | `https://ollama.com/v1` | `deepseek/deepseek-v4-pro` |
 | OpenRouter | `https://openrouter.ai/api/v1` | `anthropic/claude-sonnet-4.5`, `openai/gpt-4o`, `meta-llama/llama-3.1-405b-instruct` |
 | Together AI | `https://api.together.xyz/v1` | `meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo` |
 | Groq | `https://api.groq.com/openai/v1` | `llama-3.1-70b-versatile` |

@@ -6,7 +6,7 @@ A minimal long-running agent harness against any **OpenAI-compatible** LLM endpo
 
 **Audience:** single-dev / few-dev teams who want to *understand* what a long-running agent harness actually does — without consuming a managed pattern.
 
-**Target run:** 1–2 hours autonomous against an open model (default `gpt-oss:120b-cloud` on Ollama Cloud), completing a task list against a small toy project on a per-session git worktree.
+**Target run:** 1–2 hours autonomous against an open model (default `deepseek/deepseek-v4-pro` on Ollama Cloud), completing a task list against a small toy project on a per-session git worktree.
 
 ## Architecture
 
@@ -36,7 +36,7 @@ cp .env.example .env
 # edit .env, set TILTH_API_KEY (and optionally TILTH_BASE_URL / TILTH_WORKER_MODEL)
 ```
 
-Defaults point at Ollama Cloud (`https://ollama.com/v1`, model `gpt-oss:120b-cloud`). To use a different provider, change `TILTH_BASE_URL`, `TILTH_API_KEY`, and `TILTH_WORKER_MODEL`. See [USAGE.md](./USAGE.md#provider-strings) for known-good provider/model combinations.
+Defaults point at Ollama Cloud (`https://ollama.com/v1`, model `deepseek/deepseek-v4-pro`). To use a different provider, change `TILTH_BASE_URL`, `TILTH_API_KEY`, and `TILTH_WORKER_MODEL`. See [USAGE.md](./USAGE.md#provider-strings) for known-good provider/model combinations.
 
 ## Running the demo
 

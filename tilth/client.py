@@ -41,7 +41,7 @@ class TilthConfig:
             raise RuntimeError(
                 "TILTH_API_KEY is not set. Copy .env.example to .env and fill it in."
             )
-        worker_model = os.environ.get("TILTH_WORKER_MODEL", "gpt-oss:120b-cloud").strip()
+        worker_model = os.environ.get("TILTH_WORKER_MODEL", "deepseek/deepseek-v4-pro").strip()
         judge_model = os.environ.get("TILTH_JUDGE_MODEL", "").strip() or worker_model
         judge_base_url = os.environ.get("TILTH_JUDGE_BASE_URL", "").strip() or base_url
         judge_api_key = os.environ.get("TILTH_JUDGE_API_KEY", "").strip() or api_key
