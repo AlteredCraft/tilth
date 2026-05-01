@@ -28,8 +28,8 @@ Generator/evaluator separation: a separate **judge** call (`tilth/prompts/judge.
 ## Setup
 
 ```bash
-git clone git@github.com:AlteredCraft/tilth.git ~/Projects/tilth
-cd ~/Projects/tilth
+git clone git@github.com:AlteredCraft/tilth.git {{your projects folder}}/tilth
+cd {{your projects folder}}/tilth
 uv venv
 uv sync
 cp .env.example .env
@@ -43,8 +43,8 @@ Defaults point at Ollama Cloud (`https://ollama.com/v1`, model `gpt-oss:120b-clo
 The demo is a small todo-CLI workspace, pre-seeded with `prd.json`, `AGENTS.md`, `progress.txt`, and `tests/` — exactly the shape you'd give Tilth for your own project. It lives in its own repo so it's a realistic example, not a special case:
 
 ```bash
-git clone git@github.com:AlteredCraft/tilth-demo-todo-cli.git ~/Projects/tilth-demo
-uv run tilth ~/Projects/tilth-demo
+git clone git@github.com:AlteredCraft/tilth-demo-todo-cli.git {{your projects folder}}/tilth-demo
+uv run tilth {{your projects folder}}/tilth-demo
 ```
 
 Tilth doesn't care where the workspace lives; the path is just an argument. Treat it as a stand-in for your own repo.

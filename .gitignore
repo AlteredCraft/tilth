@@ -18,8 +18,9 @@ venv/
 sessions/
 !sessions/.gitkeep
 
-# Demo workspace lives in its own repo; clone it locally for testing.
-# https://github.com/AlteredCraft/tilth-demo-todo-cli
+# Safety net: if anything is cloned into examples/, don't track it.
+# Canonical demo path is {{your projects folder}}/tilth-demo (sibling of Tilth),
+# not inside this repo. Demo source: https://github.com/AlteredCraft/tilth-demo-todo-cli
 examples/
 
 # Editor

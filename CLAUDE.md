@@ -13,7 +13,7 @@ The repo is **not** a framework. It's an artefact. ~600 lines of Python, kept de
 - **`README.md`** — high-level architecture and setup.
 - **`USAGE.md`** — how a reader uses it on their own project (preparing `prd.json`, `AGENTS.md`, `progress.txt`, `tests/`; provider/model selection; caveats).
 - **`deep-dives.md`** — code-level walk-throughs of the two loops, iteration accounting, token recording/enforcement, and the agent-visibility boundary. Read this before changing any of those mechanics.
-- **`examples/todo-cli/`** (when present) — local clone of the demo workspace ([`AlteredCraft/tilth-demo-todo-cli`](https://github.com/AlteredCraft/tilth-demo-todo-cli)). Gitignored; not part of the Tilth repo.
+- **The demo workspace** — lives in its own repo at [`AlteredCraft/tilth-demo-todo-cli`](https://github.com/AlteredCraft/tilth-demo-todo-cli). Conventional clone path is `{{your projects folder}}/tilth-demo` (sibling to Tilth, matches README/USAGE). Tilth treats the path as just an argument, so any path works.
 
 ## Don't confuse the three "agent instruction" files
 
@@ -23,7 +23,7 @@ The repo has *three* files that look like agent instructions but speak to differ
 |---|---|---|
 | `CLAUDE.md` (this file) | Claude Code working on the harness itself | Conventions for editing this codebase |
 | `tilth/prompts/system.md` | The worker agent inside the harness loop | Role, tool guidance, "done" criteria |
-| `examples/todo-cli/AGENTS.md` | The worker agent operating on the demo workspace | Project conventions for the toy todo-cli |
+| `<demo-workspace>/AGENTS.md` | The worker agent operating on the demo workspace | Project conventions for the toy todo-cli |
 
 When the user says "update the agent's instructions," ask which one — they're not the same thing.
 
@@ -43,10 +43,10 @@ tilth/
 │   ├── tools/             # bash, files, search — registered in __init__.py
 │   ├── hooks/             # pre_tool, post_edit
 │   └── prompts/           # system.md, judge.md, agents_update.md
-├── examples/              # local demo clone target — gitignored, not tracked
-│                          #   demo lives at AlteredCraft/tilth-demo-todo-cli
 └── sessions/              # per-run state (gitignored)
 ```
+
+The demo workspace is a separate repo (`AlteredCraft/tilth-demo-todo-cli`) cloned alongside Tilth — by convention at `{{your projects folder}}/tilth-demo`. It is not part of the Tilth repo.
 
 ## Conventions
 
@@ -88,9 +88,9 @@ uv venv && uv pip install -e .
 .venv/bin/python -m ruff check tilth/
 
 # Demo (needs TILTH_API_KEY set in .env, and a local clone of the demo repo
-# at AlteredCraft/tilth-demo-todo-cli — by convention into examples/)
-git clone git@github.com:AlteredCraft/tilth-demo-todo-cli.git examples/todo-cli
-uv run tilth examples/todo-cli
+# at AlteredCraft/tilth-demo-todo-cli — conventional path is sibling to Tilth)
+git clone git@github.com:AlteredCraft/tilth-demo-todo-cli.git {{your projects folder}}/tilth-demo
+uv run tilth {{your projects folder}}/tilth-demo
 
 # Resume an interrupted session (latest in sessions/, or by id)
 uv run tilth --resume
@@ -107,7 +107,7 @@ jq -c . sessions/<session_id>/events.jsonl | head -40
 
 ## Working with the demo
 
-The demo lives in its own repo at [`AlteredCraft/tilth-demo-todo-cli`](https://github.com/AlteredCraft/tilth-demo-todo-cli) and is **not tracked** by Tilth — `examples/` is gitignored. Clone it locally before running the demo (the conventional spot is `examples/todo-cli/`, but Tilth doesn't care where it lives — the path is just an argument).
+The demo lives in its own repo at [`AlteredCraft/tilth-demo-todo-cli`](https://github.com/AlteredCraft/tilth-demo-todo-cli). Clone it as a sibling of Tilth (canonical path: `{{your projects folder}}/tilth-demo`) before running it. The path is just an argument to `uv run tilth`, so any path works.
 
 The demo has to be a git repo because Tilth's worktree machinery requires it. To tear down a session's artifacts (worktree, `session/<id>` branch, `sessions/<id>/`), use `--reset` rather than the manual recipe:
 
@@ -121,13 +121,13 @@ uv run tilth --reset <session_id>   # explicit
 If `--reset` itself can't run (e.g., session metadata missing), the manual fallback is:
 
 ```bash
-cd examples/todo-cli
+cd <demo-clone-path>                  # e.g. {{your projects folder}}/tilth-demo
 git worktree prune
 git branch -D session/<id>            # if it still exists
-rm -rf <tilth>/sessions/<id>/
+rm -rf <tilth-clone-path>/sessions/<id>/
 ```
 
-Don't commit changes the agent made on `session/*` branches into `examples/todo-cli`'s `main`. Those are run artefacts; the demo's `main` should stay seeded-state-only.
+Don't commit changes the agent made on `session/*` branches into the demo clone's `main`. Those are run artefacts; the demo's `main` should stay seeded-state-only.
 
 ## Things not to do without asking
 
@@ -136,7 +136,7 @@ Don't commit changes the agent made on `session/*` branches into `examples/todo-
 - Change the architecture invariants above.
 - Add a new dependency to `pyproject.toml` for convenience — justify the addition.
 - Rewrite the system prompts to be more verbose. They are short on purpose; every character ships every turn.
-- Auto-fix `examples/todo-cli/` to pass tests yourself if a demo run fails — that defeats the point of the demo. Investigate why the harness didn't.
+- Auto-fix the demo workspace to pass tests yourself if a demo run fails — that defeats the point of the demo. Investigate why the harness didn't.
 
 ## Article context
 

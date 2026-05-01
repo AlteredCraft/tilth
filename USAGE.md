@@ -15,8 +15,8 @@ This doc is for a reader who has cloned `tilth` and wants to run it against thei
 ## 1. Setup (one-time, ~5 minutes)
 
 ```bash
-git clone git@github.com:AlteredCraft/tilth.git ~/Projects/tilth
-cd ~/Projects/tilth
+git clone git@github.com:AlteredCraft/tilth.git {{your projects folder}}/tilth
+cd {{your projects folder}}/tilth
 uv venv && uv pip install -e .
 cp .env.example .env
 # edit .env, paste your TILTH_API_KEY
@@ -131,7 +131,7 @@ That's the seed state the harness branches from.
 ## 3. Run it
 
 ```bash
-cd ~/Projects/tilth
+cd {{your projects folder}}/tilth
 uv run tilth /absolute/path/to/your/repo
 ```
 
@@ -216,7 +216,7 @@ git merge session/<id>
 
 If you don't like it: delete the branch. The harness never auto-merges.
 
-The session log lives at `~/Projects/tilth/sessions/<id>/events.jsonl` — every model call, tool call, validator run, judge verdict, and AGENTS.md update is recorded. Useful for audit, blame, and future article writing.
+The session log lives at `{{your projects folder}}/tilth/sessions/<id>/events.jsonl` — every model call, tool call, validator run, judge verdict, and AGENTS.md update is recorded. Useful for audit, blame, and future article writing.
 
 ## 5. Caveats worth being upfront about
 
@@ -226,7 +226,7 @@ The session log lives at `~/Projects/tilth/sessions/<id>/events.jsonl` — every
 - **Costs are real.** A 2-hour run can mean hundreds of thousands of tokens across worker + judge + self-improvement calls. The `TILTH_MAX_TOKENS` cap exists for a reason — set it on first run. Cost per token varies wildly across providers; pick your worker accordingly. Be careful about reaching for a smaller judge model to cut costs — see ["Picking a judge model"](#picking-a-judge-model) below.
 - **AGENTS.md is yours forever.** It accumulates. Prune it periodically — old learnings that the model has clearly internalised should be removed (the ratchet works in both directions).
 - **Tools are intentionally narrow.** No web fetch, no MCP, no curl-based downloads. If your tasks require external API access, you add a tool to `tilth/tools/` and register it. Keep tools focused — every tool description ships in the prompt every turn.
-- **The harness commits to your repo's git db.** The worktree branch is in your repo, not the harness's. If you delete `~/Projects/tilth`, the branches in your project's repo remain. Clean up branches the same way you would for a normal feature branch.
+- **The harness commits to your repo's git db.** The worktree branch is in your repo, not the harness's. If you delete `{{your projects folder}}/tilth`, the branches in your project's repo remain. Clean up branches the same way you would for a normal feature branch.
 
 ## 6. Picking a judge model
 
