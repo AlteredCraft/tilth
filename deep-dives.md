@@ -124,13 +124,13 @@ The counter has two homes: an in-memory `int` for the live process, and a JSON f
 
 ### Three call sites record tokens
 
-There's one model call per "spot" in the loop, and each records tokens the same way. All three live in `tilth/loop.py`:
+There's one model call per "spot" in the loop, and each records tokens the same way. All three live in `tilth/loop.py` (line numbers shift as the file evolves; grep `session.add_tokens` to find them):
 
 | Site | Function | What it's calling |
 |---|---|---|
-| line 121 | `_judge_task` | judge model on a finished task |
-| line 179 | `_self_improve` | worker model asking "should AGENTS.md be updated?" |
-| line 299 | `_run_task` | worker model — the main per-iteration call |
+| `_judge_task` | `_judge_task` | judge model on a finished task |
+| `_self_improve` | `_self_improve` | worker model asking "should AGENTS.md be updated?" |
+| `_run_task` | `_run_task` | worker model — the main per-iteration call |
 
 The pattern is the same in all three:
 
@@ -148,7 +148,7 @@ A few things worth noting about this pattern:
 - **`or 0` everywhere.** If a provider ships a malformed response, the token count silently falls to zero rather than crashing the run. Defensive choice; the alternative is a 2-hour run dying on one weird `null`.
 - **`prompt + completion`, not `total`.** Some providers report `total_tokens` separately; we sum the two we trust. Equivalent to `total_tokens` for every well-formed response.
 
-The third site (line 299, in `_run_task`) also logs the per-call breakdown to `events.jsonl` as a `model_call` event:
+The third site (in `_run_task`) also logs the per-call breakdown to `events.jsonl` as a `model_call` event:
 
 ```python
 session.log("model_call", {
@@ -164,7 +164,7 @@ That's the audit trail. After a run, grep `events.jsonl` for `model_call` and re
 
 ### Enforcement is at the top of each task
 
-`tilth/loop.py:400` — `_stop_reason()` checks both wall-clock and token caps:
+`_stop_reason()` in `tilth/loop.py` checks both wall-clock and token caps:
 
 ```python
 def _stop_reason(client: LLMClient, session: Session) -> str | None:
@@ -175,14 +175,15 @@ def _stop_reason(client: LLMClient, session: Session) -> str | None:
     return None
 ```
 
-And line 410 — the top of the outer `run()` loop calls it before picking the next task:
+The outer `run()` loop calls it before picking the next task:
 
 ```python
 def run(worktree, session, client):
     while True:
         stop = _stop_reason(client, session)
         if stop:
-            console.print(f"[yellow]stopping: {stop}[/yellow]")
+            # surfaces the relevant cap value, e.g. [TILTH_MAX_TOKENS=2000000]
+            console.print(f"[yellow]stopping: {stop}[/yellow]...")
             session.log("stop", {"reason": stop})
             return
         ...

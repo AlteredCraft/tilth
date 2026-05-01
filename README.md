@@ -28,6 +28,7 @@ Generator/evaluator separation: a separate **judge** call (`tilth/prompts/judge.
 ## Setup
 
 ```bash
+git clone git@github.com:AlteredCraft/tilth.git ~/Projects/tilth
 cd ~/Projects/tilth
 uv venv
 uv sync

@@ -15,7 +15,7 @@ This doc is for a reader who has cloned `tilth` and wants to run it against thei
 ## 1. Setup (one-time, ~5 minutes)
 
 ```bash
-git clone <tilth repo> ~/Projects/tilth
+git clone git@github.com:AlteredCraft/tilth.git ~/Projects/tilth
 cd ~/Projects/tilth
 uv venv && uv pip install -e .
 cp .env.example .env
