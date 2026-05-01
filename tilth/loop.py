@@ -23,7 +23,7 @@ from typing import Any
 from dotenv import load_dotenv
 from rich.console import Console
 
-from tilth import memory, tools, validators
+from tilth import memory, tools, validators, visualize
 from tilth import workspace as ws
 from tilth.client import LLMClient, TilthConfig
 from tilth.session import Session
@@ -742,6 +742,17 @@ def main() -> int:
             "With no value, targets the most recent session."
         ),
     )
+    action.add_argument(
+        "--visualize",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="SESSION_ID",
+        help=(
+            "Render a session's events.jsonl as a chat-style HTML page at "
+            "sessions/<id>/chat.html. With no value, targets the most recent session."
+        ),
+    )
     parser.add_argument(
         "-y", "--yes",
         action="store_true",
@@ -757,6 +768,21 @@ def main() -> int:
         if not args.reset:
             console.print(f"[dim]--reset: latest session is {sid}[/dim]")
         return _do_reset(sid, assume_yes=args.yes)
+
+    if args.visualize is not None:
+        sid = args.visualize or _latest_session_id(SESSIONS_DIR)
+        if not sid:
+            console.print(f"[red]no sessions found under {SESSIONS_DIR}[/red]")
+            return 2
+        if not args.visualize:
+            console.print(f"[dim]--visualize: latest session is {sid}[/dim]")
+        session_dir = SESSIONS_DIR / sid
+        if not session_dir.is_dir():
+            console.print(f"[red]no session at {session_dir}[/red]")
+            return 2
+        out = visualize.write_session_html(session_dir)
+        console.print(f"[green]wrote[/green] {out}")
+        return 0
 
     config = TilthConfig.from_env()
     client = LLMClient(config)
