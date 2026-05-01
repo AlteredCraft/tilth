@@ -2,7 +2,7 @@
 
 The honest version, not the marketing version.
 
-This doc is for a reader who has cloned `tilth` and wants to run it against their own codebase — not the bundled `examples/todo-cli` demo.
+This doc is for a reader who has cloned `tilth` and wants to run it against their own codebase. If you just want to try Tilth on a stand-in project first, clone the demo workspace from [`AlteredCraft/tilth-demo-todo-cli`](https://github.com/AlteredCraft/tilth-demo-todo-cli) and point Tilth at it (`uv run tilth /path/to/clone`).
 
 ---
 

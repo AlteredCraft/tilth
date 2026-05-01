@@ -18,6 +18,10 @@ venv/
 sessions/
 !sessions/.gitkeep
 
+# Demo workspace lives in its own repo; clone it locally for testing.
+# https://github.com/AlteredCraft/tilth-demo-todo-cli
+examples/
+
 # Editor
 .vscode/
 .idea/

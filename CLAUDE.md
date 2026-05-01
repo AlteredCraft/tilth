@@ -13,7 +13,7 @@ The repo is **not** a framework. It's an artefact. ~600 lines of Python, kept de
 - **`README.md`** — high-level architecture and setup.
 - **`USAGE.md`** — how a reader uses it on their own project (preparing `prd.json`, `AGENTS.md`, `progress.txt`, `tests/`; provider/model selection; caveats).
 - **`deep-dives.md`** — code-level walk-throughs of the two loops, iteration accounting, token recording/enforcement, and the agent-visibility boundary. Read this before changing any of those mechanics.
-- **`examples/todo-cli/`** — the bundled demo workspace. Its own git repo with seeded `prd.json`, `AGENTS.md`, `progress.txt`, and `tests/`.
+- **`examples/todo-cli/`** (when present) — local clone of the demo workspace ([`AlteredCraft/tilth-demo-todo-cli`](https://github.com/AlteredCraft/tilth-demo-todo-cli)). Gitignored; not part of the Tilth repo.
 
 ## Don't confuse the three "agent instruction" files
 
@@ -43,7 +43,8 @@ tilth/
 │   ├── tools/             # bash, files, search — registered in __init__.py
 │   ├── hooks/             # pre_tool, post_edit
 │   └── prompts/           # system.md, judge.md, agents_update.md
-├── examples/todo-cli/     # demo workspace (its own git repo)
+├── examples/              # local demo clone target — gitignored, not tracked
+│                          #   demo lives at AlteredCraft/tilth-demo-todo-cli
 └── sessions/              # per-run state (gitignored)
 ```
 
@@ -86,7 +87,9 @@ uv venv && uv pip install -e .
 # Lint
 .venv/bin/python -m ruff check tilth/
 
-# Demo (needs TILTH_API_KEY set in .env)
+# Demo (needs TILTH_API_KEY set in .env, and a local clone of the demo repo
+# at AlteredCraft/tilth-demo-todo-cli — by convention into examples/)
+git clone git@github.com:AlteredCraft/tilth-demo-todo-cli.git examples/todo-cli
 uv run tilth examples/todo-cli
 
 # Resume an interrupted session (latest in sessions/, or by id)
@@ -104,7 +107,9 @@ jq -c . sessions/<session_id>/events.jsonl | head -40
 
 ## Working with the demo
 
-`examples/todo-cli/` is **its own git repo**. The harness's worktree machinery requires it. To tear down a session's artifacts (worktree, `session/<id>` branch, `sessions/<id>/`), use `--reset` rather than the manual recipe:
+The demo lives in its own repo at [`AlteredCraft/tilth-demo-todo-cli`](https://github.com/AlteredCraft/tilth-demo-todo-cli) and is **not tracked** by Tilth — `examples/` is gitignored. Clone it locally before running the demo (the conventional spot is `examples/todo-cli/`, but Tilth doesn't care where it lives — the path is just an argument).
+
+The demo has to be a git repo because Tilth's worktree machinery requires it. To tear down a session's artifacts (worktree, `session/<id>` branch, `sessions/<id>/`), use `--reset` rather than the manual recipe:
 
 ```bash
 uv run tilth --reset                # most recent session
