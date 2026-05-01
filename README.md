@@ -79,6 +79,8 @@ uv run tilth --visualize <session_id>   # or name one explicitly
 
 The output is a single self-contained file (inline CSS, no JS) that renders `events.jsonl` as a conversation — model calls (with collapsible reasoning blocks where the model emitted any), tool calls/results, validator runs, judge verdicts, AGENTS.md updates, commits, and stops, grouped by task. Easier to skim than `jq`-ing the raw log.
 
+![Sample chat.html render: session header, task divider, model-call meta-strip with an expanded reasoning fold-out, tool call and result bubbles](./documents/session-render.png)
+
 ## Using it on your own project
 
 See **[USAGE.md](./USAGE.md)** for the full logistics: how to prep your repo (`prd.json`, `AGENTS.md`, `progress.txt`, `tests/`), what happens during a run, how to review and merge, provider/model selection, and the caveats worth knowing up front.

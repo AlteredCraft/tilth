@@ -144,19 +144,21 @@ header.page-head .count {
 .meta-strip .ts { margin-left: auto; }
 
 details.reasoning {
-  margin: 4px 0 14px;
-  padding: 8px 12px;
-  border-left: 3px solid var(--tool-line);
-  background: var(--tool);
-  border-radius: 0 6px 6px 0;
+  margin: 6px 0 16px;
+  padding: 10px 14px;
+  border-left: 4px solid var(--agent-fg);
+  background: var(--agent);
+  border-radius: 0 8px 8px 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 details.reasoning summary {
   cursor: pointer;
-  color: var(--muted);
-  font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--agent-fg);
+  font: 700 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   list-style: none;
+  user-select: none;
 }
 details.reasoning summary::-webkit-details-marker { display: none; }
 details.reasoning summary::before {
@@ -167,12 +169,15 @@ details.reasoning[open] summary::before {
   content: "▾ ";
 }
 .reasoning-body {
-  margin-top: 8px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--agent-line);
   font-style: italic;
   white-space: pre-wrap;
   word-break: break-word;
-  color: var(--tool-fg);
+  color: var(--agent-fg);
   font-size: 13px;
+  line-height: 1.5;
 }
 
 .bubble {
