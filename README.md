@@ -1,4 +1,6 @@
-# agent-harness
+# Tilth
+
+> *Prepare the ground, let the agent grow the work.*
 
 A minimal long-running agent harness against any **OpenAI-compatible** LLM endpoint — Ollama Cloud, OpenRouter, Together, Groq, Anyscale, Fireworks, vLLM, LM Studio, you name it. Built to learn (and demonstrate) the Brain/Hands/Session split, the Ralph loop, and the four memory channels described in Addy Osmani's [long-running agents](https://addyosmani.com/blog/long-running-agents/), [agent harness engineering](https://addyosmani.com/blog/agent-harness-engineering/), and [self-improving agents](https://addyosmani.com/blog/self-improving-agents/) posts.
 
@@ -10,9 +12,9 @@ A minimal long-running agent harness against any **OpenAI-compatible** LLM endpo
 
 Three independently-replaceable components:
 
-- **Brain** — `harness/client.py` + `harness/loop.py`. Ralph loop calling any OpenAI-compatible endpoint via the `openai` Python SDK. Worker and judge can sit on different providers.
-- **Hands** — `harness/workspace.py` (per-session git worktree) + `harness/tools/` (allow-listed bash, file ops, search) + `harness/hooks/` (pre-tool veto, post-edit lint).
-- **Session** — `harness/session.py`. Append-only `events.jsonl` + checkpoint, enough to `wake(session_id)` on a fresh process.
+- **Brain** — `tilth/client.py` + `tilth/loop.py`. Ralph loop calling any OpenAI-compatible endpoint via the `openai` Python SDK. Worker and judge can sit on different providers.
+- **Hands** — `tilth/workspace.py` (per-session git worktree) + `tilth/tools/` (allow-listed bash, file ops, search) + `tilth/hooks/` (pre-tool veto, post-edit lint).
+- **Session** — `tilth/session.py`. Append-only `events.jsonl` + checkpoint, enough to `wake(session_id)` on a fresh process.
 
 Four memory channels live outside the agent:
 
@@ -21,46 +23,46 @@ Four memory channels live outside the agent:
 - `progress.txt` — chronological journal of task attempts (in the *workspace*).
 - `prd.json` — task list with status flags (in the *workspace*).
 
-Generator/evaluator separation: a separate **judge** call (`harness/prompts/judge.md`) reviews each finished task in a fresh context — diff + acceptance criteria, nothing else.
+Generator/evaluator separation: a separate **judge** call (`tilth/prompts/judge.md`) reviews each finished task in a fresh context — diff + acceptance criteria, nothing else.
 
 ## Setup
 
 ```bash
-cd ~/Projects/agent-harness
+cd ~/Projects/tilth
 uv venv
 uv sync
 cp .env.example .env
-# edit .env, set HARNESS_API_KEY (and optionally HARNESS_BASE_URL / HARNESS_WORKER_MODEL)
+# edit .env, set TILTH_API_KEY (and optionally TILTH_BASE_URL / TILTH_WORKER_MODEL)
 ```
 
-Defaults point at Ollama Cloud (`https://ollama.com/v1`, model `gpt-oss:120b-cloud`). To use a different provider, change `HARNESS_BASE_URL`, `HARNESS_API_KEY`, and `HARNESS_WORKER_MODEL`. See [USAGE.md](./USAGE.md#provider-strings) for known-good provider/model combinations.
+Defaults point at Ollama Cloud (`https://ollama.com/v1`, model `gpt-oss:120b-cloud`). To use a different provider, change `TILTH_BASE_URL`, `TILTH_API_KEY`, and `TILTH_WORKER_MODEL`. See [USAGE.md](./USAGE.md#provider-strings) for known-good provider/model combinations.
 
 ## Running the demo
 
 ```bash
-uv run harness examples/todo-cli
+uv run tilth examples/todo-cli
 ```
 
 Resume an interrupted run:
 
 ```bash
-uv run harness --resume               # picks the most recent session
-uv run harness --resume <session_id>  # or name one explicitly
+uv run tilth --resume               # picks the most recent session
+uv run tilth --resume <session_id>  # or name one explicitly
 ```
 
-Resume retries the trailing failed task (if any) by flipping it back to `pending` and unwinding the `FAILED (...)` placeholder commit so partial work blends into the retry. The wall-clock budget resets per resume; the token total is preserved (bump `HARNESS_MAX_TOKENS` first if you blew the cap).
+Resume retries the trailing failed task (if any) by flipping it back to `pending` and unwinding the `FAILED (...)` placeholder commit so partial work blends into the retry. The wall-clock budget resets per resume; the token total is preserved (bump `TILTH_MAX_TOKENS` first if you blew the cap).
 
 Reset a session (drop its worktree, delete its `session/<id>` branch from the source repo, remove `sessions/<id>/`):
 
 ```bash
-uv run harness --reset                  # most recent session
-uv run harness --reset <session_id>     # or name one explicitly
-uv run harness --reset --yes            # skip the y/N confirmation
+uv run tilth --reset                  # most recent session
+uv run tilth --reset <session_id>     # or name one explicitly
+uv run tilth --reset --yes            # skip the y/N confirmation
 ```
 
 Refuses if the worktree has uncommitted changes — investigate, commit/stash, then retry. Reset and resume are mutually exclusive on a single invocation.
 
-If you run `uv run harness <workspace>` (no flags) and a resumable session exists for that same workspace, the harness prints a heads-up listing your `--resume` / `--reset` options and pauses 5 seconds before starting fresh — Ctrl-C during the pause to switch course.
+If you run `uv run tilth <workspace>` (no flags) and a resumable session exists for that same workspace, the harness prints a heads-up listing your `--resume` / `--reset` options and pauses 5 seconds before starting fresh — Ctrl-C during the pause to switch course.
 
 ## Using it on your own project
 

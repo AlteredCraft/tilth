@@ -8,7 +8,7 @@ Two principles (per Osmani's harness post):
 
 from __future__ import annotations
 
-from harness.hooks.post_edit import post_edit
-from harness.hooks.pre_tool import pre_tool
+from tilth.hooks.post_edit import post_edit
+from tilth.hooks.pre_tool import pre_tool
 
 __all__ = ["post_edit", "pre_tool"]

@@ -1,8 +1,8 @@
-# Using agent-harness on your own project
+# Using Tilth on your own project
 
 The honest version, not the marketing version.
 
-This doc is for a reader who has cloned `agent-harness` and wants to run it against their own codebase — not the bundled `examples/todo-cli` demo.
+This doc is for a reader who has cloned `tilth` and wants to run it against their own codebase — not the bundled `examples/todo-cli` demo.
 
 ---
 
@@ -15,32 +15,32 @@ This doc is for a reader who has cloned `agent-harness` and wants to run it agai
 ## 1. Setup (one-time, ~5 minutes)
 
 ```bash
-git clone <agent-harness repo> ~/Projects/agent-harness
-cd ~/Projects/agent-harness
+git clone <tilth repo> ~/Projects/tilth
+cd ~/Projects/tilth
 uv venv && uv pip install -e .
 cp .env.example .env
-# edit .env, paste your HARNESS_API_KEY
+# edit .env, paste your TILTH_API_KEY
 ```
 
-The harness talks to **any OpenAI-compatible endpoint** via the `openai` Python SDK. Defaults point at Ollama Cloud; change `HARNESS_BASE_URL` to use OpenRouter, Together, Groq, Anyscale, Fireworks, vLLM, LM Studio, or anything else with `/v1/chat/completions` semantics.
+The harness talks to **any OpenAI-compatible endpoint** via the `openai` Python SDK. Defaults point at Ollama Cloud; change `TILTH_BASE_URL` to use OpenRouter, Together, Groq, Anyscale, Fireworks, vLLM, LM Studio, or anything else with `/v1/chat/completions` semantics.
 
 Required env vars:
 
-- `HARNESS_BASE_URL` — provider's OpenAI-compatible endpoint (default `https://ollama.com/v1`)
-- `HARNESS_API_KEY` — bearer token for that provider
-- `HARNESS_WORKER_MODEL` — the model that does the work
+- `TILTH_BASE_URL` — provider's OpenAI-compatible endpoint (default `https://ollama.com/v1`)
+- `TILTH_API_KEY` — bearer token for that provider
+- `TILTH_WORKER_MODEL` — the model that does the work
 
 Optional env vars:
 
-- `HARNESS_JUDGE_MODEL` — model that reviews finished tasks (default: same as worker)
-- `HARNESS_JUDGE_BASE_URL`, `HARNESS_JUDGE_API_KEY` — point judge at a *different* provider for stronger independence (e.g. worker = open model on Ollama Cloud, judge = Claude on OpenRouter). See ["Picking a judge model"](#picking-a-judge-model) below.
-- `HARNESS_MAX_ITERATIONS_PER_TASK`, `HARNESS_MAX_WALL_CLOCK_MINUTES`, `HARNESS_MAX_TOKENS` — safety caps
+- `TILTH_JUDGE_MODEL` — model that reviews finished tasks (default: same as worker)
+- `TILTH_JUDGE_BASE_URL`, `TILTH_JUDGE_API_KEY` — point judge at a *different* provider for stronger independence (e.g. worker = open model on Ollama Cloud, judge = Claude on OpenRouter). See ["Picking a judge model"](#picking-a-judge-model) below.
+- `TILTH_MAX_ITERATIONS_PER_TASK`, `TILTH_MAX_WALL_CLOCK_MINUTES`, `TILTH_MAX_TOKENS` — safety caps
 
 ### Provider strings
 
 Tested / expected-to-work combinations:
 
-| Provider | `HARNESS_BASE_URL` | Example `HARNESS_WORKER_MODEL` |
+| Provider | `TILTH_BASE_URL` | Example `TILTH_WORKER_MODEL` |
 |---|---|---|
 | Ollama Cloud | `https://ollama.com/v1` | `gpt-oss:120b-cloud` |
 | OpenRouter | `https://openrouter.ai/api/v1` | `anthropic/claude-sonnet-4.5`, `openai/gpt-4o`, `meta-llama/llama-3.1-405b-instruct` |
@@ -123,7 +123,7 @@ At least one test per task in `prd.json`, asserting the acceptance criteria.
 
 ```bash
 git add prd.json AGENTS.md progress.txt tests/
-git commit -m "seed: prep for agent-harness"
+git commit -m "seed: prep for tilth"
 ```
 
 That's the seed state the harness branches from.
@@ -131,8 +131,8 @@ That's the seed state the harness branches from.
 ## 3. Run it
 
 ```bash
-cd ~/Projects/agent-harness
-uv run harness /absolute/path/to/your/repo
+cd ~/Projects/tilth
+uv run tilth /absolute/path/to/your/repo
 ```
 
 What happens:
@@ -151,16 +151,16 @@ What happens:
 You can interrupt at any point with Ctrl-C. To resume:
 
 ```bash
-uv run harness --resume               # default: most recent session in sessions/
-uv run harness --resume <session_id>  # or name one explicitly
+uv run tilth --resume               # default: most recent session in sessions/
+uv run tilth --resume <session_id>  # or name one explicitly
 ```
 
 What resume does:
 
 - Skips tasks already marked `done` in `prd.json` (which lives on the worktree branch).
 - **Retries the trailing failed task**, if any. Iter-cap, wall-clock-cap, token-cap, interrupt, and error stops all leave the in-flight task marked `failed`; resume flips that task back to `pending` and unwinds its `FAILED (...)` placeholder commit so the retry sees the partial work as uncommitted changes (and the judge will see a single cumulative diff, not just the new edits).
-- **Resets the wall-clock budget** for this resume — otherwise a resume the next day would trip `HARNESS_MAX_WALL_CLOCK_MINUTES` immediately.
-- **Preserves the token total.** If the original run hit `HARNESS_MAX_TOKENS`, bump it in `.env` before resuming or the new run will stop on the first token check.
+- **Resets the wall-clock budget** for this resume — otherwise a resume the next day would trip `TILTH_MAX_WALL_CLOCK_MINUTES` immediately.
+- **Preserves the token total.** If the original run hit `TILTH_MAX_TOKENS`, bump it in `.env` before resuming or the new run will stop on the first token check.
 
 The resume plan is printed up front (which task is being retried, which are pending) and logged as a `session_resume` event in `events.jsonl`.
 
@@ -169,9 +169,9 @@ The resume plan is printed up front (which task is being retried, which are pend
 If you want to throw a session away and start fresh — common when you're tuning prompts or iterating on the harness itself:
 
 ```bash
-uv run harness --reset               # most recent session
-uv run harness --reset <session_id>  # or name one explicitly
-uv run harness --reset --yes         # skip the y/N confirmation
+uv run tilth --reset               # most recent session
+uv run tilth --reset <session_id>  # or name one explicitly
+uv run tilth --reset --yes         # skip the y/N confirmation
 ```
 
 This is the codified version of the three-step manual cleanup (`rm -rf sessions/<id>` + `git worktree prune` + `git branch -D session/<id>`). It:
@@ -185,12 +185,12 @@ Each step is idempotent — already-missing pieces are reported as skipped, not 
 
 ### Resumable-session warning
 
-If you run `uv run harness <workspace>` (no flags) and there's already a resumable session for that same workspace under `sessions/`, the harness prints a heads-up and pauses 5 seconds before starting a new session:
+If you run `uv run tilth <workspace>` (no flags) and there's already a resumable session for that same workspace under `sessions/`, the harness prints a heads-up and pauses 5 seconds before starting a new session:
 
 ```
 heads up: sessions/20260430-121316-51ead4/ ended in iter_cap and is resumable
-  → uv run harness --resume       (continue that work)
-  → uv run harness --reset --yes  (discard it first)
+  → uv run tilth --resume       (continue that work)
+  → uv run tilth --reset --yes  (discard it first)
 starting fresh anyway in 5s... (Ctrl-C to abort)
 ```
 
@@ -216,17 +216,17 @@ git merge session/<id>
 
 If you don't like it: delete the branch. The harness never auto-merges.
 
-The session log lives at `~/Projects/agent-harness/sessions/<id>/events.jsonl` — every model call, tool call, validator run, judge verdict, and AGENTS.md update is recorded. Useful for audit, blame, and future article writing.
+The session log lives at `~/Projects/tilth/sessions/<id>/events.jsonl` — every model call, tool call, validator run, judge verdict, and AGENTS.md update is recorded. Useful for audit, blame, and future article writing.
 
 ## 5. Caveats worth being upfront about
 
-- **It's Python-centric.** `post_edit` lints `.py` files. `validators` runs `pytest` and `ruff`. JavaScript / Rust / Go projects need `harness/validators.py` and `harness/hooks/post_edit.py` adapted to your toolchain — not deep work, but not zero.
+- **It's Python-centric.** `post_edit` lints `.py` files. `validators` runs `pytest` and `ruff`. JavaScript / Rust / Go projects need `tilth/validators.py` and `tilth/hooks/post_edit.py` adapted to your toolchain — not deep work, but not zero.
 - **Ruff config matters.** If your project doesn't already use ruff, the validator will fire constantly and the agent will spend iterations fixing things that aren't really broken. Either add a permissive `[tool.ruff]` block to your `pyproject.toml`, or swap the ruff validator for whatever linter you already use.
 - **The planner is you.** Writing a good `prd.json` (small enough tasks, sharp acceptance criteria, tests upfront) is where most of the value is. Vague PRDs make the harness fail loudly and burn tokens.
-- **Costs are real.** A 2-hour run can mean hundreds of thousands of tokens across worker + judge + self-improvement calls. The `HARNESS_MAX_TOKENS` cap exists for a reason — set it on first run. Cost per token varies wildly across providers; pick your worker accordingly. Be careful about reaching for a smaller judge model to cut costs — see ["Picking a judge model"](#picking-a-judge-model) below.
+- **Costs are real.** A 2-hour run can mean hundreds of thousands of tokens across worker + judge + self-improvement calls. The `TILTH_MAX_TOKENS` cap exists for a reason — set it on first run. Cost per token varies wildly across providers; pick your worker accordingly. Be careful about reaching for a smaller judge model to cut costs — see ["Picking a judge model"](#picking-a-judge-model) below.
 - **AGENTS.md is yours forever.** It accumulates. Prune it periodically — old learnings that the model has clearly internalised should be removed (the ratchet works in both directions).
-- **Tools are intentionally narrow.** No web fetch, no MCP, no curl-based downloads. If your tasks require external API access, you add a tool to `harness/tools/` and register it. Keep tools focused — every tool description ships in the prompt every turn.
-- **The harness commits to your repo's git db.** The worktree branch is in your repo, not the harness's. If you delete `~/Projects/agent-harness`, the branches in your project's repo remain. Clean up branches the same way you would for a normal feature branch.
+- **Tools are intentionally narrow.** No web fetch, no MCP, no curl-based downloads. If your tasks require external API access, you add a tool to `tilth/tools/` and register it. Keep tools focused — every tool description ships in the prompt every turn.
+- **The harness commits to your repo's git db.** The worktree branch is in your repo, not the harness's. If you delete `~/Projects/tilth`, the branches in your project's repo remain. Clean up branches the same way you would for a normal feature branch.
 
 ## 6. Picking a judge model
 
@@ -242,7 +242,7 @@ Academic LLM-as-a-judge research bears this out: evaluators are typically run wi
 
 ### When dual-provider routing actually pays off
 
-The `HARNESS_JUDGE_BASE_URL` / `HARNESS_JUDGE_API_KEY` feature is genuinely useful, but mostly for **cross-family independence**, not cost:
+The `TILTH_JUDGE_BASE_URL` / `TILTH_JUDGE_API_KEY` feature is genuinely useful, but mostly for **cross-family independence**, not cost:
 
 - **Worker = open model on Ollama Cloud, judge = Claude on OpenRouter.** Different model families catch different failure modes. Same-family judging shares the worker's blind spots.
 - **Worker = capable open model, judge = frontier closed model.** When you need the strongest possible gate, route the judge to whatever's at the top of the leaderboard for code review.

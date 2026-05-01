@@ -10,10 +10,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from harness.hooks import post_edit, pre_tool
-from harness.tools import bash as _bash
-from harness.tools import files as _files
-from harness.tools import search as _search
+from tilth.hooks import post_edit, pre_tool
+from tilth.tools import bash as _bash
+from tilth.tools import files as _files
+from tilth.tools import search as _search
 
 
 @dataclass

@@ -16,15 +16,15 @@ The Ralph loop proper. Picks the next pending task from `prd.json`, runs it to c
 
 Bounded by:
 
-- `HARNESS_MAX_WALL_CLOCK_MINUTES`
-- `HARNESS_MAX_TOKENS`
+- `TILTH_MAX_WALL_CLOCK_MINUTES`
+- `TILTH_MAX_TOKENS`
 - "no more pending tasks"
 
 This loop has no iteration cap. If you have 20 tasks and the wall-clock and token caps allow it, it'll run all 20.
 
 ### Inner loop — `_run_task()` in `loop.py`
 
-The tool-use / ReAct loop *inside* a single task. Bounded by `HARNESS_MAX_ITERATIONS_PER_TASK`. **This is what the env var caps.**
+The tool-use / ReAct loop *inside* a single task. Bounded by `TILTH_MAX_ITERATIONS_PER_TASK`. **This is what the env var caps.**
 
 ```python
 for iter_n in range(client.config.max_iterations_per_task):
@@ -92,15 +92,15 @@ Tokens flow through four files. End-to-end with line numbers:
 
 ### The cap is set at startup
 
-`harness/client.py:54` reads `HARNESS_MAX_TOKENS` from the env (default 2,000,000) into `HarnessConfig.max_tokens`. One integer, set once per run, never mutated:
+`tilth/client.py:54` reads `TILTH_MAX_TOKENS` from the env (default 2,000,000) into `TilthConfig.max_tokens`. One integer, set once per run, never mutated:
 
 ```python
-max_tokens=int(os.environ.get("HARNESS_MAX_TOKENS", "2000000")),
+max_tokens=int(os.environ.get("TILTH_MAX_TOKENS", "2000000")),
 ```
 
 ### The session owns the running counter
 
-`harness/session.py` holds the running total on the `Session` dataclass:
+`tilth/session.py` holds the running total on the `Session` dataclass:
 
 ```python
 @dataclass
@@ -124,7 +124,7 @@ The counter has two homes: an in-memory `int` for the live process, and a JSON f
 
 ### Three call sites record tokens
 
-There's one model call per "spot" in the loop, and each records tokens the same way. All three live in `harness/loop.py`:
+There's one model call per "spot" in the loop, and each records tokens the same way. All three live in `tilth/loop.py`:
 
 | Site | Function | What it's calling |
 |---|---|---|
@@ -164,7 +164,7 @@ That's the audit trail. After a run, grep `events.jsonl` for `model_call` and re
 
 ### Enforcement is at the top of each task
 
-`harness/loop.py:400` — `_stop_reason()` checks both wall-clock and token caps:
+`tilth/loop.py:400` — `_stop_reason()` checks both wall-clock and token caps:
 
 ```python
 def _stop_reason(client: LLMClient, session: Session) -> str | None:
@@ -207,7 +207,7 @@ If you wanted hard mid-task enforcement, you'd add the same check inside `_run_t
 {"ts": "...", "type": "stop", "payload": {"reason": "token_cap"}}
 ```
 
-`checkpoint.json` has the final `tokens_used` value. So a session that hit the cap is identifiable from either file alone, and `--resume` will see the same `tokens_used` total — meaning **resume of a cap-stopped session will immediately re-trip the cap and stop again**. To resume past a cap, bump `HARNESS_MAX_TOKENS` in `.env` before running `--resume`. The harness reads env on each invocation, so the new cap takes effect.
+`checkpoint.json` has the final `tokens_used` value. So a session that hit the cap is identifiable from either file alone, and `--resume` will see the same `tokens_used` total — meaning **resume of a cap-stopped session will immediately re-trip the cap and stop again**. To resume past a cap, bump `TILTH_MAX_TOKENS` in `.env` before running `--resume`. The harness reads env on each invocation, so the new cap takes effect.
 
 The wall-clock baseline (`started_at`) is treated differently: `Session.wake()` resets it to "now" on every resume so the cap applies *per resume* rather than cumulatively. Without that reset, a resume the next day would trip wall-clock immediately. Tokens are cumulative; wall-clock is per-resume. Asymmetric on purpose.
 
@@ -308,7 +308,7 @@ Resume does not loop endlessly. If a retried task hits iter-cap *again*, the out
 
 ### Resumable-session detection
 
-When you run `uv run harness <workspace>` (no `--resume` / `--reset`), `_find_resumable_session()` scans `sessions/` newest-first and looks for a directory whose `session_start.source` matches `<workspace>` and whose last `stop.reason` is anything other than `all_done` (or has no `stop` event at all — covers crashes that died before logging). If one exists, the harness prints a heads-up listing the `--resume` / `--reset` recovery commands and pauses 5 seconds before calling `Session.new()`. Ctrl-C during the pause returns 130 cleanly.
+When you run `uv run tilth <workspace>` (no `--resume` / `--reset`), `_find_resumable_session()` scans `sessions/` newest-first and looks for a directory whose `session_start.source` matches `<workspace>` and whose last `stop.reason` is anything other than `all_done` (or has no `stop` event at all — covers crashes that died before logging). If one exists, the harness prints a heads-up listing the `--resume` / `--reset` recovery commands and pauses 5 seconds before calling `Session.new()`. Ctrl-C during the pause returns 130 cleanly.
 
 The detection is read-only — no files modified, no state mutated. It exists purely to surface that a fresh run will silently abandon resumable progress, which is the failure mode the iteration loop ("halt → tweak → continue") inadvertently optimises for.
 

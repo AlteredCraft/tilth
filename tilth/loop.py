@@ -23,10 +23,10 @@ from typing import Any
 from dotenv import load_dotenv
 from rich.console import Console
 
-from harness import memory, tools, validators
-from harness import workspace as ws
-from harness.client import HarnessConfig, LLMClient
-from harness.session import Session
+from tilth import memory, tools, validators
+from tilth import workspace as ws
+from tilth.client import LLMClient, TilthConfig
+from tilth.session import Session
 
 console = Console()
 
@@ -544,7 +544,7 @@ def _run_task(
     cap = client.config.max_iterations_per_task
     console.print(
         f"[red]task {task['id']} hit iteration cap[/red] "
-        f"[dim][HARNESS_MAX_ITERATIONS_PER_TASK={cap}][/dim]"
+        f"[dim][TILTH_MAX_ITERATIONS_PER_TASK={cap}][/dim]"
     )
     session.log("task_failed", {"task_id": task["id"], "reason": "iter_cap"})
     return "iter_cap"
@@ -564,9 +564,9 @@ def run(worktree: Path, session: Session, client: LLMClient) -> None:
         if stop:
             detail = ""
             if stop == "wall_clock":
-                detail = f" [HARNESS_MAX_WALL_CLOCK_MINUTES={client.config.max_wall_clock_minutes}]"
+                detail = f" [TILTH_MAX_WALL_CLOCK_MINUTES={client.config.max_wall_clock_minutes}]"
             elif stop == "token_cap":
-                detail = f" [HARNESS_MAX_TOKENS={client.config.max_tokens}]"
+                detail = f" [TILTH_MAX_TOKENS={client.config.max_tokens}]"
             console.print(f"[yellow]stopping: {stop}[/yellow][dim]{detail}[/dim]")
             session.log("stop", {"reason": stop})
             return
@@ -596,7 +596,7 @@ def run(worktree: Path, session: Session, client: LLMClient) -> None:
             detail = ""
             if outcome == "iter_cap":
                 cap = client.config.max_iterations_per_task
-                detail = f" [HARNESS_MAX_ITERATIONS_PER_TASK={cap}]"
+                detail = f" [TILTH_MAX_ITERATIONS_PER_TASK={cap}]"
             console.print(
                 f"[red]✗ {task['id']} failed ({outcome}); halting run[/red]"
                 f"[dim]{detail}[/dim]"
@@ -641,9 +641,9 @@ def _print_summary(session: Session, client: LLMClient, worktree: Path | None) -
             pass
 
     wall_dim = (
-        f"({wall_pct:.1f}% of HARNESS_MAX_WALL_CLOCK_MINUTES={cfg.max_wall_clock_minutes})"
+        f"({wall_pct:.1f}% of TILTH_MAX_WALL_CLOCK_MINUTES={cfg.max_wall_clock_minutes})"
     )
-    tokens_dim = f"({tokens_pct:.1f}% of HARNESS_MAX_TOKENS={cfg.max_tokens:,})"
+    tokens_dim = f"({tokens_pct:.1f}% of TILTH_MAX_TOKENS={cfg.max_tokens:,})"
     base_keys = ("done", "failed", "pending")
     task_bits = [f"{k}={counts.get(k, 0)}" for k in base_keys]
     extras = [f"{k}={v}" for k, v in counts.items() if k not in base_keys]
@@ -708,7 +708,10 @@ def _do_reset(session_id: str, assume_yes: bool) -> int:
 
 def main() -> int:
     load_dotenv()
-    parser = argparse.ArgumentParser(prog="harness", description="Run the agent harness.")
+    parser = argparse.ArgumentParser(
+        prog="tilth",
+        description="Run Tilth — a minimal long-running agent harness.",
+    )
     parser.add_argument(
         "workspace",
         nargs="?",
@@ -756,7 +759,7 @@ def main() -> int:
             console.print(f"[dim]--reset: latest session is {sid}[/dim]")
         return _do_reset(sid, assume_yes=args.yes)
 
-    config = HarnessConfig.from_env()
+    config = TilthConfig.from_env()
     client = LLMClient(config)
 
     if args.resume is not None:
@@ -787,8 +790,8 @@ def main() -> int:
                 f"[yellow]heads up:[/yellow] sessions/{sid}/ ended in "
                 f"[bold]{reason}[/bold] and is resumable"
             )
-            console.print("  → [bold]uv run harness --resume[/bold]       (continue that work)")
-            console.print("  → [bold]uv run harness --reset --yes[/bold]  (discard it first)")
+            console.print("  → [bold]uv run tilth --resume[/bold]       (continue that work)")
+            console.print("  → [bold]uv run tilth --reset --yes[/bold]  (discard it first)")
             console.print("[dim]starting fresh anyway in 5s... (Ctrl-C to abort)[/dim]")
             try:
                 time.sleep(5)

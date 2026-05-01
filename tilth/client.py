@@ -1,11 +1,11 @@
 """LLM client wrapper.
 
 Talks to any OpenAI-compatible endpoint via the `openai` SDK. Defaults point at
-Ollama Cloud (`https://ollama.com/v1`); override `HARNESS_BASE_URL` to use
+Ollama Cloud (`https://ollama.com/v1`); override `TILTH_BASE_URL` to use
 OpenRouter, Together, Groq, vLLM, LM Studio, or any other compatible provider.
 
-Optional dual-client routing: set `HARNESS_JUDGE_BASE_URL` and
-`HARNESS_JUDGE_API_KEY` to send judge calls to a different provider (e.g. a
+Optional dual-client routing: set `TILTH_JUDGE_BASE_URL` and
+`TILTH_JUDGE_API_KEY` to send judge calls to a different provider (e.g. a
 cheaper / faster model) while the worker stays on the main provider.
 """
 
@@ -19,7 +19,7 @@ from openai import OpenAI
 
 
 @dataclass
-class HarnessConfig:
+class TilthConfig:
     base_url: str
     api_key: str
     worker_model: str
@@ -31,17 +31,17 @@ class HarnessConfig:
     max_tokens: int
 
     @classmethod
-    def from_env(cls) -> HarnessConfig:
-        base_url = os.environ.get("HARNESS_BASE_URL", "https://ollama.com/v1").strip()
-        api_key = os.environ.get("HARNESS_API_KEY", "").strip()
+    def from_env(cls) -> TilthConfig:
+        base_url = os.environ.get("TILTH_BASE_URL", "https://ollama.com/v1").strip()
+        api_key = os.environ.get("TILTH_API_KEY", "").strip()
         if not api_key:
             raise RuntimeError(
-                "HARNESS_API_KEY is not set. Copy .env.example to .env and fill it in."
+                "TILTH_API_KEY is not set. Copy .env.example to .env and fill it in."
             )
-        worker_model = os.environ.get("HARNESS_WORKER_MODEL", "gpt-oss:120b-cloud").strip()
-        judge_model = os.environ.get("HARNESS_JUDGE_MODEL", "").strip() or worker_model
-        judge_base_url = os.environ.get("HARNESS_JUDGE_BASE_URL", "").strip() or base_url
-        judge_api_key = os.environ.get("HARNESS_JUDGE_API_KEY", "").strip() or api_key
+        worker_model = os.environ.get("TILTH_WORKER_MODEL", "gpt-oss:120b-cloud").strip()
+        judge_model = os.environ.get("TILTH_JUDGE_MODEL", "").strip() or worker_model
+        judge_base_url = os.environ.get("TILTH_JUDGE_BASE_URL", "").strip() or base_url
+        judge_api_key = os.environ.get("TILTH_JUDGE_API_KEY", "").strip() or api_key
         return cls(
             base_url=base_url,
             api_key=api_key,
@@ -49,9 +49,9 @@ class HarnessConfig:
             judge_base_url=judge_base_url,
             judge_api_key=judge_api_key,
             judge_model=judge_model,
-            max_iterations_per_task=int(os.environ.get("HARNESS_MAX_ITERATIONS_PER_TASK", "8")),
-            max_wall_clock_minutes=int(os.environ.get("HARNESS_MAX_WALL_CLOCK_MINUTES", "120")),
-            max_tokens=int(os.environ.get("HARNESS_MAX_TOKENS", "2000000")),
+            max_iterations_per_task=int(os.environ.get("TILTH_MAX_ITERATIONS_PER_TASK", "8")),
+            max_wall_clock_minutes=int(os.environ.get("TILTH_MAX_WALL_CLOCK_MINUTES", "120")),
+            max_tokens=int(os.environ.get("TILTH_MAX_TOKENS", "2000000")),
         )
 
 
@@ -65,7 +65,7 @@ class LLMClient:
         }
     """
 
-    def __init__(self, config: HarnessConfig):
+    def __init__(self, config: TilthConfig):
         self.config = config
         self._worker = OpenAI(base_url=config.base_url, api_key=config.api_key)
         if (
