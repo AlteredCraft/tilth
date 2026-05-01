@@ -420,6 +420,32 @@ def _prepare_resume(session: Session, worktree: Path) -> str:
 
 # --- the loop ---------------------------------------------------------------
 
+_HISTORY_KEEP = frozenset({
+    "role",
+    "content",
+    "tool_calls",
+    "reasoning",
+    "reasoning_details",
+})
+
+
+def _assistant_history_message(msg: dict[str, Any]) -> dict[str, Any]:
+    """Shape an assistant response for re-injection into the message history.
+
+    Why: thinking-mode models reject the next request with HTTP 400 if the
+    reasoning content from the prior assistant turn isn't echoed back. OpenRouter's
+    normalised response carries it in `reasoning_details` (structured blocks, the
+    documented form) and a flat `reasoning` string. We keep both — observed
+    on the wire against deepseek/deepseek-v4-flash. Output-only metadata
+    (refusal, annotations, audio, function_call) is dropped.
+
+    Pair this with `extra_body={"reasoning": {"enabled": True}}` on the request
+    side (see client.py) — without that opt-in, OpenRouter sometimes omits
+    reasoning on parallel-tool-call turns and there's nothing to echo.
+    """
+    return {k: v for k, v in msg.items() if k in _HISTORY_KEEP}
+
+
 def _run_task(
     task: dict[str, Any],
     worktree: Path,
@@ -460,7 +486,7 @@ def _run_task(
         )
 
         msg = resp.get("message") or {}
-        messages.append({k: v for k, v in msg.items() if k in {"role", "content", "tool_calls"}})
+        messages.append(_assistant_history_message(msg))
 
         tool_calls = msg.get("tool_calls") or []
 

@@ -17,6 +17,8 @@ from typing import Any
 
 from openai import OpenAI
 
+_REASONING_FALSY = {"false", "0", "no", "off"}
+
 
 @dataclass
 class TilthConfig:
@@ -29,6 +31,7 @@ class TilthConfig:
     max_iterations_per_task: int
     max_wall_clock_minutes: int
     max_tokens: int
+    reasoning_enabled: bool
 
     @classmethod
     def from_env(cls) -> TilthConfig:
@@ -42,6 +45,8 @@ class TilthConfig:
         judge_model = os.environ.get("TILTH_JUDGE_MODEL", "").strip() or worker_model
         judge_base_url = os.environ.get("TILTH_JUDGE_BASE_URL", "").strip() or base_url
         judge_api_key = os.environ.get("TILTH_JUDGE_API_KEY", "").strip() or api_key
+        reasoning_raw = os.environ.get("TILTH_REASONING_ENABLED", "").strip().lower()
+        reasoning_enabled = reasoning_raw not in _REASONING_FALSY
         return cls(
             base_url=base_url,
             api_key=api_key,
@@ -52,6 +57,7 @@ class TilthConfig:
             max_iterations_per_task=int(os.environ.get("TILTH_MAX_ITERATIONS_PER_TASK", "8")),
             max_wall_clock_minutes=int(os.environ.get("TILTH_MAX_WALL_CLOCK_MINUTES", "120")),
             max_tokens=int(os.environ.get("TILTH_MAX_TOKENS", "2000000")),
+            reasoning_enabled=reasoning_enabled,
         )
 
 
@@ -94,6 +100,15 @@ class LLMClient:
         kwargs: dict[str, Any] = {"model": target, "messages": messages}
         if tools:
             kwargs["tools"] = tools
+        if self.config.reasoning_enabled:
+            # OpenRouter-normalised opt-in for thinking-mode models. Without it,
+            # parallel-tool-call turns sometimes return reasoning_details: null
+            # — and the next request then 400s because the upstream protocol
+            # expects reasoning to be echoed. With it, reasoning_details is
+            # always populated and `_assistant_history_message` echoes it back.
+            # Non-OpenRouter providers generally ignore this body field; set
+            # TILTH_REASONING_ENABLED=false if yours rejects it.
+            kwargs["extra_body"] = {"reasoning": {"enabled": True}}
 
         resp = client.chat.completions.create(**kwargs)
         return _normalise(resp)

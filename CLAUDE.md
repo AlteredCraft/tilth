@@ -57,6 +57,7 @@ The demo workspace is a separate repo (`AlteredCraft/tilth-demo-todo-cli`) clone
 - **Type hints on public functions.** Internal helpers can skip them.
 - **No comments unless the WHY is non-obvious.** Don't narrate WHAT the code does.
 - **Standard library first.** Third-party deps live in `pyproject.toml`; resist adding more.
+- **External interfaces — verify, don't guess.** For provider APIs (OpenRouter, OpenAI SDK, Ollama, etc.), library specs, or any third-party wire format: consult the official docs first (use Context7, WebFetch, or the provider's sitemap to find them), and probe the live response shape with a tiny one-shot script before writing the fix. Don't infer field names from error messages — providers often surface their *upstream* internal field names in errors (e.g. SiliconFlow says `reasoning_content` but the OpenRouter wire field is `reasoning_details`). Don't infer from training data — these surfaces churn. A synthetic unit test built on a guessed shape gives false confidence; the test passes against your made-up contract while the real bug stays. Probe → write the test against the real shape → fix.
 
 ## Architecture invariants worth preserving
 
