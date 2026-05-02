@@ -48,19 +48,27 @@ def _task_test_glob(task_id: str) -> str:
     return f"test_{slug}_*.py"
 
 
-def run_pytest(workspace: Path, task_id: str | None = None) -> ValidatorResult:
+def run_pytest(
+    workspace: Path, task_ids: list[str] | None = None
+) -> ValidatorResult:
     tests_dir = workspace / "tests"
     if not tests_dir.is_dir():
         return ValidatorResult("pytest", True, "(no tests/ dir; skipping)")
 
-    if task_id:
-        pattern = _task_test_glob(task_id)
-        matches = sorted(str(p.relative_to(workspace)) for p in tests_dir.glob(pattern))
+    if task_ids:
+        patterns = [_task_test_glob(tid) for tid in task_ids]
+        matches: set[str] = set()
+        for pattern in patterns:
+            matches.update(
+                str(p.relative_to(workspace)) for p in tests_dir.glob(pattern)
+            )
         if not matches:
             return ValidatorResult(
-                "pytest", True, f"(no tests matching {pattern}; skipping)"
+                "pytest",
+                True,
+                f"(no tests matching {', '.join(patterns)}; skipping)",
             )
-        cmd = [sys.executable, "-m", "pytest", "-x", "-q", *matches]
+        cmd = [sys.executable, "-m", "pytest", "-x", "-q", *sorted(matches)]
     else:
         cmd = [sys.executable, "-m", "pytest", "-x", "-q"]
 
@@ -73,8 +81,10 @@ def run_ruff(workspace: Path) -> ValidatorResult:
     return ValidatorResult("ruff", rc == 0, out)
 
 
-def run_all(workspace: Path, task_id: str | None = None) -> list[ValidatorResult]:
-    return [run_ruff(workspace), run_pytest(workspace, task_id)]
+def run_all(
+    workspace: Path, task_ids: list[str] | None = None
+) -> list[ValidatorResult]:
+    return [run_ruff(workspace), run_pytest(workspace, task_ids)]
 
 
 def all_passed(results: list[ValidatorResult]) -> bool:
