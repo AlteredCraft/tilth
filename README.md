@@ -96,7 +96,3 @@ See **[deep-dives.md](./deep-dives.md)** for code-level walk-throughs of the mec
 - Token cap (configurable)
 - `pre_tool` hook blocks `git push --force`, `git reset --hard`, `git clean -f`, `sudo`, `curl | sh`, fork bombs.
 - Worktree branch is **never auto-merged** — open a PR and review like any other branch.
-
-## Status
-
-Early MVP. See [the Notes folder in `_PRIMARY_VAULT`](../../_PRIMARY_VAULT/AlteredCraft/Altered%20Craft%20Publications/Notes/Long%20running%20agents/) for the article and design rationale.
