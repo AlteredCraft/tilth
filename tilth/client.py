@@ -29,6 +29,7 @@ class TilthConfig:
     judge_api_key: str
     judge_model: str
     max_iterations_per_task: int
+    max_judge_calls_per_task: int
     max_wall_clock_minutes: int
     max_tokens: int
     reasoning_enabled: bool
@@ -55,6 +56,9 @@ class TilthConfig:
             judge_api_key=judge_api_key,
             judge_model=judge_model,
             max_iterations_per_task=int(os.environ.get("TILTH_MAX_ITERATIONS_PER_TASK", "8")),
+            max_judge_calls_per_task=int(
+                os.environ.get("TILTH_MAX_JUDGE_CALLS_PER_TASK", "0") or "0"
+            ),
             max_wall_clock_minutes=int(os.environ.get("TILTH_MAX_WALL_CLOCK_MINUTES", "120")),
             max_tokens=int(os.environ.get("TILTH_MAX_TOKENS", "2000000")),
             reasoning_enabled=reasoning_enabled,

@@ -67,20 +67,51 @@ This is worth flagging because it's not obvious. With `MAX_ITERATIONS_PER_TASK=8
 
 **A stricter judge effectively shrinks the working iteration budget.** The judge prompt's instruction to "name a specific concern, vague rejections waste worker iterations" exists for this exact reason — every judge rejection costs the worker forward progress on the same fixed budget.
 
+There is also an *optional* second cap that bounds the same failure mode from the judge side: `MAX_JUDGE_CALLS_PER_TASK`. Set to `0` (the default), it does nothing. Set to N, the task is marked `failed` after the Nth judge rejection on this task — the run halts with reason `judge_cap`. The cap exists for the worker↔judge ping-pong case where the iteration budget would otherwise let the worker keep retrying right up until `iter_cap`, burning tokens on a task the judge is never going to accept. Pick a number you're willing to spend per stuck task; leave unset if you'd rather let `MAX_ITERATIONS_PER_TASK` and `MAX_TOKENS` be the only ceilings.
+
+### Inner-loop flow
+
+```mermaid
+flowchart TD
+  start([task starts: iter = 0, judge_calls = 0]) --> chat[worker chat call<br/>iter += 1]
+  chat --> tools{tool calls?}
+  tools -- yes --> exec[execute tools<br/>append results]
+  exec --> capcheck
+  tools -- no --> validators[run validators<br/>ruff + pytest]
+  validators --> vpass{passed?}
+  vpass -- no --> vfb[append validator<br/>failure feedback]
+  vfb --> capcheck
+  vpass -- yes --> judge[judge call<br/>judge_calls += 1]
+  judge --> verdict{verdict?}
+  verdict -- accept --> done([return done])
+  verdict -- reject --> jcap{judge_calls ≥<br/>MAX_JUDGE_CALLS_PER_TASK?<br/>0 = off}
+  jcap -- yes --> jfail([return judge_cap])
+  jcap -- no --> jfb[append judge<br/>rejection feedback]
+  jfb --> capcheck{iter ≥<br/>MAX_ITERATIONS_PER_TASK?}
+  capcheck -- no --> chat
+  capcheck -- yes --> ifail([return iter_cap])
+```
+
+Two halt-with-failure exits (`iter_cap`, `judge_cap`), one halt-with-success exit (`done`). Both failure exits mark the task `failed`, log a `task_failed` event with the matching `reason`, and stop the Ralph loop — `--resume` flips them back to pending and unwinds the FAILED placeholder commit, so neither is destructive.
+
 ### Worst-case tokens per task
 
 ```
 worker_tokens × MAX_ITERATIONS_PER_TASK   (8 by default)
-+ judge_tokens × number_of_judge_calls     (1 per "I'm done" attempt)
++ judge_tokens × number_of_judge_calls     (1 per "I'm done" attempt;
+                                             capped by MAX_JUDGE_CALLS_PER_TASK
+                                             if set, otherwise unbounded
+                                             within the iteration budget)
 + self_improve_tokens                      (1 if task succeeds, 0 otherwise)
 ```
 
-The judge can be called multiple times per task — every "I'm done" attempt that passes validators triggers a judge call. There is no separate cap on judge calls.
+The judge is called once per "I'm done" attempt that passes validators. With `MAX_JUDGE_CALLS_PER_TASK=0` (default) there is no separate cap; the iteration budget is the only ceiling. With it set, that's the tighter of the two bounds on judge spend.
 
 ### Mental model
 
 - **`MAX_WALL_CLOCK_MINUTES`** and **`MAX_TOKENS`** stop the Ralph loop.
 - **`MAX_ITERATIONS_PER_TASK`** stops a task that's spinning. Bounds worker effort *within* a task. Caps tokens per task *indirectly* (no direct per-task token cap exists).
+- **`MAX_JUDGE_CALLS_PER_TASK`** (optional, off by default) stops a task that's worker↔judge ping-ponging. Bounds judge spend on a single PRD item.
 
 Default `MAX_ITERATIONS_PER_TASK=8` means: each task gets at most 8 worker turns to explore → edit → run tests → fix lint → respond to judge → finally declare done with everything green. For tightly-scoped tasks with upfront tests, that's usually 3–5 in practice. Bumping to 12 or 16 gives the agent more room on harder tasks; lowering to 4 forces tighter PRDs.
 
@@ -285,14 +316,15 @@ Two cases where it can be right to expose harness internals:
 
 ## How the caps fit together
 
-At any moment during a run, four things can stop it:
+At any moment during a run, five things can stop it:
 
 1. **All `prd.json` tasks done** — happy path; outer loop exits cleanly.
 2. **`MAX_WALL_CLOCK_MINUTES` exceeded** — outer loop checks at the top of each task; the *current* task finishes first.
 3. **`MAX_TOKENS` exceeded** — same enforcement granularity as wall-clock; inter-task only.
 4. **`MAX_ITERATIONS_PER_TASK` exceeded inside a single task** — that task is marked `failed`, the run halts (does not continue to the next task — failures are halting events, not skip events). The next `--resume` flips the failed task back to `pending` and the agent retries it with a fresh iteration budget; partial work survives via a soft-reset of the FAILED placeholder commit.
+5. **`MAX_JUDGE_CALLS_PER_TASK` exceeded inside a single task** *(optional; `0` = off, the default)* — same shape as cap 4: task marked `failed` with reason `judge_cap`, run halts, `--resume` retries with a fresh budget. Targets the worker↔judge ping-pong case where the iteration budget alone would let the worker keep retrying right up until `iter_cap`.
 
-Caps 2 and 3 are session-level. Cap 4 is task-level. There is no per-call cap and no per-task token cap. That's the full safety story.
+Caps 2 and 3 are session-level. Caps 4 and 5 are task-level. There is no per-call cap and no per-task token cap. That's the full safety story.
 
 ## 4. Resume mechanics
 
