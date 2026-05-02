@@ -532,7 +532,9 @@ def _run_task(
         content = (msg.get("content") or "").strip()
         console.print(f"[dim]task {task['id']} model summary:[/dim] {content[:200]}")
 
-        results = validators.run_all(worktree, task["id"])
+        prd = _load_prd(worktree)
+        done_ids = [t["id"] for t in prd if t.get("status") == "done"]
+        results = validators.run_all(worktree, [*done_ids, task["id"]])
         passed = validators.all_passed(results)
         session.log(
             "validator_run",
