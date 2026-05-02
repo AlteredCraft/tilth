@@ -452,7 +452,7 @@ def _run_task(
     client: LLMClient,
     session: Session,
 ) -> str:
-    """Run one task. Returns 'done' or 'iter_cap'.
+    """Run one task. Returns 'done', 'iter_cap', or 'judge_cap'.
 
     A task is 'done' only when the model stops calling tools AND the validators
     (ruff + pytest) pass. Validator failures are fed back into the loop as the next
@@ -465,6 +465,7 @@ def _run_task(
         {"role": "user", "content": memory.build_user_prompt(task, worktree)},
     ]
     tool_schemas = tools.schemas()
+    judge_calls = 0
 
     for iter_n in range(client.config.max_iterations_per_task):
         console.print(f"[dim]task {task['id']}  iter {iter_n + 1}[/dim]")
@@ -549,12 +550,24 @@ def _run_task(
         if passed:
             console.print(f"[green]task {task['id']} validators passed → judge[/green]")
             accept, reasoning = _judge_task(task, worktree, client, session, iter_n)
+            judge_calls += 1
             if accept:
                 console.print(f"[green]judge accepts:[/green] {reasoning[:200]}")
                 session.log("task_done", {"task_id": task["id"], "summary": content})
                 return "done"
 
             console.print(f"[yellow]judge rejects:[/yellow] {reasoning[:200]}")
+            judge_cap = client.config.max_judge_calls_per_task
+            if judge_cap > 0 and judge_calls >= judge_cap:
+                console.print(
+                    f"[red]task {task['id']} hit judge cap[/red] "
+                    f"[dim][TILTH_MAX_JUDGE_CALLS_PER_TASK={judge_cap}][/dim]"
+                )
+                session.log(
+                    "task_failed",
+                    {"task_id": task["id"], "reason": "judge_cap", "judge_calls": judge_calls},
+                )
+                return "judge_cap"
             judge_feedback = (
                 "An independent reviewer rejected the work. Their reasoning:\n\n"
                 f"{reasoning}\n\n"
@@ -630,6 +643,9 @@ def run(worktree: Path, session: Session, client: LLMClient) -> None:
             if outcome == "iter_cap":
                 cap = client.config.max_iterations_per_task
                 detail = f" [TILTH_MAX_ITERATIONS_PER_TASK={cap}]"
+            elif outcome == "judge_cap":
+                cap = client.config.max_judge_calls_per_task
+                detail = f" [TILTH_MAX_JUDGE_CALLS_PER_TASK={cap}]"
             console.print(
                 f"[red]✗ {task['id']} failed ({outcome}); halting run[/red]"
                 f"[dim]{detail}[/dim]"
