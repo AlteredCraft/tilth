@@ -33,10 +33,10 @@ cd {{your projects folder}}/tilth
 uv venv
 uv sync
 cp .env.example .env
-# edit .env, set TILTH_API_KEY (and optionally TILTH_BASE_URL / TILTH_WORKER_MODEL)
+# edit .env, set TILTH_BASE_URL, TILTH_API_KEY, and TILTH_WORKER_MODEL
 ```
 
-Defaults point at Ollama Cloud (`https://ollama.com/v1`, model `deepseek/deepseek-v4-pro`). To use a different provider, change `TILTH_BASE_URL`, `TILTH_API_KEY`, and `TILTH_WORKER_MODEL`. See [USAGE.md](./USAGE.md#provider-strings) for known-good provider/model combinations.
+All three of `TILTH_BASE_URL`, `TILTH_API_KEY`, and `TILTH_WORKER_MODEL` are required — Tilth refuses to start without them so a misconfigured run can't silently fall back to a provider/model your account doesn't have. The example `.env` points at Ollama Cloud; see [USAGE.md](./USAGE.md#provider-strings) for known-good provider/model combinations.
 
 ## Running the demo
 

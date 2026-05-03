@@ -70,22 +70,28 @@ def test_reasoning_param_disabled(monkeypatch):
     assert "extra_body" not in kwargs or not kwargs.get("extra_body")
 
 
-def test_tilthconfig_reasoning_field_default_true(monkeypatch):
+def _set_required(monkeypatch) -> None:
     monkeypatch.setenv("TILTH_API_KEY", "k")
+    monkeypatch.setenv("TILTH_BASE_URL", "https://test.invalid/v1")
+    monkeypatch.setenv("TILTH_WORKER_MODEL", "test-model")
+
+
+def test_tilthconfig_reasoning_field_default_true(monkeypatch):
+    _set_required(monkeypatch)
     monkeypatch.delenv("TILTH_REASONING_ENABLED", raising=False)
     cfg = TilthConfig.from_env()
     assert cfg.reasoning_enabled is True
 
 
 def test_tilthconfig_reasoning_field_disabled(monkeypatch):
-    monkeypatch.setenv("TILTH_API_KEY", "k")
+    _set_required(monkeypatch)
     monkeypatch.setenv("TILTH_REASONING_ENABLED", "false")
     cfg = TilthConfig.from_env()
     assert cfg.reasoning_enabled is False
 
 
 def test_tilthconfig_reasoning_field_accepts_truthy_strings(monkeypatch):
-    monkeypatch.setenv("TILTH_API_KEY", "k")
+    _set_required(monkeypatch)
     for val, expected in [("true", True), ("1", True), ("yes", True),
                           ("false", False), ("0", False), ("no", False), ("", True)]:
         if val == "":

@@ -1,8 +1,9 @@
 """LLM client wrapper.
 
-Talks to any OpenAI-compatible endpoint via the `openai` SDK. Defaults point at
-Ollama Cloud (`https://ollama.com/v1`); override `TILTH_BASE_URL` to use
-OpenRouter, Together, Groq, vLLM, LM Studio, or any other compatible provider.
+Talks to any OpenAI-compatible endpoint via the `openai` SDK. `TILTH_BASE_URL`,
+`TILTH_API_KEY`, and `TILTH_WORKER_MODEL` are required — the harness fails fast
+if they aren't set rather than silently picking a provider/model that may not
+match your account.
 
 Optional dual-client routing: set `TILTH_JUDGE_BASE_URL` and
 `TILTH_JUDGE_API_KEY` to send judge calls to a different provider (e.g. a
@@ -36,13 +37,24 @@ class TilthConfig:
 
     @classmethod
     def from_env(cls) -> TilthConfig:
-        base_url = os.environ.get("TILTH_BASE_URL", "https://ollama.com/v1").strip()
+        base_url = os.environ.get("TILTH_BASE_URL", "").strip()
         api_key = os.environ.get("TILTH_API_KEY", "").strip()
-        if not api_key:
-            raise RuntimeError(
-                "TILTH_API_KEY is not set. Copy .env.example to .env and fill it in."
+        worker_model = os.environ.get("TILTH_WORKER_MODEL", "").strip()
+        missing = [
+            name
+            for name, value in (
+                ("TILTH_BASE_URL", base_url),
+                ("TILTH_API_KEY", api_key),
+                ("TILTH_WORKER_MODEL", worker_model),
             )
-        worker_model = os.environ.get("TILTH_WORKER_MODEL", "deepseek/deepseek-v4-pro").strip()
+            if not value
+        ]
+        if missing:
+            raise RuntimeError(
+                f"Missing required environment variable(s): {', '.join(missing)}. "
+                "Copy .env.example to .env and fill them in (see USAGE.md for "
+                "known-good provider/model combinations)."
+            )
         judge_model = os.environ.get("TILTH_JUDGE_MODEL", "").strip() or worker_model
         judge_base_url = os.environ.get("TILTH_JUDGE_BASE_URL", "").strip() or base_url
         judge_api_key = os.environ.get("TILTH_JUDGE_API_KEY", "").strip() or api_key
