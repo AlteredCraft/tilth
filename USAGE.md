@@ -230,12 +230,33 @@ uv run tilth --visualize <session_id>  # or name one explicitly
 
 Writes a single self-contained file (inline CSS, no JS) to `sessions/<id>/chat.html`. Events are grouped by task — model calls become meta strips with a collapsible reasoning block where the model emitted any, tool calls/results become bubbles, validator runs and judge verdicts become coloured cards. Read-only and runs over the saved `events.jsonl`, so it's safe to invoke against a finished or in-progress session.
 
+### Where the tokens went
+
+Every run prints a summary on exit, including a per-task and per-model breakdown:
+
+```
+── run summary ──
+  session   20260503-101422-a1b2c3
+  duration  14m32s (12.1% of TILTH_MAX_WALL_CLOCK_MINUTES=120)
+  tokens    412,008 (20.6% of TILTH_MAX_TOKENS=2,000,000)
+  tasks     done=3 failed=0 pending=0
+  per task
+    T2     201,344  (worker=180,200, judge=18,400, self_improve=2,744)
+    T1     150,612  (worker=132,000, judge=16,800, self_improve=1,812)
+    T3      60,052  (worker=58,200, judge=1,852)
+  per model
+    moonshotai/kimi-k2-thinking    381,956
+    anthropic/claude-sonnet-4.5     30,052
+```
+
+Use the per-task line to spot PRDs that should have been split (one task that ate half the budget is usually a planning failure, not a model failure). Use the per-model line to attribute spend when the worker and judge run on different providers — especially when deciding whether the judge is pulling its weight. The breakdown is computed by replaying `events.jsonl`, so it survives crashes and `--resume` cycles.
+
 ## 5. Caveats worth being upfront about
 
 - **It's Python-centric.** `post_edit` lints `.py` files. `validators` runs `pytest` and `ruff`. JavaScript / Rust / Go projects need `tilth/validators.py` and `tilth/hooks/post_edit.py` adapted to your toolchain — not deep work, but not zero.
 - **Ruff config matters.** If your project doesn't already use ruff, the validator will fire constantly and the agent will spend iterations fixing things that aren't really broken. Either add a permissive `[tool.ruff]` block to your `pyproject.toml`, or swap the ruff validator for whatever linter you already use.
 - **The planner is you.** Writing a good `prd.json` (small enough tasks, sharp acceptance criteria, tests upfront) is where most of the value is. Vague PRDs make the harness fail loudly and burn tokens.
-- **Costs are real.** A 2-hour run can mean hundreds of thousands of tokens across worker + judge + self-improvement calls. The `TILTH_MAX_TOKENS` cap exists for a reason — set it on first run. Cost per token varies wildly across providers; pick your worker accordingly. Be careful about reaching for a smaller judge model to cut costs — see ["Picking a judge model"](#picking-a-judge-model) below.
+- **Costs are real.** A 2-hour run can mean hundreds of thousands of tokens across worker + judge + self-improvement calls. The `TILTH_MAX_TOKENS` cap exists for a reason — set it on first run. Cost per token varies wildly across providers; pick your worker accordingly. Be careful about reaching for a smaller judge model to cut costs — see ["Picking a judge model"](#picking-a-judge-model) below. The end-of-session summary breaks total spend down per task and per model so you can see exactly where the budget went (see ["Where the tokens went"](#where-the-tokens-went)).
 - **AGENTS.md is yours forever.** It accumulates. Prune it periodically — old learnings that the model has clearly internalised should be removed (the ratchet works in both directions).
 - **Tools are intentionally narrow.** No web fetch, no MCP, no curl-based downloads. If your tasks require external API access, you add a tool to `tilth/tools/` and register it. Keep tools focused — every tool description ships in the prompt every turn.
 - **The harness commits to your repo's git db.** The worktree branch is in your repo, not the harness's. If you delete `{{your projects folder}}/tilth`, the branches in your project's repo remain. Clean up branches the same way you would for a normal feature branch.
