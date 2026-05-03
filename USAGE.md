@@ -22,11 +22,11 @@ cp .env.example .env
 # edit .env, paste your TILTH_API_KEY
 ```
 
-The harness talks to **any OpenAI-compatible endpoint** via the `openai` Python SDK. Defaults point at Ollama Cloud; change `TILTH_BASE_URL` to use OpenRouter, Together, Groq, Anyscale, Fireworks, vLLM, LM Studio, or anything else with `/v1/chat/completions` semantics.
+The harness talks to **any OpenAI-compatible endpoint** via the `openai` Python SDK. The example `.env` points at Ollama Cloud; change `TILTH_BASE_URL` to use OpenRouter, Together, Groq, Anyscale, Fireworks, vLLM, LM Studio, or anything else with `/v1/chat/completions` semantics.
 
-Required env vars:
+Required env vars (Tilth refuses to start without them):
 
-- `TILTH_BASE_URL` — provider's OpenAI-compatible endpoint (default `https://ollama.com/v1`)
+- `TILTH_BASE_URL` — provider's OpenAI-compatible endpoint
 - `TILTH_API_KEY` — bearer token for that provider
 - `TILTH_WORKER_MODEL` — the model that does the work
 
