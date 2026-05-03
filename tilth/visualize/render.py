@@ -96,14 +96,25 @@ def _render_context_reset(_typ: str, ts: str, _p: dict[str, Any]) -> str:
 
 
 def _render_model_call(_typ: str, ts: str, p: dict[str, Any]) -> str:
-    iter_n = p.get("iter", "?")
+    kind = p.get("kind") or "worker"
+    iter_n = p.get("iter")
+    model = p.get("model") or ""
     pt = int(p.get("prompt_tokens", 0) or 0)
     et = int(p.get("eval_tokens", 0) or 0)
     total = int(p.get("tokens_used_total", 0) or 0)
+    if kind == "worker":
+        badge_label = f"iter {iter_n}" if iter_n is not None else "worker"
+    elif kind == "judge":
+        badge_label = f"judge (iter {iter_n})" if iter_n is not None else "judge"
+    else:
+        badge_label = kind
+    meta_bits = [f"prompt {pt:,}", f"eval {et:,}", f"total {total:,}"]
+    if model:
+        meta_bits.append(html.escape(model))
     strip = (
         '<div class="meta-strip">'
-        f'<span class="badge">iter {html.escape(str(iter_n))}</span>'
-        f'<span class="meta">prompt {pt:,} · eval {et:,} · total {total:,}</span>'
+        f'<span class="badge">{html.escape(badge_label)}</span>'
+        f'<span class="meta">{" · ".join(meta_bits)}</span>'
         f'<span class="ts">{html.escape(ts)}</span>'
         '</div>'
     )
