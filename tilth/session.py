@@ -4,8 +4,15 @@ A session is an append-only events.jsonl file plus a checkpoint.json that snapsh
 just enough state (last completed task, worktree branch) to resume on a fresh process.
 
 Event types:
-    model_call         — request/response metadata for a worker call. Carries
-                         `reasoning_details` (the OpenRouter-normalised
+    model_call         — request/response metadata for any model call. Emitted
+                         from all three sites (worker iteration, judge, AGENTS.md
+                         self-improvement) so per-model and per-task token
+                         breakdowns can be reconstructed by replaying the log.
+                         Payload: `task_id`, `kind` ∈ {"worker","judge","self_improve"},
+                         `model`, `prompt_tokens`, `eval_tokens`, `tokens_used_total`.
+                         Worker and judge entries also carry `iter` (the worker
+                         iteration that triggered them); self_improve omits it.
+                         Carries `reasoning_details` (the OpenRouter-normalised
                          structured form) when the model emitted any, falling
                          back to a flat `reasoning` string. Either is omitted
                          when absent so non-thinking models keep slim events.

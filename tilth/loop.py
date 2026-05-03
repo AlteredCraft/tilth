@@ -122,6 +122,18 @@ def _judge_task(
     prompt_tokens = int(usage.get("prompt_tokens") or 0)
     eval_tokens = int(usage.get("completion_tokens") or 0)
     session.add_tokens(prompt_tokens + eval_tokens)
+    session.log(
+        "model_call",
+        {
+            "task_id": task["id"],
+            "iter": iter_n + 1,
+            "kind": "judge",
+            "model": client.config.judge_model,
+            "prompt_tokens": prompt_tokens,
+            "eval_tokens": eval_tokens,
+            "tokens_used_total": session.tokens_used,
+        },
+    )
 
     content = ((resp.get("message") or {}).get("content") or "").strip()
     parsed = _parse_json_lenient(content)
@@ -180,6 +192,17 @@ def _self_improve(
     prompt_tokens = int(usage.get("prompt_tokens") or 0)
     eval_tokens = int(usage.get("completion_tokens") or 0)
     session.add_tokens(prompt_tokens + eval_tokens)
+    session.log(
+        "model_call",
+        {
+            "task_id": task["id"],
+            "kind": "self_improve",
+            "model": client.config.worker_model,
+            "prompt_tokens": prompt_tokens,
+            "eval_tokens": eval_tokens,
+            "tokens_used_total": session.tokens_used,
+        },
+    )
 
     content = ((resp.get("message") or {}).get("content") or "").strip()
     parsed = _parse_json_lenient(content)
@@ -480,6 +503,8 @@ def _run_task(
         model_call_payload: dict[str, Any] = {
             "task_id": task["id"],
             "iter": iter_n + 1,
+            "kind": "worker",
+            "model": client.config.worker_model,
             "prompt_tokens": prompt_tokens,
             "eval_tokens": eval_tokens,
             "tokens_used_total": session.tokens_used,
@@ -667,6 +692,46 @@ def _format_duration(seconds: float) -> str:
     return f"{s}s"
 
 
+def _token_breakdowns(session: Session) -> tuple[dict[str, int], dict[str, dict[str, int]]]:
+    """Replay events.jsonl and aggregate model_call tokens.
+
+    Returns (by_model, by_task) where:
+        by_model: {model_name: total_tokens}
+        by_task:  {task_id: {"total": int, "worker": int, "judge": int, "self_improve": int}}
+
+    Reads from disk so the breakdown survives crashes and `--resume` cycles. Older
+    events without `kind`/`model` fields are bucketed under "unknown" / "worker"
+    respectively (the worker site has emitted model_call events since v0; only
+    judge and self_improve started emitting them when this breakdown landed).
+    """
+    by_model: dict[str, int] = {}
+    by_task: dict[str, dict[str, int]] = {}
+    if not session.events_path.is_file():
+        return by_model, by_task
+    with session.events_path.open() as f:
+        for line in f:
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if rec.get("type") != "model_call":
+                continue
+            p = rec.get("payload") or {}
+            n = int(p.get("prompt_tokens") or 0) + int(p.get("eval_tokens") or 0)
+            if n <= 0:
+                continue
+            model = p.get("model") or "unknown"
+            task_id = p.get("task_id") or "unknown"
+            kind = p.get("kind") or "worker"
+            by_model[model] = by_model.get(model, 0) + n
+            bucket = by_task.setdefault(
+                task_id, {"total": 0, "worker": 0, "judge": 0, "self_improve": 0}
+            )
+            bucket["total"] += n
+            bucket[kind] = bucket.get(kind, 0) + n
+    return by_model, by_task
+
+
 def _print_summary(session: Session, client: LLMClient, worktree: Path | None) -> None:
     elapsed = time.time() - session.started_at
     cfg = client.config
@@ -705,6 +770,26 @@ def _print_summary(session: Session, client: LLMClient, worktree: Path | None) -
     console.print(f"  duration  {_format_duration(elapsed)} [dim]{wall_dim}[/dim]")
     console.print(f"  tokens    {session.tokens_used:,} [dim]{tokens_dim}[/dim]")
     console.print(f"  tasks     {' '.join(task_bits + extras)}")
+
+    by_model, by_task = _token_breakdowns(session)
+
+    if by_task:
+        width = max(len(tid) for tid in by_task)
+        console.print("  per task")
+        for tid, bucket in sorted(by_task.items(), key=lambda kv: (-kv[1]["total"], kv[0])):
+            split_bits = [
+                f"{kind}={bucket[kind]:,}"
+                for kind in ("worker", "judge", "self_improve")
+                if bucket.get(kind)
+            ]
+            split = f" [dim]({', '.join(split_bits)})[/dim]" if split_bits else ""
+            console.print(f"    {tid.ljust(width)}  {bucket['total']:>9,}{split}")
+
+    if by_model:
+        width = max(len(m) for m in by_model)
+        console.print("  per model")
+        for model, n in sorted(by_model.items(), key=lambda kv: (-kv[1], kv[0])):
+            console.print(f"    {model.ljust(width)}  {n:>9,}")
 
 
 # --- reset ------------------------------------------------------------------

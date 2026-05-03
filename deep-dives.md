@@ -179,19 +179,21 @@ A few things worth noting about this pattern:
 - **`or 0` everywhere.** If a provider ships a malformed response, the token count silently falls to zero rather than crashing the run. Defensive choice; the alternative is a 2-hour run dying on one weird `null`.
 - **`prompt + completion`, not `total`.** Some providers report `total_tokens` separately; we sum the two we trust. Equivalent to `total_tokens` for every well-formed response.
 
-The third site (in `_run_task`) also logs the per-call breakdown to `events.jsonl` as a `model_call` event:
+All three sites log a per-call breakdown to `events.jsonl` as a `model_call` event, with a `kind` field tagging which site emitted it:
 
 ```python
 session.log("model_call", {
     "task_id": task["id"],
-    "iter": iter_n + 1,
+    "iter": iter_n + 1,                # worker + judge only; omitted for self_improve
+    "kind": "worker",                  # or "judge", or "self_improve"
+    "model": client.config.worker_model,
     "prompt_tokens": prompt_tokens,
     "eval_tokens": eval_tokens,
     "tokens_used_total": session.tokens_used,
 })
 ```
 
-That's the audit trail. After a run, grep `events.jsonl` for `model_call` and reconstruct exactly when tokens were spent. The judge and self-improve sites *don't* currently log a per-call event — they update the running total but skip the per-call detail. Symmetry would make the audit cleaner; small TODO.
+That's the audit trail. After a run, grep `events.jsonl` for `model_call` and reconstruct exactly when tokens were spent and on which model. `_token_breakdowns()` in `loop.py` does exactly this replay to compute the per-task and per-model figures rendered in the end-of-session summary; the same shape is what `--resume` would compute if you wanted to bolt on cumulative reporting across resume cycles.
 
 ### Enforcement is at the top of each task
 
@@ -247,10 +249,9 @@ The wall-clock baseline (`started_at`) is treated differently: `Session.wake()` 
 
 A few honest gaps worth knowing:
 
-1. **No dollar-cost tracking.** Tokens, not dollars. The cap is provider-agnostic — useful as a coarse safety net, useless for "stop when I've spent $50 on this run." Adding dollar tracking means a per-model price table and a cost lookup at each `add_tokens` site. Not in MVP.
-2. **No per-model breakdown.** If worker and judge are different models on different providers, the running total mashes them together. Splitting `tokens_used` into `worker_tokens_used` and `judge_tokens_used` is ~10 lines if it ever matters.
-3. **No headroom warning.** The cap is binary — under it, run; at it, stop. No "you're at 80% of your token budget" alert. Easy to add in `_stop_reason` if you want it.
-4. **The cap is over the whole session, not per-task.** A 10-task run with a 2M cap means tasks 1–9 might gobble tokens and starve task 10. There's no per-task budget. The iteration cap (default 8 model calls per task) is the proxy; combined with average tokens/call, that approximates a per-task ceiling.
+1. **No dollar-cost tracking.** Tokens, not dollars. The cap is provider-agnostic — useful as a coarse safety net, useless for "stop when I've spent $50 on this run." Adding dollar tracking means a per-model price table and a cost lookup at each `add_tokens` site. Not in MVP — but with `model` now on every `model_call` event, a price table is the only missing piece.
+2. **No headroom warning.** The cap is binary — under it, run; at it, stop. No "you're at 80% of your token budget" alert. Easy to add in `_stop_reason` if you want it.
+3. **The cap is over the whole session, not per-task.** A 10-task run with a 2M cap means tasks 1–9 might gobble tokens and starve task 10. There's no per-task budget. The iteration cap (default 8 model calls per task) is the proxy; combined with average tokens/call, that approximates a per-task ceiling. The end-of-session per-task breakdown surfaces *where* the spend went after the fact, but doesn't enforce anything during the run.
 
 ---
 
