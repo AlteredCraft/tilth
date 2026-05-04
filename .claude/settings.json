@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "InstructionsLoaded": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '({\"User\":\"👤\",\"Project\":\"📁\",\"Local\":\"📍\",\"Plugin\":\"🔌\"}[.memory_type] // \"📄\") as $e | \"\\($e) \\(.memory_type) \\(.file_path) \\(.load_reason)\"' >> instructions-loaded.log"
+          }
+        ]
+      }
+    ]
+  }
+}
