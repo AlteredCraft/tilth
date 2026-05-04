@@ -219,7 +219,7 @@ git merge session/<id>
 
 If you don't like it: delete the branch. The harness never auto-merges.
 
-The session log lives at `{{your projects folder}}/tilth/sessions/<id>/events.jsonl` — every model call, tool call, validator run, judge verdict, and AGENTS.md update is recorded. Useful for audit, blame, and future article writing.
+The session log lives at `{{your projects folder}}/tilth/sessions/<id>/events.jsonl` — every model call, tool call, validator run, judge verdict, and AGENTS.md update is recorded. Useful for audit, blame, and future article writing. Alongside it, `sessions/<id>/summary.json` carries a rolled-up snapshot (token totals, per-task iteration counts, tool histogram, hook outcomes, judge accept/reject) refreshed at every task boundary — read that when you want a quick stat without `jq`-ing the full log. The schema is documented in `tilth/summary.py`'s module docstring.
 
 For a more readable view, render the log as a chat-style HTML page:
 

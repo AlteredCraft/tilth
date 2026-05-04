@@ -37,6 +37,7 @@ tilth/
 │   ├── loop.py            # Ralph loop CLI + the inner tool-use loop
 │   ├── client.py          # OpenAI-compat wrapper, dual-client routing
 │   ├── session.py         # events.jsonl + checkpoint.json + wake()
+│   ├── summary.py         # roll events.jsonl into summary.json (denormalised view)
 │   ├── memory.py          # AGENTS.md / progress.txt loading + injection
 │   ├── workspace.py       # git worktree create / commit / diff
 │   ├── validators.py      # ruff + pytest runners
@@ -64,9 +65,9 @@ The demo workspace is a separate repo (`AlteredCraft/tilth-demo-todo-cli`) clone
 These are load-bearing. Read `deep-dives.md` before breaking any of them.
 
 1. **Brain / Hands / Session split.** Don't blur the three. New code goes in the module whose job it is — model calls in `client.py`, sandbox/tool ops in `workspace.py` and `tools/`, durable state in `session.py`.
-2. **The agent doesn't see harness mechanics.** No `prd.json` structure, no `events.jsonl`, no token counts, no judge, no checkpoints. Hiding these prevents gaming, shortcutting, and self-managed state. New features should preserve this boundary unless the user explicitly asks otherwise.
+2. **The agent doesn't see harness mechanics.** No `prd.json` structure, no `events.jsonl`, no `summary.json`, no token counts, no judge, no checkpoints. Hiding these prevents gaming, shortcutting, and self-managed state. New features should preserve this boundary unless the user explicitly asks otherwise.
 3. **Tool registry is the canonical source for "what tools exist".** `tilth/tools/__init__.py` defines the registry; system.md should *not* enumerate tools (it gets stale).
-4. **Hook contract: "success silent, failures verbose."** Pass states inject nothing into the loop. Failures inject a feedback message that the next worker iteration sees.
+4. **Hook contract: "success silent, failures verbose" — to the *agent*.** Pass states inject nothing into the loop's message history; failures inject a feedback message that the next worker iteration sees. **Telemetry is separate.** Every hook invocation should emit a `hook_run` event regardless of outcome — observability is for the developer reading `events.jsonl`, not the agent. "Silent to the agent" must not mean "invisible in the log".
 5. **The worktree branch is never auto-merged.** `commit_task` commits to the session branch; humans review and merge. Don't add an "auto-merge on success" feature without an explicit ask.
 6. **Token cap enforcement is between tasks, not mid-task.** The "always finish the current task cleanly" property matters; preserve it.
 
@@ -79,6 +80,7 @@ These are load-bearing. Read `deep-dives.md` before breaking any of them.
 | A validator | `tilth/validators.py:run_*()` | Add to `run_all()` |
 | A prompt | `tilth/prompts/{name}.md` | Add a loader in `loop.py` |
 | A session event type | Use it in `session.log("...", {...})` | Document the type in `session.py`'s module docstring |
+| A summary metric | `tilth/summary.py:build_from_events()` | Update the schema in the module docstring; bump `SUMMARY_VERSION` if shape breaks |
 
 ## Common commands
 

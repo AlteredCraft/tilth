@@ -9,10 +9,15 @@ The four channels (per Osmani's self-improving agents post):
 This module is the place where context is *rebuilt from disk* on each task. That's
 what makes "context resets, not just compaction" work — the durable artifacts on
 disk are the source of truth, not the prior conversation.
+
+Every load returns a manifest alongside the text so the harness can emit a
+`memory_load` event — observability of what the agent actually saw, including
+truncation and a content hash to spot drift between tasks.
 """
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -21,27 +26,53 @@ AGENTS_MD_MAX_CHARS = 8_000
 PROGRESS_MAX_CHARS = 4_000
 
 
-def load_agents_md(workspace: Path) -> str:
+def _hash8(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
+
+
+def _load_agents_md(workspace: Path) -> tuple[str, dict[str, Any]]:
     p = workspace / "AGENTS.md"
     if not p.is_file():
-        return ""
-    text = p.read_text()
-    if len(text) > AGENTS_MD_MAX_CHARS:
-        # Keep the head — assumed to be the more stable rules section.
-        return text[:AGENTS_MD_MAX_CHARS] + "\n\n[... AGENTS.md truncated; consider compacting it]"
-    return text
+        return "", {"present": False, "chars": 0, "truncated": False, "sha256_8": ""}
+    raw = p.read_text()
+    truncated = len(raw) > AGENTS_MD_MAX_CHARS
+    if truncated:
+        text = raw[:AGENTS_MD_MAX_CHARS] + "\n\n[... AGENTS.md truncated; consider compacting it]"
+    else:
+        text = raw
+    return text, {
+        "present": True,
+        "chars": len(raw),
+        "truncated": truncated,
+        "sha256_8": _hash8(raw),
+    }
+
+
+def _load_progress_tail(workspace: Path) -> tuple[str, dict[str, Any]]:
+    p = workspace / "progress.txt"
+    if not p.is_file():
+        return "", {"present": False, "chars": 0, "lines": 0, "truncated": False}
+    raw_lines = p.read_text().splitlines()
+    tail = raw_lines[-PROGRESS_TAIL_LINES:]
+    text = "\n".join(tail)
+    char_truncated = len(text) > PROGRESS_MAX_CHARS
+    if char_truncated:
+        text = text[-PROGRESS_MAX_CHARS:]
+    return text, {
+        "present": True,
+        "chars": len(text),
+        "lines": len(tail),
+        "truncated": char_truncated or len(raw_lines) > PROGRESS_TAIL_LINES,
+    }
+
+
+def load_agents_md(workspace: Path) -> str:
+    """Public single-string accessor — used outside the per-task prompt build."""
+    return _load_agents_md(workspace)[0]
 
 
 def load_progress_tail(workspace: Path) -> str:
-    p = workspace / "progress.txt"
-    if not p.is_file():
-        return ""
-    lines = p.read_text().splitlines()
-    tail = lines[-PROGRESS_TAIL_LINES:]
-    text = "\n".join(tail)
-    if len(text) > PROGRESS_MAX_CHARS:
-        text = text[-PROGRESS_MAX_CHARS:]
-    return text
+    return _load_progress_tail(workspace)[0]
 
 
 def append_progress(workspace: Path, line: str) -> None:
@@ -50,10 +81,17 @@ def append_progress(workspace: Path, line: str) -> None:
         f.write(line.rstrip() + "\n")
 
 
-def build_user_prompt(task: dict[str, Any], workspace: Path) -> str:
-    """Assemble the user-side prompt for a single task with all four channels in scope."""
-    agents_md = load_agents_md(workspace)
-    progress_tail = load_progress_tail(workspace)
+def build_user_prompt(
+    task: dict[str, Any], workspace: Path
+) -> tuple[str, dict[str, Any]]:
+    """Assemble the user-side prompt and a manifest of what was loaded.
+
+    Returns (prompt, manifest). The manifest is suitable as the payload for a
+    `memory_load` event — it describes which channels were present, their
+    char counts, whether anything was truncated, and a short content hash.
+    """
+    agents_md, agents_meta = _load_agents_md(workspace)
+    progress_tail, progress_meta = _load_progress_tail(workspace)
 
     parts: list[str] = []
 
@@ -93,4 +131,12 @@ def build_user_prompt(task: dict[str, Any], workspace: Path) -> str:
         "",
         "Begin work now. Stop calling tools and respond with a brief summary when done.",
     ]
-    return "\n".join(parts)
+    prompt = "\n".join(parts)
+    manifest = {
+        "channels": {
+            "agents_md": agents_meta,
+            "progress_tail": progress_meta,
+        },
+        "user_prompt_chars": len(prompt),
+    }
+    return prompt, manifest

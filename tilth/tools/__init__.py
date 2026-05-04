@@ -6,7 +6,7 @@ Keep tools focused. Tool descriptions are *prompt text*: every character ships e
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +14,8 @@ from tilth.hooks import post_edit, pre_tool
 from tilth.tools import bash as _bash
 from tilth.tools import files as _files
 from tilth.tools import search as _search
+
+POST_EDIT_TOOLS: frozenset[str] = frozenset({_files.NAME_WRITE, _files.NAME_EDIT})
 
 
 @dataclass
@@ -27,6 +29,7 @@ class Tool:
 class ToolOutcome:
     blocked: bool
     result: str
+    hook_runs: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _registry() -> dict[str, Tool]:
@@ -52,16 +55,24 @@ def dispatch(name: str, args: dict[str, Any], workspace: Path) -> ToolOutcome:
     if tool is None:
         return ToolOutcome(False, f"ERROR: unknown tool '{name}'. Available: {sorted(REGISTRY)}")
 
+    hook_runs: list[dict[str, Any]] = []
+
     allow, reason = pre_tool(name, args, workspace)
+    pre_run: dict[str, Any] = {"hook": "pre_tool", "outcome": "allow" if allow else "block"}
     if not allow:
-        return ToolOutcome(True, reason)
+        pre_run["reason"] = reason
+    hook_runs.append(pre_run)
+    if not allow:
+        return ToolOutcome(True, reason, hook_runs)
 
     try:
         result = tool.fn(args, workspace)
     except Exception as exc:
-        return ToolOutcome(False, f"ERROR: {type(exc).__name__}: {exc}")
+        return ToolOutcome(False, f"ERROR: {type(exc).__name__}: {exc}", hook_runs)
 
-    notice = post_edit(name, args, workspace)
-    if notice:
-        result = result + notice
-    return ToolOutcome(False, result)
+    if name in POST_EDIT_TOOLS:
+        notice = post_edit(name, args, workspace)
+        hook_runs.append({"hook": "post_edit", "outcome": "warned" if notice else "silent"})
+        if notice:
+            result = result + notice
+    return ToolOutcome(False, result, hook_runs)

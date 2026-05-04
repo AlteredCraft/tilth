@@ -2,6 +2,9 @@
 
 A session is an append-only events.jsonl file plus a checkpoint.json that snapshots
 just enough state (last completed task, worktree branch) to resume on a fresh process.
+A summary.json is also written at every task boundary as a denormalised view of
+events.jsonl (built by tilth/summary.py) — consumers like the visualizer and any
+external tools should prefer reading that over re-streaming the JSONL.
 
 Event types:
     model_call         — request/response metadata for a worker call. Carries
@@ -11,7 +14,16 @@ Event types:
                          when absent so non-thinking models keep slim events.
     tool_call          — a tool invocation by the model
     tool_result        — the harness's response to a tool call
-    pre_tool_block     — pre_tool hook vetoed a tool call
+    pre_tool_block     — pre_tool hook vetoed a tool call (also captured as a
+                         hook_run with outcome=block; this event is kept for the
+                         agent-feedback path the visualizer renders specially)
+    hook_run           — a lifecycle hook ran. Payload: hook (pre_tool|post_edit),
+                         outcome (allow|block|silent|warned), tool, optional
+                         reason. Successful silent runs are logged so developers
+                         can distinguish "ran, said nothing" from "didn't run".
+    memory_load        — a memory channel was loaded into a prompt. Payload
+                         carries `channels` (per-channel: present, chars,
+                         truncated, sha256_8) and `user_prompt_chars`.
     validator_run      — pytest/ruff/mypy result
     judge_verdict      — judge model verdict on a finished task
     task_done          — task accepted (validators + judge passed)
@@ -23,6 +35,14 @@ Event types:
                          (which failed tasks were retried, FAILED commit unwound, etc.)
     stop               — run terminated; payload.reason ∈
                          {all_done, wall_clock, token_cap, iter_cap, interrupted, error}
+
+Per-task observability fields:
+    trace_id           — 32-hex (OTel-shape), constant for the whole task. Lets
+                         downstream tools (Phoenix, Langfuse, Braintrust) ingest
+                         events as a trace.
+    span_id            — 16-hex (OTel-shape). Per-iteration for events inside an
+                         iteration; per-sub-operation for memory_load and
+                         agents_md_update.
 """
 
 from __future__ import annotations

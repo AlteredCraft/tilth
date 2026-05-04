@@ -17,13 +17,14 @@ import json
 import re
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 from rich.console import Console
 
-from tilth import memory, tools, validators, visualize
+from tilth import memory, summary, tools, validators, visualize
 from tilth import workspace as ws
 from tilth.client import LLMClient, TilthConfig
 from tilth.session import Session
@@ -33,6 +34,23 @@ console = Console()
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 SESSIONS_DIR = REPO_ROOT / "sessions"
+
+
+def _trace_id() -> str:
+    return uuid.uuid4().hex  # 32 hex chars, OTel trace_id shape
+
+
+def _span_id() -> str:
+    return uuid.uuid4().hex[:16]  # 16 hex chars, OTel span_id shape
+
+
+def _refresh_summary(session: Session) -> None:
+    """Re-roll events.jsonl into summary.json. Cheap; called at task boundaries
+    and at stop. Failures here must not break the run."""
+    try:
+        summary.write_summary(session.events_path, session.root / "summary.json")
+    except Exception as exc:
+        console.print(f"[dim]summary refresh failed: {type(exc).__name__}: {exc}[/dim]")
 
 
 # --- prompt assembly --------------------------------------------------------
@@ -85,6 +103,8 @@ def _judge_task(
     client: LLMClient,
     session: Session,
     iter_n: int,
+    trace_id: str,
+    span_id: str,
 ) -> tuple[bool, str]:
     """Call the judge in a fresh context. Returns (accept, reasoning)."""
     diff = ws.task_diff(worktree)
@@ -130,6 +150,8 @@ def _judge_task(
             "judge_verdict",
             {
                 "task_id": task["id"],
+                "trace_id": trace_id,
+                "span_id": span_id,
                 "iter": iter_n + 1,
                 "accept": False,
                 "reasoning": "judge returned unparseable response",
@@ -142,7 +164,14 @@ def _judge_task(
     reasoning = str(parsed.get("reasoning", "")).strip()
     session.log(
         "judge_verdict",
-        {"task_id": task["id"], "iter": iter_n + 1, "accept": accept, "reasoning": reasoning},
+        {
+            "task_id": task["id"],
+            "trace_id": trace_id,
+            "span_id": span_id,
+            "iter": iter_n + 1,
+            "accept": accept,
+            "reasoning": reasoning,
+        },
     )
     return accept, reasoning
 
@@ -157,6 +186,7 @@ def _self_improve(
     worktree: Path,
     client: LLMClient,
     session: Session,
+    trace_id: str,
 ) -> None:
     """Ask the worker model whether anything from this task should land in AGENTS.md."""
     diff = ws.task_diff(worktree)
@@ -175,31 +205,26 @@ def _self_improve(
         {"role": "system", "content": _agents_update_prompt()},
         {"role": "user", "content": user},
     ]
+    span_id = _span_id()
     resp = client.chat(update_messages)
     usage = resp.get("usage") or {}
     prompt_tokens = int(usage.get("prompt_tokens") or 0)
     eval_tokens = int(usage.get("completion_tokens") or 0)
     session.add_tokens(prompt_tokens + eval_tokens)
 
+    base = {"task_id": task["id"], "trace_id": trace_id, "span_id": span_id}
+
     content = ((resp.get("message") or {}).get("content") or "").strip()
     parsed = _parse_json_lenient(content)
     if not parsed:
         session.log(
             "agents_md_update",
-            {
-                "task_id": task["id"],
-                "applied": False,
-                "reason": "unparseable",
-                "raw": content[:500],
-            },
+            {**base, "applied": False, "reason": "unparseable", "raw": content[:500]},
         )
         return
 
     if str(parsed.get("update", "")).lower() != "yes":
-        session.log(
-            "agents_md_update",
-            {"task_id": task["id"], "applied": False, "reason": "no_update"},
-        )
+        session.log("agents_md_update", {**base, "applied": False, "reason": "no_update"})
         return
 
     section = str(parsed.get("section", "Recent learnings")).strip()
@@ -208,14 +233,14 @@ def _self_improve(
     entry = str(parsed.get("entry", "")).strip()
     if not entry:
         session.log(
-            "agents_md_update", {"task_id": task["id"], "applied": False, "reason": "empty_entry"}
+            "agents_md_update", {**base, "applied": False, "reason": "empty_entry"}
         )
         return
 
     _append_to_agents_md(worktree, section, f"- {entry}")
     session.log(
         "agents_md_update",
-        {"task_id": task["id"], "applied": True, "section": section, "entry": entry},
+        {**base, "applied": True, "section": section, "entry": entry},
     )
     console.print(f"[blue]→ AGENTS.md ({section})[/blue] {entry}")
 
@@ -451,6 +476,7 @@ def _run_task(
     worktree: Path,
     client: LLMClient,
     session: Session,
+    trace_id: str,
 ) -> str:
     """Run one task. Returns 'done', 'iter_cap', or 'judge_cap'.
 
@@ -458,16 +484,33 @@ def _run_task(
     (ruff + pytest) pass. Validator failures are fed back into the loop as the next
     user message; the model gets another iteration to fix things.
     """
-    session.log("context_reset", {"task_id": task["id"]})
+    setup_span = _span_id()
+    session.log(
+        "context_reset",
+        {"task_id": task["id"], "trace_id": trace_id, "span_id": setup_span},
+    )
+
+    user_prompt, mem_manifest = memory.build_user_prompt(task, worktree)
+    session.log(
+        "memory_load",
+        {
+            "task_id": task["id"],
+            "trace_id": trace_id,
+            "span_id": setup_span,
+            "trigger": "task_start",
+            **mem_manifest,
+        },
+    )
 
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": _system_prompt()},
-        {"role": "user", "content": memory.build_user_prompt(task, worktree)},
+        {"role": "user", "content": user_prompt},
     ]
     tool_schemas = tools.schemas()
     judge_calls = 0
 
     for iter_n in range(client.config.max_iterations_per_task):
+        iter_span = _span_id()
         console.print(f"[dim]task {task['id']}  iter {iter_n + 1}[/dim]")
         resp = client.chat(messages, tools=tool_schemas)
 
@@ -479,6 +522,8 @@ def _run_task(
         msg = resp.get("message") or {}
         model_call_payload: dict[str, Any] = {
             "task_id": task["id"],
+            "trace_id": trace_id,
+            "span_id": iter_span,
             "iter": iter_n + 1,
             "prompt_tokens": prompt_tokens,
             "eval_tokens": eval_tokens,
@@ -506,16 +551,37 @@ def _run_task(
 
                 session.log(
                     "tool_call",
-                    {"task_id": task["id"], "iter": iter_n + 1, "tool": tool_name, "args": args},
+                    {
+                        "task_id": task["id"],
+                        "trace_id": trace_id,
+                        "span_id": iter_span,
+                        "iter": iter_n + 1,
+                        "tool": tool_name,
+                        "args": args,
+                    },
                 )
                 console.print(f"[cyan]→ {tool_name}[/cyan] {json.dumps(args)[:200]}")
 
                 outcome = tools.dispatch(tool_name, args, worktree)
+                for hr in outcome.hook_runs:
+                    session.log(
+                        "hook_run",
+                        {
+                            "task_id": task["id"],
+                            "trace_id": trace_id,
+                            "span_id": iter_span,
+                            "iter": iter_n + 1,
+                            "tool": tool_name,
+                            **hr,
+                        },
+                    )
                 event_type = "pre_tool_block" if outcome.blocked else "tool_result"
                 session.log(
                     event_type,
                     {
                         "task_id": task["id"],
+                        "trace_id": trace_id,
+                        "span_id": iter_span,
                         "iter": iter_n + 1,
                         "tool": tool_name,
                         "result_preview": outcome.result[:500],
@@ -541,6 +607,8 @@ def _run_task(
             "validator_run",
             {
                 "task_id": task["id"],
+                "trace_id": trace_id,
+                "span_id": iter_span,
                 "iter": iter_n + 1,
                 "passed": passed,
                 "results": [{"name": r.name, "passed": r.passed} for r in results],
@@ -549,11 +617,21 @@ def _run_task(
 
         if passed:
             console.print(f"[green]task {task['id']} validators passed → judge[/green]")
-            accept, reasoning = _judge_task(task, worktree, client, session, iter_n)
+            accept, reasoning = _judge_task(
+                task, worktree, client, session, iter_n, trace_id, iter_span
+            )
             judge_calls += 1
             if accept:
                 console.print(f"[green]judge accepts:[/green] {reasoning[:200]}")
-                session.log("task_done", {"task_id": task["id"], "summary": content})
+                session.log(
+                    "task_done",
+                    {
+                        "task_id": task["id"],
+                        "trace_id": trace_id,
+                        "span_id": iter_span,
+                        "summary": content,
+                    },
+                )
                 return "done"
 
             console.print(f"[yellow]judge rejects:[/yellow] {reasoning[:200]}")
@@ -565,7 +643,13 @@ def _run_task(
                 )
                 session.log(
                     "task_failed",
-                    {"task_id": task["id"], "reason": "judge_cap", "judge_calls": judge_calls},
+                    {
+                        "task_id": task["id"],
+                        "trace_id": trace_id,
+                        "span_id": iter_span,
+                        "reason": "judge_cap",
+                        "judge_calls": judge_calls,
+                    },
                 )
                 return "judge_cap"
             judge_feedback = (
@@ -592,7 +676,10 @@ def _run_task(
         f"[red]task {task['id']} hit iteration cap[/red] "
         f"[dim][TILTH_MAX_ITERATIONS_PER_TASK={cap}][/dim]"
     )
-    session.log("task_failed", {"task_id": task["id"], "reason": "iter_cap"})
+    session.log(
+        "task_failed",
+        {"task_id": task["id"], "trace_id": trace_id, "reason": "iter_cap"},
+    )
     return "iter_cap"
 
 
@@ -615,6 +702,7 @@ def run(worktree: Path, session: Session, client: LLMClient) -> None:
                 detail = f" [TILTH_MAX_TOKENS={client.config.max_tokens}]"
             console.print(f"[yellow]stopping: {stop}[/yellow][dim]{detail}[/dim]")
             session.log("stop", {"reason": stop})
+            _refresh_summary(session)
             return
 
         prd = _load_prd(worktree)
@@ -622,18 +710,23 @@ def run(worktree: Path, session: Session, client: LLMClient) -> None:
         if task is None:
             console.print("[green]all tasks complete[/green]")
             session.log("stop", {"reason": "all_done"})
+            _refresh_summary(session)
             return
 
-        outcome = _run_task(task, worktree, client, session)
+        trace_id = _trace_id()
+        outcome = _run_task(task, worktree, client, session, trace_id)
 
         if outcome == "done":
-            _self_improve(task, worktree, client, session)
+            _self_improve(task, worktree, client, session, trace_id)
             task["status"] = "done"
             _save_prd(worktree, prd)
             memory.append_progress(worktree, f"{task['id']}\tdone\t{task['title']}")
             sha = ws.commit_task(worktree, task["id"], task["title"])
-            session.log("commit", {"task_id": task["id"], "sha": sha})
+            session.log(
+                "commit", {"task_id": task["id"], "trace_id": trace_id, "sha": sha}
+            )
             console.print(f"[green]✓ {task['id']} committed ({sha})[/green]")
+            _refresh_summary(session)
         else:
             task["status"] = "failed"
             _save_prd(worktree, prd)
@@ -651,6 +744,7 @@ def run(worktree: Path, session: Session, client: LLMClient) -> None:
                 f"[dim]{detail}[/dim]"
             )
             session.log("stop", {"reason": outcome})
+            _refresh_summary(session)
             return
 
 
@@ -896,10 +990,12 @@ def main() -> int:
     except KeyboardInterrupt:
         console.print("\n[yellow]interrupted[/yellow]")
         session.log("stop", {"reason": "interrupted"})
+        _refresh_summary(session)
         return 130
     except Exception as exc:
         console.print(f"[red]error: {type(exc).__name__}: {exc}[/red]")
         session.log("stop", {"reason": "error", "error": f"{type(exc).__name__}: {exc}"})
+        _refresh_summary(session)
         raise
     finally:
         _print_summary(session, client, worktree)
