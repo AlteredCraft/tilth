@@ -1,6 +1,11 @@
 """Tool registry — each tool exports an OpenAI-style function schema and a callable.
 
 Keep tools focused. Tool descriptions are *prompt text*: every character ships every turn.
+
+Unlike the façade-style ``__init__.py`` files in ``tilth/hooks`` and ``tilth/visualize``,
+this module intentionally owns logic (the ``REGISTRY`` and ``dispatch``) rather than just
+re-exporting submodules. CLAUDE.md invariant 3 names this file as the canonical source
+for "what tools exist" — don't relocate the registry into a sibling module.
 """
 
 from __future__ import annotations
@@ -14,6 +19,8 @@ from tilth.hooks import post_edit, pre_tool
 from tilth.tools import bash as _bash
 from tilth.tools import files as _files
 from tilth.tools import search as _search
+
+__all__ = ["REGISTRY", "Tool", "ToolOutcome", "dispatch", "schemas"]
 
 POST_EDIT_TOOLS: frozenset[str] = frozenset({_files.NAME_WRITE, _files.NAME_EDIT})
 
