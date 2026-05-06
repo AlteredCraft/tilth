@@ -1,0 +1,41 @@
+site_name: Tilth
+site_description: A minimal long-running agent harness against any OpenAI-compatible LLM endpoint.
+site_author: Altered Craft
+repo_url: https://github.com/AlteredCraft/tilth
+repo_name: AlteredCraft/tilth
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Installation: getting-started/installation.md
+      - Running the demo: getting-started/running-the-demo.md
+      - Resuming a session: getting-started/resuming.md
+      - Resetting a session: getting-started/resetting.md
+      - Visualizing a session: getting-started/visualizing.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - Memory channels: architecture/memory-channels.md
+  - Deep dives:
+      - Overview: deep-dives/index.md
+      - The two loops: deep-dives/two-loops.md
+      - Token recording: deep-dives/token-recording.md
+      - Agent visibility: deep-dives/agent-visibility.md
+      - How the caps fit together: deep-dives/caps.md
+      - Resume mechanics: deep-dives/resume-mechanics.md
+      - Reset mechanics: deep-dives/reset-mechanics.md
+  - Reference:
+      - Safety guards: reference/safety-guards.md
+
+theme:
+  name: mkdocs
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - admonition
+  - fenced_code
+  - tables
+  - attr_list
