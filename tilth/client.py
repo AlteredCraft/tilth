@@ -52,8 +52,9 @@ class TilthConfig:
         if missing:
             raise RuntimeError(
                 f"Missing required environment variable(s): {', '.join(missing)}. "
-                "Copy .env.example to .env and fill them in (see USAGE.md for "
-                "known-good provider/model combinations)."
+                "Copy .env.example to .env and fill them in (see "
+                "docs/getting-started/installation.md for known-good "
+                "provider/model combinations)."
             )
         judge_model = os.environ.get("TILTH_JUDGE_MODEL", "").strip() or worker_model
         judge_base_url = os.environ.get("TILTH_JUDGE_BASE_URL", "").strip() or base_url

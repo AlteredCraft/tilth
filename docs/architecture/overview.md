@@ -36,7 +36,8 @@ You can route the judge to a *different* provider than the worker via `TILTH_JUD
 
 ```
 tilth/
-├── README.md, USAGE.md, deep-dives.md, CLAUDE.md
+├── README.md, CLAUDE.md, mkdocs.yml
+├── docs/                  # MkDocs source — annotated nav in mkdocs.yml is the topic index
 ├── pyproject.toml, .env.example, .gitignore
 ├── tilth/
 │   ├── loop.py            # Ralph loop CLI + the inner tool-use loop

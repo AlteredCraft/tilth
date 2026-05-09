@@ -39,6 +39,11 @@ nav:
       # `--visualize` renders `events.jsonl` as a self-contained `chat.html`
       # grouped by task. Read-only, safe to invoke mid-run.
       - Visualizing a session: getting-started/visualizing.md
+      # The "honest version" of using Tilth on your own (non-demo) codebase:
+      # prepping the four seed files (prd.json, AGENTS.md, progress.txt, tests/),
+      # the test-filename convention, the caveats list, picking a judge model,
+      # when this is the wrong tool, and what to do on a first run.
+      - Using on your own project: getting-started/your-own-project.md
 
   - Architecture:
       # The Brain / Hands / Session split, generator/evaluator separation

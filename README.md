@@ -36,7 +36,7 @@ cp .env.example .env
 # edit .env, set TILTH_BASE_URL, TILTH_API_KEY, and TILTH_WORKER_MODEL
 ```
 
-All three of `TILTH_BASE_URL`, `TILTH_API_KEY`, and `TILTH_WORKER_MODEL` are required — Tilth refuses to start without them so a misconfigured run can't silently fall back to a provider/model your account doesn't have. The example `.env` points at Ollama Cloud; see [USAGE.md](./USAGE.md#provider-strings) for known-good provider/model combinations.
+All three of `TILTH_BASE_URL`, `TILTH_API_KEY`, and `TILTH_WORKER_MODEL` are required — Tilth refuses to start without them so a misconfigured run can't silently fall back to a provider/model your account doesn't have. The example `.env` points at Ollama Cloud; see [`docs/getting-started/installation.md`](./docs/getting-started/installation.md#provider-strings) for known-good provider/model combinations.
 
 ## Running the demo
 
@@ -83,11 +83,23 @@ The output is a single self-contained file (inline CSS, no JS) that renders `eve
 
 ## Using it on your own project
 
-See **[USAGE.md](./USAGE.md)** for the full logistics: how to prep your repo (`prd.json`, `AGENTS.md`, `progress.txt`, `tests/`), what happens during a run, how to review and merge, provider/model selection, and the caveats worth knowing up front.
+See **[`docs/getting-started/your-own-project.md`](./docs/getting-started/your-own-project.md)** for the full logistics: how to prep your repo (`prd.json`, `AGENTS.md`, `progress.txt`, `tests/`), the test-filename convention, the caveats worth knowing up front, picking a judge model, and what to do on a first run.
 
 ## Going deeper
 
-See **[deep-dives.md](./deep-dives.md)** for code-level walk-throughs of the mechanics — the two loops (Ralph vs. tool-use), what counts as an iteration, judge-rejection accounting, and end-to-end token recording and enforcement. Useful if you're extending or debugging the harness rather than just running it.
+See the **[Deep dives](./docs/deep-dives/index.md)** section of the docs for code-level walk-throughs of the mechanics — the two loops (Ralph vs. tool-use), what counts as an iteration, judge-rejection accounting, end-to-end token recording and enforcement, and the agent-visibility boundary. Useful if you're extending or debugging the harness rather than just running it.
+
+## Browsing the docs locally
+
+The full docs are published as a [MkDocs](https://www.mkdocs.org/) site under [`docs/`](./docs/); [`mkdocs.yml`](./mkdocs.yml)'s `nav:` doubles as an annotated topic index. The `[docs]` extra in `pyproject.toml` pulls in the build dependencies.
+
+```bash
+# Live-reload preview at http://127.0.0.1:8000
+uv run --extra docs mkdocs serve
+
+# One-shot strict build (catches broken nav refs and dead relative links)
+uv run --extra docs mkdocs build --strict --site-dir /tmp/tilth-site
+```
 
 ## Safety guards
 
