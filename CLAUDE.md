@@ -10,9 +10,10 @@ The repo is **not** a framework. It's an artefact. ~600 lines of Python, kept de
 
 ## Where to look first
 
-- **`README.md`** — high-level architecture and setup.
-- **`USAGE.md`** — how a reader uses it on their own project (preparing `prd.json`, `AGENTS.md`, `progress.txt`, `tests/`; provider/model selection; caveats).
-- **`deep-dives.md`** — code-level walk-throughs of the two loops, iteration accounting, token recording/enforcement, and the agent-visibility boundary. Read this before changing any of those mechanics.
+- **`mkdocs.yml`** — **the canonical map of the documentation set**, and your primary entry point when looking for docs by topic. The `nav:` block has a one- to four-line comment above each leaf entry summarising what the linked `.md` covers and when you'd reach for it; skim those comments first, then open the page that fits. The published site under `docs/` is the SSOT direction — `README.md`, `USAGE.md`, and `deep-dives.md` in the repo root are still authoritative today but are mirrored into `docs/` for the site build, so prefer the `docs/` copy when they disagree.
+- **`README.md`** — high-level architecture and setup. Mirrored into `docs/index.md` + `docs/getting-started/`.
+- **`USAGE.md`** — how a reader uses it on their own project (preparing `prd.json`, `AGENTS.md`, `progress.txt`, `tests/`; provider/model selection; caveats). Mirrored into `docs/getting-started/`.
+- **`deep-dives.md`** — code-level walk-throughs of the two loops, iteration accounting, token recording/enforcement, and the agent-visibility boundary. Read this before changing any of those mechanics. Mirrored into `docs/deep-dives/`.
 - **The demo workspace** — lives in its own repo at [`AlteredCraft/tilth-demo-todo-cli`](https://github.com/AlteredCraft/tilth-demo-todo-cli). Conventional clone path is `{{your projects folder}}/tilth-demo` (sibling to Tilth, matches README/USAGE). Tilth treats the path as just an argument, so any path works.
 
 ## Don't confuse the three "agent instruction" files
@@ -90,6 +91,14 @@ uv venv && uv pip install -e .
 
 # Lint
 .venv/bin/python -m ruff check tilth/
+
+# Docs — strict build (catches broken nav refs, missing files, dead relative
+# links). Run after editing mkdocs.yml or anything under docs/. This is the
+# command CI will run when docs validation gets wired in; keep it green.
+uv run --extra docs mkdocs build --strict --site-dir /tmp/tilth-site
+
+# Docs — live preview at http://127.0.0.1:8000
+uv run --extra docs mkdocs serve
 
 # Demo (needs TILTH_API_KEY set in .env, and a local clone of the demo repo
 # at AlteredCraft/tilth-demo-todo-cli — conventional path is sibling to Tilth)

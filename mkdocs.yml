@@ -7,26 +7,87 @@ edit_uri: edit/main/docs/
 
 docs_dir: docs
 
+# This `nav:` doubles as the documentation map for both humans and agents.
+# Each leaf entry has a short comment above it describing what the page covers
+# and when you'd reach for it. Treat the comments as a topic index — open the
+# linked `.md` for the full story.
+
 nav:
+  # Landing page: project pitch, Brain/Hands/Session at a glance, the four memory
+  # channels, quickstart, and links into every other section. Start here if
+  # you're new to the codebase.
   - Home: index.md
+
   - Getting started:
+      # Prerequisites (Python 3.12, uv, git), `.env` setup, the full table of
+      # required and optional `TILTH_*` env vars, tested provider/base-URL
+      # combinations, and how to build the docs site locally.
       - Installation: getting-started/installation.md
+      # End-to-end walkthrough of `uv run tilth <workspace>`: the per-task
+      # lifecycle (prompt assembly → tool-use loop → validators → judge →
+      # self-improvement → commit), what the console streams, and where to
+      # look in `sessions/<id>/` after the run.
       - Running the demo: getting-started/running-the-demo.md
+      # `--resume` semantics: skips `done` tasks, retries the trailing `failed`
+      # one, resets wall-clock budget, preserves cumulative tokens. Also covers
+      # resumable-session detection (the 5s heads-up before a fresh run).
       - Resuming a session: getting-started/resuming.md
+      # `--reset` tears down a session: `git worktree remove --force` +
+      # `git branch -D session/<id>` + `rm -rf sessions/<id>/`. Idempotent,
+      # destructive by design, gated by `[y/N]` (or `--yes`).
       - Resetting a session: getting-started/resetting.md
+      # `--visualize` renders `events.jsonl` as a self-contained `chat.html`
+      # grouped by task. Read-only, safe to invoke mid-run.
       - Visualizing a session: getting-started/visualizing.md
+
   - Architecture:
+      # The Brain / Hands / Session split, generator/evaluator separation
+      # (the judge in a fresh context), repo layout, and the six load-bearing
+      # invariants. Read this before extending the harness.
       - Overview: architecture/overview.md
+      # The four memory channels that live *outside* the agent — `AGENTS.md`,
+      # git history, `progress.txt`, `prd.json` — with a who-reads/who-writes
+      # table and the rationale for keeping state out of the model's context.
       - Memory channels: architecture/memory-channels.md
+
   - Deep dives:
+      # Index page for the code-level walk-throughs below. Reach for these
+      # when extending, debugging, or reasoning about the safety story —
+      # not needed just to *use* the harness.
       - Overview: deep-dives/index.md
+      # Ralph (outer) vs. tool-use (inner) loops; what does and doesn't count
+      # as an iteration; the inner-loop flowchart; why judge rejections eat
+      # iterations; worst-case tokens-per-task formula.
       - The two loops: deep-dives/two-loops.md
+      # Where the token cap is set (`client.py`), where the running counter
+      # lives (`Session.tokens_used` + `checkpoint.json`), the three call
+      # sites that record tokens, why enforcement is between-task only, and
+      # the known gaps (no $-cost, no per-model split, no headroom warning).
       - Token recording: deep-dives/token-recording.md
+      # The visibility table: what the worker agent sees (current task,
+      # AGENTS.md, progress tail, tool schemas, its own reasoning) vs. what
+      # the harness hides from it (`prd.json`, `events.jsonl`, the judge,
+      # token counts, the worktree branch). Justifies *why* the wall exists.
       - Agent visibility: deep-dives/agent-visibility.md
+      # The five stop conditions for a run and which layer each operates at
+      # (session-level vs. task-level). Cross-references the loops, token
+      # recording, and resume pages.
       - How the caps fit together: deep-dives/caps.md
+      # What `--resume` actually mutates on wake: `wake()` reads checkpoint,
+      # `_prepare_resume()` flips trailing `failed` task back to `pending` and
+      # soft-unwinds the FAILED placeholder commit so the judge sees the full
+      # cumulative diff on retry. Also covers resumable-session detection.
       - Resume mechanics: deep-dives/resume-mechanics.md
+      # Step-by-step of `--reset`: resolve session id → recover paths from
+      # checkpoint + `session_start` event → confirm → tear down. Idempotency
+      # contract (already-missing pieces are skipped, not errored).
       - Reset mechanics: deep-dives/reset-mechanics.md
+
   - Reference:
+      # Compact summary of the safety story: hard stops (the caps), the
+      # `pre_tool` veto pattern list (force pushes, `sudo`, `curl ... | sh`,
+      # etc.), worktree isolation, and an honest list of what is *not*
+      # guarded (no dollar cap, no mid-task cutoff, no network allowlist).
       - Safety guards: reference/safety-guards.md
 
 theme:
