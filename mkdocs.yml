@@ -99,18 +99,48 @@ nav:
 # deliberately excluded from the published nav. Listed here so --strict
 # doesn't flag them as orphans.
 not_in_nav: |
-  assets/STYLE.md
+  assets/IMAGE_STYLE.md
+  assets/SITE_STYLE.md
 
 theme:
-  name: mkdocs
+  name: material
+  # Site visual identity — see docs/assets/SITE_STYLE.md ("Hex" style reference).
+  # The palette accent + most colour mapping is done in docs/stylesheets/extra.css
+  # via CSS custom-property overrides; the entries here just give Material a
+  # consistent baseline (light scheme, custom primary/accent slots).
+  font:
+    text: IBM Plex Sans
+    code: IBM Plex Mono
+  palette:
+    - scheme: default
+      primary: custom
+      accent: custom
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - toc.follow
+    - content.code.copy
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+  icon:
+    repo: fontawesome/brands/github
 
 markdown_extensions:
   - toc:
       permalink: true
   - admonition
-  - fenced_code
   - tables
   - attr_list
+  - md_in_html
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.details
 
 extra_css:
   - stylesheets/extra.css
