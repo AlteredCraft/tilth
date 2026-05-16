@@ -111,3 +111,6 @@ markdown_extensions:
   - fenced_code
   - tables
   - attr_list
+
+extra_css:
+  - stylesheets/extra.css

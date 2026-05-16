@@ -6,11 +6,17 @@ A minimal long-running agent harness against any **OpenAI-compatible** LLM endpo
 
 ![Brain / Hands / Session split — three boxes connected by flow arrows, with the files that implement each piece](assets/brain-hands-session.png)
 
+*Brain / Hands / Session*
+{: .caption }
+
 **Audience:** single-dev / few-dev teams who want to *understand* what a long-running agent harness actually does — without consuming a managed pattern.
 
 **Target run:** 1–2 hours autonomous against an open model (default `deepseek/deepseek-v4-pro` on Ollama Cloud), completing a task list against a small toy project on a per-session git worktree.
 
-> **Diagram suggestion** — *a hero diagram showing the high-level loop: "PRD task → worker agent (tool-use loop) → validators → judge → commit → next task," with a callout for the per-session git worktree off to the side.*
+![The Ralph loop — PRD task to worker agent to validators to judge to commit, looping back, all inside a per-session git worktree](assets/ralph-loop.png)
+
+*Tilth's Ralph loop*
+{: .caption }
 
 ## What's in these docs
 

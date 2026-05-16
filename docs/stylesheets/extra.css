@@ -1,0 +1,9 @@
+/* Image caption: small, dim, centered, tucked under the image so it reads
+   as part of the figure rather than a stray paragraph. */
+p.caption {
+  text-align: center;
+  font-size: 0.875em;
+  color: #6b6b6b;
+  margin-top: -2em;
+  margin-bottom: 2em;
+}
