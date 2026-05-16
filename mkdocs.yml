@@ -95,6 +95,12 @@ nav:
       # guarded (no dollar cap, no mid-task cutoff, no network allowlist).
       - Safety guards: reference/safety-guards.md
 
+# Contributor-only references that live under docs/ for co-location but are
+# deliberately excluded from the published nav. Listed here so --strict
+# doesn't flag them as orphans.
+not_in_nav: |
+  assets/STYLE.md
+
 theme:
   name: mkdocs
 

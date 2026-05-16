@@ -11,10 +11,11 @@ The repo is **not** a framework. It's an artefact. ~600 lines of Python, kept de
 ## Where to look first
 
 - **`mkdocs.yml`** — **the canonical map of the documentation set**, and your primary entry point when looking for docs by topic. The `nav:` block has a one- to four-line comment above each leaf entry summarising what the linked `.md` covers and when you'd reach for it; skim those comments first, then open the page that fits. Everything that matters for users and contributors lives under `docs/`; `README.md` is the GitHub landing page and points into `docs/` for anything beyond the elevator pitch.
-- **`README.md`** — high-level architecture and setup, plus the index of links into `docs/`. Mirrored into `docs/index.md`.
+- **`README.md`** — terse GitHub landing page: product elevator pitch (with the Brain/Hands/Session image), a minimal quickstart, and the working-with-the-codebase commands (lint, tests, docs). **Not a mirror** of `docs/index.md` — for any product detail beyond the pitch, README points readers into `docs/`. Edit the two files independently.
 - **`docs/getting-started/your-own-project.md`** — the "honest version" of using Tilth on a non-demo codebase: prepping the four seed files, test-filename convention, caveats, judge-model picking, when it's the wrong tool. (Successor to the old root-level `USAGE.md`.)
 - **`docs/deep-dives/`** — code-level walk-throughs of the two loops, iteration accounting, token recording/enforcement, and the agent-visibility boundary. Read this before changing any of those mechanics. (Successor to the old root-level `deep-dives.md`.)
 - **The demo workspace** — lives in its own repo at [`AlteredCraft/tilth-demo-todo-cli`](https://github.com/AlteredCraft/tilth-demo-todo-cli). Conventional clone path is `{{your projects folder}}/tilth-demo` (sibling to Tilth, matches README and the docs). Tilth treats the path as just an argument, so any path works.
+- **`docs/assets/STYLE.md`** — the prompt scaffold for generating new docs images, anchored to the canonical `brain-hands-session.png`. Use this whenever you generate a new diagram or illustration so the visual voice stays consistent across pages. Not in the published nav (excluded via `not_in_nav` in `mkdocs.yml`).
 
 ## Don't confuse the three "agent instruction" files
 

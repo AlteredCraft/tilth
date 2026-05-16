@@ -4,6 +4,8 @@
 
 A minimal long-running agent harness against any **OpenAI-compatible** LLM endpoint — Ollama Cloud, OpenRouter, Together, Groq, Anyscale, Fireworks, vLLM, LM Studio, you name it. Built to learn (and demonstrate) the Brain/Hands/Session split, the Ralph loop, and the four memory channels described in Addy Osmani's [long-running agents](https://addyosmani.com/blog/long-running-agents/), [agent harness engineering](https://addyosmani.com/blog/agent-harness-engineering/), and [self-improving agents](https://addyosmani.com/blog/self-improving-agents/) posts.
 
+![Brain / Hands / Session split — three boxes connected by flow arrows, with the files that implement each piece](assets/brain-hands-session.png)
+
 **Audience:** single-dev / few-dev teams who want to *understand* what a long-running agent harness actually does — without consuming a managed pattern.
 
 **Target run:** 1–2 hours autonomous against an open model (default `deepseek/deepseek-v4-pro` on Ollama Cloud), completing a task list against a small toy project on a per-session git worktree.
@@ -33,8 +35,6 @@ Four memory channels live outside the agent:
 - `prd.json` — task list with status flags (in the *workspace*).
 
 Generator/evaluator separation: a separate **judge** call (`tilth/prompts/judge.md`) reviews each finished task in a fresh context — diff + acceptance criteria, nothing else.
-
-> **Diagram suggestion** — *three boxes labelled Brain / Hands / Session with their files listed, connected by arrows showing the inputs and outputs of each. Off to one side, a stack of the four memory channels with a "lives in the workspace" annotation.*
 
 See [Architecture overview](architecture/overview.md) for the longer story.
 

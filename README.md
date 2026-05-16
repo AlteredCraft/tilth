@@ -4,107 +4,49 @@
 
 A minimal long-running agent harness against any **OpenAI-compatible** LLM endpoint — Ollama Cloud, OpenRouter, Together, Groq, Anyscale, Fireworks, vLLM, LM Studio, you name it. Built to learn (and demonstrate) the Brain/Hands/Session split, the Ralph loop, and the four memory channels described in Addy Osmani's [long-running agents](https://addyosmani.com/blog/long-running-agents/), [agent harness engineering](https://addyosmani.com/blog/agent-harness-engineering/), and [self-improving agents](https://addyosmani.com/blog/self-improving-agents/) posts.
 
+![Brain / Hands / Session split — three boxes connected by flow arrows, with the files that implement each piece](docs/assets/brain-hands-session.png)
+
 **Audience:** single-dev / few-dev teams who want to *understand* what a long-running agent harness actually does — without consuming a managed pattern.
 
 **Target run:** 1–2 hours autonomous against an open model (default `deepseek/deepseek-v4-pro` on Ollama Cloud), completing a task list against a small toy project on a per-session git worktree.
 
-## Architecture
+For the full product story — the Brain/Hands/Session split in detail, the four memory channels, the two loops, token recording and enforcement, the agent-visibility boundary, and the safety guards — see the **[docs site](./docs/index.md)**. This README is the elevator pitch.
 
-Three independently-replaceable components:
-
-- **Brain** — `tilth/client.py` + `tilth/loop.py`. Ralph loop calling any OpenAI-compatible endpoint via the `openai` Python SDK. Worker and judge can sit on different providers.
-- **Hands** — `tilth/workspace.py` (per-session git worktree) + `tilth/tools/` (allow-listed bash, file ops, search) + `tilth/hooks/` (pre-tool veto, post-edit lint).
-- **Session** — `tilth/session.py`. Append-only `events.jsonl` + checkpoint, enough to `wake(session_id)` on a fresh process. A `summary.json` is rebuilt at every task boundary (`tilth/summary.py`) as a denormalised view for the visualizer and any external consumers.
-
-Four memory channels live outside the agent:
-
-- `AGENTS.md` — the agent's own learned conventions and gotchas (in the *workspace*).
-- Git history — atomic commits per task (in the *worktree*).
-- `progress.txt` — chronological journal of task attempts (in the *workspace*).
-- `prd.json` — task list with status flags (in the *workspace*).
-
-Generator/evaluator separation: a separate **judge** call (`tilth/prompts/judge.md`) reviews each finished task in a fresh context — diff + acceptance criteria, nothing else.
-
-## Setup
+## Quickstart
 
 ```bash
-git clone git@github.com:AlteredCraft/tilth.git {{your projects folder}}/tilth
-cd {{your projects folder}}/tilth
-uv venv
-uv sync
+git clone git@github.com:AlteredCraft/tilth.git
+cd tilth
+uv venv && uv sync
 cp .env.example .env
-# edit .env, set TILTH_BASE_URL, TILTH_API_KEY, and TILTH_WORKER_MODEL
+# edit .env — TILTH_BASE_URL, TILTH_API_KEY, TILTH_WORKER_MODEL are all required
+# (Tilth refuses to start without them so a misconfigured run can't silently
+# fall back to a provider/model your account doesn't have)
 ```
 
-All three of `TILTH_BASE_URL`, `TILTH_API_KEY`, and `TILTH_WORKER_MODEL` are required — Tilth refuses to start without them so a misconfigured run can't silently fall back to a provider/model your account doesn't have. The example `.env` points at Ollama Cloud; see [`docs/getting-started/installation.md`](./docs/getting-started/installation.md#provider-strings) for known-good provider/model combinations.
-
-## Running the demo
-
-The demo is a small todo-CLI workspace, pre-seeded with `prd.json`, `AGENTS.md`, `progress.txt`, and `tests/` — exactly the shape you'd give Tilth for your own project. It lives in its own repo so it's a realistic example, not a special case:
+Run the demo against a small todo-CLI workspace, pre-seeded with the four files Tilth expects (`prd.json`, `AGENTS.md`, `progress.txt`, `tests/`):
 
 ```bash
-git clone git@github.com:AlteredCraft/tilth-demo-todo-cli.git {{your projects folder}}/tilth-demo
-uv run tilth {{your projects folder}}/tilth-demo
+git clone git@github.com:AlteredCraft/tilth-demo-todo-cli.git tilth-demo
+uv run tilth ./tilth-demo
 ```
 
-Tilth doesn't care where the workspace lives; the path is just an argument. Treat it as a stand-in for your own repo.
+For tested provider/model combinations, the full `TILTH_*` env-var table, `--resume` / `--reset` / `--visualize` semantics, and the honest guide to using Tilth on your own non-demo project, see the **[docs](./docs/index.md)**.
 
-Resume an interrupted run:
-
-```bash
-uv run tilth --resume               # picks the most recent session
-uv run tilth --resume <session_id>  # or name one explicitly
-```
-
-Resume retries the trailing failed task (if any) by flipping it back to `pending` and unwinding the `FAILED (...)` placeholder commit so partial work blends into the retry. The wall-clock budget resets per resume; the token total is preserved (bump `TILTH_MAX_TOKENS` first if you blew the cap).
-
-Reset a session (drop its worktree, delete its `session/<id>` branch from the source repo, remove `sessions/<id>/`):
+## Working with the codebase
 
 ```bash
-uv run tilth --reset                  # most recent session
-uv run tilth --reset <session_id>     # or name one explicitly
-uv run tilth --reset --yes            # skip the y/N confirmation
-```
+# Lint
+.venv/bin/python -m ruff check tilth/
 
-`--reset` is destructive by design — it force-removes the worktree even if dirty, since its whole purpose is to discard a session's work. The `[y/N]` prompt (or `--yes` to skip) is the safety gate. Reset and resume are mutually exclusive on a single invocation.
+# Tests
+.venv/bin/python -m pytest
 
-If you run `uv run tilth <workspace>` (no flags) and a resumable session exists for that same workspace, the harness prints a heads-up listing your `--resume` / `--reset` options and pauses 5 seconds before starting fresh — Ctrl-C during the pause to switch course.
-
-Visualize a session as a chat-style HTML page (writes `sessions/<id>/chat.html`):
-
-```bash
-uv run tilth --visualize                # most recent session
-uv run tilth --visualize <session_id>   # or name one explicitly
-```
-
-The output is a single self-contained file (inline CSS, no JS) that renders `events.jsonl` as a conversation — model calls (with collapsible reasoning blocks where the model emitted any), tool calls/results, validator runs, judge verdicts, AGENTS.md updates, commits, and stops, grouped by task. Easier to skim than `jq`-ing the raw log.
-
-![Sample chat.html render: session header, task divider, model-call meta-strip with an expanded reasoning fold-out, tool call and result bubbles](./documents/session-render.png)
-
-## Using it on your own project
-
-See **[`docs/getting-started/your-own-project.md`](./docs/getting-started/your-own-project.md)** for the full logistics: how to prep your repo (`prd.json`, `AGENTS.md`, `progress.txt`, `tests/`), the test-filename convention, the caveats worth knowing up front, picking a judge model, and what to do on a first run.
-
-## Going deeper
-
-See the **[Deep dives](./docs/deep-dives/index.md)** section of the docs for code-level walk-throughs of the mechanics — the two loops (Ralph vs. tool-use), what counts as an iteration, judge-rejection accounting, end-to-end token recording and enforcement, and the agent-visibility boundary. Useful if you're extending or debugging the harness rather than just running it.
-
-## Browsing the docs locally
-
-The full docs are published as a [MkDocs](https://www.mkdocs.org/) site under [`docs/`](./docs/); [`mkdocs.yml`](./mkdocs.yml)'s `nav:` doubles as an annotated topic index. The `[docs]` extra in `pyproject.toml` pulls in the build dependencies.
-
-```bash
-# Live-reload preview at http://127.0.0.1:8000
+# Docs — live preview at http://127.0.0.1:8000
 uv run --extra docs mkdocs serve
 
-# One-shot strict build (catches broken nav refs and dead relative links)
+# Docs — strict build (the CI gate; catches broken nav refs, missing files, dead links)
 uv run --extra docs mkdocs build --strict --site-dir /tmp/tilth-site
 ```
 
-## Safety guards
-
-- Iteration cap per task (default 8)
-- Wall-clock cap per run (default 120 min)
-- Token cap (configurable)
-- `pre_tool` hook blocks `git push --force`, `git reset --hard`, `git clean -f`, `sudo`, `curl | sh`, fork bombs.
-- Worktree branch is **never auto-merged** — open a PR and review like any other branch.
+See [`CLAUDE.md`](./CLAUDE.md) for repo conventions and the architecture invariants worth preserving when editing the harness itself.
