@@ -6,7 +6,7 @@ Tokens flow through four files. End-to-end with line numbers (line numbers shift
 
 ## The cap is set at startup
 
-`tilth/client.py:54` reads `TILTH_MAX_TOKENS` from the env (default 2,000,000) into `TilthConfig.max_tokens`. One integer, set once per run, never mutated:
+`tilth/client.py` reads `TILTH_MAX_TOKENS` from the env (default 2,000,000) into `TilthConfig.max_tokens`. One integer, set once per run, never mutated:
 
 ```python
 max_tokens=int(os.environ.get("TILTH_MAX_TOKENS", "2000000")),

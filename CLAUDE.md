@@ -40,7 +40,7 @@ tilth/
 │   ├── client.py          # OpenAI-compat wrapper, dual-client routing
 │   ├── session.py         # events.jsonl + checkpoint.json + wake()
 │   ├── summary.py         # roll events.jsonl into summary.json (denormalised view)
-│   ├── memory.py          # AGENTS.md / progress.txt loading + injection
+│   ├── memory.py          # AGENTS.md / progress.txt I/O + injection
 │   ├── workspace.py       # git worktree create / commit / diff
 │   ├── validators.py      # ruff + pytest runners
 │   ├── tools/             # bash, files, search — registered in __init__.py
