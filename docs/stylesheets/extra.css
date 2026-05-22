@@ -163,6 +163,17 @@
   border-bottom-color: var(--color-indigo-punch);
 }
 
+/* Tone down the heading anchor pilcrow — by default it inherits the heading's
+   serif display font and weight, which on H1 renders as a giant ornamental
+   ¶. Override appearance only (no `color`, no `opacity`) so Material's
+   parent-hover rules can still do their fade-in without specificity fights. */
+.md-typeset .headerlink {
+  font-family: var(--font-body);
+  font-size: 0.6em;
+  font-weight: 400;
+  border-bottom: none;
+}
+
 /* ----------------------------------------------------------------------------
    Header & navigation
    ---------------------------------------------------------------------------- */
