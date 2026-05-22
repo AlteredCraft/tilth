@@ -50,6 +50,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -57,6 +58,26 @@ from typing import Any
 
 def _ts() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()) + "Z"
+
+
+def iter_events(events_path: Path) -> Iterator[dict[str, Any]]:
+    """Yield parsed event records from an events.jsonl file.
+
+    Missing files yield nothing. Blank lines and JSON-decode errors are
+    silently skipped — the log is append-only and a partial last line on
+    crash is expected.
+    """
+    if not events_path.is_file():
+        return
+    with events_path.open() as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                yield json.loads(line)
+            except json.JSONDecodeError:
+                continue
 
 
 @dataclass

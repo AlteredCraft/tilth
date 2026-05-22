@@ -12,13 +12,64 @@ cheaper / faster model) while the worker stays on the main provider.
 
 from __future__ import annotations
 
+import json
 import os
+import re
 from dataclasses import dataclass
 from typing import Any
 
 from openai import OpenAI
 
 _REASONING_FALSY = {"false", "0", "no", "off"}
+
+_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
+
+_HISTORY_KEEP = frozenset({
+    "role",
+    "content",
+    "tool_calls",
+    "reasoning",
+    "reasoning_details",
+})
+
+
+def parse_json_lenient(text: str) -> dict[str, Any] | None:
+    """Try to parse a JSON object from a model response. Strips code fences."""
+    candidates: list[str] = []
+    m = _FENCE_RE.search(text)
+    if m:
+        candidates.append(m.group(1))
+    candidates.append(text)
+    for s in candidates:
+        s = s.strip()
+        if not s:
+            continue
+        try:
+            obj = json.loads(s)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            return obj
+    return None
+
+
+def assistant_history_message(msg: dict[str, Any]) -> dict[str, Any]:
+    """Shape an assistant response for re-injection into the message history.
+
+    Why: thinking-mode models reject the next request with HTTP 400 if the
+    reasoning content from the prior assistant turn isn't echoed back.
+    OpenRouter's normalised response carries it in `reasoning_details`
+    (structured blocks, the documented form) and a flat `reasoning` string.
+    We keep both — observed on the wire against deepseek/deepseek-v4-flash.
+    Output-only metadata (refusal, annotations, audio, function_call) is
+    dropped.
+
+    Pair this with `extra_body={"reasoning": {"enabled": True}}` on the
+    request side (see `LLMClient.chat`) — without that opt-in, OpenRouter
+    sometimes omits reasoning on parallel-tool-call turns and there's
+    nothing to echo.
+    """
+    return {k: v for k, v in msg.items() if k in _HISTORY_KEEP}
 
 
 @dataclass

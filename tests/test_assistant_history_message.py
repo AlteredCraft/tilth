@@ -1,4 +1,4 @@
-"""Regression tests for `_assistant_history_message`.
+"""Regression tests for `assistant_history_message`.
 
 Pin the wire-format contract observed live against deepseek/deepseek-v4-flash
 via OpenRouter. Stripping reasoning content from the echoed assistant message
@@ -10,7 +10,7 @@ wire is `reasoning_details` (with a flat `reasoning` string alongside).
 
 from __future__ import annotations
 
-from tilth.loop import _assistant_history_message
+from tilth.client import assistant_history_message
 
 
 def test_preserves_role_content_and_tool_calls():
@@ -25,7 +25,7 @@ def test_preserves_role_content_and_tool_calls():
             }
         ],
     }
-    assert _assistant_history_message(msg) == msg
+    assert assistant_history_message(msg) == msg
 
 
 def test_preserves_reasoning_details_openrouter_real_shape():
@@ -50,7 +50,7 @@ def test_preserves_reasoning_details_openrouter_real_shape():
             }
         ],
     }
-    out = _assistant_history_message(msg)
+    out = assistant_history_message(msg)
     assert out["reasoning_details"] == msg["reasoning_details"]
     assert out["reasoning"] == msg["reasoning"]
     assert out["tool_calls"] == msg["tool_calls"]
@@ -68,6 +68,6 @@ def test_drops_output_only_fields():
         "audio": {"id": "audio_1"},
         "function_call": None,
     }
-    out = _assistant_history_message(msg)
+    out = assistant_history_message(msg)
     assert set(out.keys()) == {"role", "content"}
     assert out["content"] == "blocked"

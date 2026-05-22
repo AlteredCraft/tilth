@@ -46,6 +46,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from tilth.session import iter_events
+
 SUMMARY_VERSION = 1
 
 
@@ -58,20 +60,6 @@ def _empty_task() -> dict[str, Any]:
         "hook_blocks": 0,
         "judge": {"accepts": 0, "rejects": 0},
     }
-
-
-def _iter_events(events_path: Path):
-    if not events_path.is_file():
-        return
-    with events_path.open() as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                yield json.loads(line)
-            except json.JSONDecodeError:
-                continue
 
 
 def build_from_events(events_path: Path) -> dict[str, Any]:
@@ -90,7 +78,7 @@ def build_from_events(events_path: Path) -> dict[str, Any]:
             tasks[tid] = _empty_task()
         return tasks[tid]
 
-    for ev in _iter_events(events_path):
+    for ev in iter_events(events_path):
         ts = ev.get("ts")
         if ts:
             last_event_at = ts

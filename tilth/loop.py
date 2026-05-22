@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 import time
 import uuid
@@ -26,8 +25,13 @@ from rich.console import Console
 
 from tilth import memory, summary, tools, validators, visualize
 from tilth import workspace as ws
-from tilth.client import LLMClient, TilthConfig
-from tilth.session import Session
+from tilth.client import (
+    LLMClient,
+    TilthConfig,
+    assistant_history_message,
+    parse_json_lenient,
+)
+from tilth.session import Session, iter_events
 
 console = Console()
 
@@ -65,31 +69,6 @@ def _judge_prompt() -> str:
 
 def _agents_update_prompt() -> str:
     return (PROMPTS_DIR / "agents_update.md").read_text()
-
-
-# --- JSON parsing tolerant to fences ---------------------------------------
-
-_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
-
-
-def _parse_json_lenient(text: str) -> dict[str, Any] | None:
-    """Try to parse a JSON object from a model response. Strips code fences."""
-    candidates: list[str] = []
-    m = _FENCE_RE.search(text)
-    if m:
-        candidates.append(m.group(1))
-    candidates.append(text)
-    for s in candidates:
-        s = s.strip()
-        if not s:
-            continue
-        try:
-            obj = json.loads(s)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(obj, dict):
-            return obj
-    return None
 
 
 # --- judge ------------------------------------------------------------------
@@ -144,7 +123,7 @@ def _judge_task(
     session.add_tokens(prompt_tokens + eval_tokens)
 
     content = ((resp.get("message") or {}).get("content") or "").strip()
-    parsed = _parse_json_lenient(content)
+    parsed = parse_json_lenient(content)
     if not parsed or "verdict" not in parsed:
         session.log(
             "judge_verdict",
@@ -177,9 +156,6 @@ def _judge_task(
 
 
 # --- self-improvement: AGENTS.md update -------------------------------------
-
-_VALID_SECTIONS = {"Patterns", "Gotchas", "Style", "Recent learnings"}
-
 
 def _self_improve(
     task: dict[str, Any],
@@ -215,7 +191,7 @@ def _self_improve(
     base = {"task_id": task["id"], "trace_id": trace_id, "span_id": span_id}
 
     content = ((resp.get("message") or {}).get("content") or "").strip()
-    parsed = _parse_json_lenient(content)
+    parsed = parse_json_lenient(content)
     if not parsed:
         session.log(
             "agents_md_update",
@@ -228,7 +204,7 @@ def _self_improve(
         return
 
     section = str(parsed.get("section", "Recent learnings")).strip()
-    if section not in _VALID_SECTIONS:
+    if section not in memory.VALID_AGENTS_MD_SECTIONS:
         section = "Recent learnings"
     entry = str(parsed.get("entry", "")).strip()
     if not entry:
@@ -237,42 +213,12 @@ def _self_improve(
         )
         return
 
-    _append_to_agents_md(worktree, section, f"- {entry}")
+    memory.append_to_agents_md(worktree, section, f"- {entry}")
     session.log(
         "agents_md_update",
         {**base, "applied": True, "section": section, "entry": entry},
     )
     console.print(f"[blue]→ AGENTS.md ({section})[/blue] {entry}")
-
-
-def _append_to_agents_md(worktree: Path, section: str, line: str) -> None:
-    """Append `line` under `## {section}` in AGENTS.md, creating the section if missing."""
-    p = worktree / "AGENTS.md"
-    text = p.read_text() if p.is_file() else ""
-    heading = f"## {section}"
-    if heading in text:
-        # Replace the section's "(empty — agent appends here)" placeholder if present;
-        # otherwise append the line at the end of the section.
-        placeholder = "_(empty — agent appends here)_"
-        # Simple rewrite: split on the heading, locate the next "## " or EOF.
-        parts = text.split(heading, 1)
-        before = parts[0] + heading
-        rest = parts[1]
-        # Find next H2.
-        next_h2 = rest.find("\n## ")
-        if next_h2 == -1:
-            section_body = rest
-            tail = ""
-        else:
-            section_body = rest[:next_h2]
-            tail = rest[next_h2:]
-        if placeholder in section_body:
-            new_body = section_body.replace(placeholder, line)
-        else:
-            new_body = section_body.rstrip() + f"\n{line}\n"
-        p.write_text(before + new_body + tail)
-    else:
-        p.write_text((text.rstrip() + f"\n\n## {section}\n\n{line}\n").lstrip("\n"))
 
 
 # --- prd handling -----------------------------------------------------------
@@ -307,35 +253,20 @@ def _latest_session_id(sessions_root: Path) -> str | None:
 
 def _last_stop_reason(session: Session) -> str | None:
     """Read the most recent `stop` event's reason from events.jsonl, or None."""
-    if not session.events_path.is_file():
-        return None
     last: str | None = None
-    with session.events_path.open() as f:
-        for line in f:
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if rec.get("type") == "stop":
-                last = ((rec.get("payload") or {}).get("reason")) or None
+    for rec in iter_events(session.events_path):
+        if rec.get("type") == "stop":
+            last = ((rec.get("payload") or {}).get("reason")) or None
     return last
 
 
 def _source_for_session(session_dir: Path) -> Path | None:
     """Recover the source repo path for a session by scanning its events log."""
-    events = session_dir / "events.jsonl"
-    if not events.is_file():
-        return None
-    with events.open() as f:
-        for line in f:
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if rec.get("type") == "session_start":
-                src = (rec.get("payload") or {}).get("source")
-                if src:
-                    return Path(src)
+    for rec in iter_events(session_dir / "events.jsonl"):
+        if rec.get("type") == "session_start":
+            src = (rec.get("payload") or {}).get("source")
+            if src:
+                return Path(src)
     return None
 
 
@@ -361,22 +292,14 @@ def _find_resumable_session(sessions_root: Path, source: Path) -> tuple[str, str
     for d in sorted(sessions_root.iterdir(), key=lambda p: p.name, reverse=True):
         if not d.is_dir():
             continue
-        events = d / "events.jsonl"
-        if not events.is_file():
-            continue
         sess_source: str | None = None
         last_stop: str | None = None
-        with events.open() as f:
-            for line in f:
-                try:
-                    rec = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                t = rec.get("type")
-                if t == "session_start":
-                    sess_source = (rec.get("payload") or {}).get("source")
-                elif t == "stop":
-                    last_stop = (rec.get("payload") or {}).get("reason")
+        for rec in iter_events(d / "events.jsonl"):
+            t = rec.get("type")
+            if t == "session_start":
+                sess_source = (rec.get("payload") or {}).get("source")
+            elif t == "stop":
+                last_stop = (rec.get("payload") or {}).get("reason")
         if sess_source != target:
             continue
         if last_stop == "all_done":
@@ -445,32 +368,6 @@ def _prepare_resume(session: Session, worktree: Path) -> str:
 
 # --- the loop ---------------------------------------------------------------
 
-_HISTORY_KEEP = frozenset({
-    "role",
-    "content",
-    "tool_calls",
-    "reasoning",
-    "reasoning_details",
-})
-
-
-def _assistant_history_message(msg: dict[str, Any]) -> dict[str, Any]:
-    """Shape an assistant response for re-injection into the message history.
-
-    Why: thinking-mode models reject the next request with HTTP 400 if the
-    reasoning content from the prior assistant turn isn't echoed back. OpenRouter's
-    normalised response carries it in `reasoning_details` (structured blocks, the
-    documented form) and a flat `reasoning` string. We keep both — observed
-    on the wire against deepseek/deepseek-v4-flash. Output-only metadata
-    (refusal, annotations, audio, function_call) is dropped.
-
-    Pair this with `extra_body={"reasoning": {"enabled": True}}` on the request
-    side (see client.py) — without that opt-in, OpenRouter sometimes omits
-    reasoning on parallel-tool-call turns and there's nothing to echo.
-    """
-    return {k: v for k, v in msg.items() if k in _HISTORY_KEEP}
-
-
 def _run_task(
     task: dict[str, Any],
     worktree: Path,
@@ -537,7 +434,7 @@ def _run_task(
                 model_call_payload["reasoning"] = reasoning
         session.log("model_call", model_call_payload)
 
-        messages.append(_assistant_history_message(msg))
+        messages.append(assistant_history_message(msg))
 
         tool_calls = msg.get("tool_calls") or []
 

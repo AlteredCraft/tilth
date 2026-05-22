@@ -25,6 +25,10 @@ PROGRESS_TAIL_LINES = 30
 AGENTS_MD_MAX_CHARS = 8_000
 PROGRESS_MAX_CHARS = 4_000
 
+VALID_AGENTS_MD_SECTIONS = frozenset(
+    {"Patterns", "Gotchas", "Style", "Recent learnings"}
+)
+
 
 def _hash8(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
@@ -79,6 +83,32 @@ def append_progress(workspace: Path, line: str) -> None:
     p = workspace / "progress.txt"
     with p.open("a") as f:
         f.write(line.rstrip() + "\n")
+
+
+def append_to_agents_md(workspace: Path, section: str, line: str) -> None:
+    """Append `line` under `## {section}` in AGENTS.md, creating the section if missing."""
+    p = workspace / "AGENTS.md"
+    text = p.read_text() if p.is_file() else ""
+    heading = f"## {section}"
+    if heading in text:
+        placeholder = "_(empty — agent appends here)_"
+        parts = text.split(heading, 1)
+        before = parts[0] + heading
+        rest = parts[1]
+        next_h2 = rest.find("\n## ")
+        if next_h2 == -1:
+            section_body = rest
+            tail = ""
+        else:
+            section_body = rest[:next_h2]
+            tail = rest[next_h2:]
+        if placeholder in section_body:
+            new_body = section_body.replace(placeholder, line)
+        else:
+            new_body = section_body.rstrip() + f"\n{line}\n"
+        p.write_text(before + new_body + tail)
+    else:
+        p.write_text((text.rstrip() + f"\n\n## {section}\n\n{line}\n").lstrip("\n"))
 
 
 def build_user_prompt(

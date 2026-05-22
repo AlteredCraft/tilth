@@ -82,7 +82,7 @@ def _resolve(path_str: str, workspace: Path) -> Path:
         raise ValueError("'path' must be a non-empty string")
     p = (workspace / path_str).resolve()
     ws = workspace.resolve()
-    if ws not in p.parents and p != ws:
+    if not p.is_relative_to(ws):
         raise ValueError(f"path escapes workspace: {path_str}")
     return p
 
