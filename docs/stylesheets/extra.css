@@ -164,6 +164,44 @@
 }
 
 /* ----------------------------------------------------------------------------
+   Heading anchor link — replace the default pilcrow (¶) with a Lucide-style
+   "link" glyph.
+
+   Python-Markdown's toc extension only accepts a string for `permalink:`
+   (HTML-escaped — no SVG injection through mkdocs.yml), so the swap has to
+   happen in CSS. Material ships rules for `.md-typeset .headerlink` *and*
+   for `:hover` / `:focus` / `:target > .headerlink`; we must cover the
+   same states or the hover state re-colours the ¶ on top of our icon. We
+   keep `permalink: true` so the markup stays standard.
+   ---------------------------------------------------------------------------- */
+
+.md-typeset .headerlink,
+.md-typeset .headerlink:hover,
+.md-typeset .headerlink:focus,
+.md-typeset :target > .headerlink {
+  color: transparent;
+  margin-left: 0.45em;
+}
+
+.md-typeset .headerlink::before {
+  content: "";
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  vertical-align: -0.05em;
+  background-color: var(--color-cement-gray);
+  -webkit-mask: url("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><path d='M9 17H7A5 5 0 0 1 7 7h2'/><path d='M15 7h2a5 5 0 1 1 0 10h-2'/><line x1='8' x2='16' y1='12' y2='12'/></svg>") center / contain no-repeat;
+          mask: url("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><path d='M9 17H7A5 5 0 0 1 7 7h2'/><path d='M15 7h2a5 5 0 1 1 0 10h-2'/><line x1='8' x2='16' y1='12' y2='12'/></svg>") center / contain no-repeat;
+  transition: background-color 120ms ease;
+}
+
+.md-typeset .headerlink:hover::before,
+.md-typeset .headerlink:focus::before,
+.md-typeset :target > .headerlink::before {
+  background-color: var(--color-minsk-violet);
+}
+
+/* ----------------------------------------------------------------------------
    Header & navigation
    ---------------------------------------------------------------------------- */
 
