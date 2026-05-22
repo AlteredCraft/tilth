@@ -2,16 +2,16 @@
 
 > *Prepare the ground, let the agent grow the work.*
 
-A minimal long-running agent harness against any **OpenAI-compatible** LLM endpoint — Ollama Cloud, OpenRouter, Together, Groq, Anyscale, Fireworks, vLLM, LM Studio, you name it. Built to learn (and demonstrate) the Brain/Hands/Session split, the Ralph loop, and the four memory channels described in Addy Osmani's [long-running agents](https://addyosmani.com/blog/long-running-agents/), [agent harness engineering](https://addyosmani.com/blog/agent-harness-engineering/), and [self-improving agents](https://addyosmani.com/blog/self-improving-agents/) posts.
+A minimal long-running agent harness against any **OpenAI-compatible** LLM endpoint — Ollama Cloud, OpenRouter, Together, Groq, Anyscale, Fireworks, vLLM, LM Studio. At this point it should be noted I only activly test on OpenRouter. Built to learn (and demonstrate) the Brain/Hands/Session split, the Ralph loop, and the four memory channels described in Addy Osmani's [long-running agents](https://addyosmani.com/blog/long-running-agents/), [agent harness engineering](https://addyosmani.com/blog/agent-harness-engineering/), and [self-improving agents](https://addyosmani.com/blog/self-improving-agents/) posts.
 
 ![Brain / Hands / Session split — three boxes connected by flow arrows, with the files that implement each piece](assets/brain-hands-session.png)
 
 *Brain / Hands / Session*
 {: .caption }
 
-**Audience:** single-dev / few-dev teams who want to *understand* what a long-running agent harness actually does — without consuming a managed pattern.
+**Audience:** This is an active research project for my work in [Altered Craft](https://alteredcraft.com). I do activly use it for real work, so I would advise it for single-dev / few-dev teams who want to *understand* what a long-running agent harness actually does. That is today (May-2026), in the future, we shall see.
 
-**Target run:** 1–2 hours autonomous against an open model (default `deepseek/deepseek-v4-pro` on Ollama Cloud), completing a task list against a small toy project on a per-session git worktree.
+**Target run:** I test with 10-60 minutes of autonomous work against an open model (default `deepseek/deepseek-v4-pro` on OpenRouter). Completing a task list against a small project on a per-session git worktree.
 
 ![The Ralph loop — PRD task to worker agent to validators to judge to commit, looping back, all inside a per-session git worktree](assets/ralph-loop.png)
 
@@ -29,8 +29,8 @@ A minimal long-running agent harness against any **OpenAI-compatible** LLM endpo
 
 Three independently-replaceable components:
 
-- **Brain** — `tilth/client.py` + `tilth/loop.py`. Ralph loop calling any OpenAI-compatible endpoint via the `openai` Python SDK. Worker and judge can sit on different providers.
-- **Hands** — `tilth/workspace.py` (per-session git worktree) + `tilth/tools/` (allow-listed bash, file ops, search) + `tilth/hooks/` (pre-tool veto, post-edit lint).
+- **Brain** — `tilth/client.py`. The LLM-reasoning role, instantiated as a **Worker** (tool-use loop, full history, Hands access) and a **Judge** (one-shot per task, fresh context, no tools). The two can sit on different providers and/or models.
+- **Hands** — `tilth/workspace.py` (per-session git worktree) + `tilth/tools/` (allow-listed bash, file ops, search) + `tilth/hooks/` (pre-tool veto, post-edit lint). Belongs to the Worker today.
 - **Session** — `tilth/session.py`. Append-only `events.jsonl` + checkpoint, enough to `wake(session_id)` on a fresh process. A `summary.json` is rebuilt at every task boundary (`tilth/summary.py`) as a denormalised view for the visualizer and any external consumers.
 
 Four memory channels live outside the agent:
@@ -40,7 +40,7 @@ Four memory channels live outside the agent:
 - `progress.txt` — chronological journal of task attempts (in the *workspace*).
 - `prd.json` — task list with status flags (in the *workspace*).
 
-Generator/evaluator separation: a separate **judge** call (`tilth/prompts/judge.md`) reviews each finished task in a fresh context — diff + acceptance criteria, nothing else.
+Generator/evaluator separation: the **Judge** Brain (`tilth/prompts/judge.md`) sees only the diff + acceptance criteria — none of the worker's history. That independence is what makes it useful.
 
 See [Architecture overview](architecture/overview.md) for the longer story.
 

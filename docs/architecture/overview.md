@@ -6,7 +6,12 @@ Tilth is built around three independently-replaceable components — **Brain**, 
 
 ### Brain
 
-`tilth/client.py` + `tilth/loop.py`. Ralph loop calling any OpenAI-compatible endpoint via the `openai` Python SDK. Worker and judge can sit on different providers.
+`tilth/client.py` — the LLM-reasoning role: an OpenAI-compatible model call via the `openai` Python SDK. Tilth instantiates this role twice, in different shapes:
+
+- **Worker Brain** — runs in a tool-use loop with full message history accumulated across iterations on the current task, and Hands access. The Brain that *does the work*.
+- **Judge Brain** — invoked one-shot per finished task, in a fresh context, with no tool access. Receives the diff + acceptance criteria and returns accept/reject + reasoning. Stateless across tasks.
+
+The Ralph loop (`tilth/loop.py`) orchestrates both: it drives the Worker until it stops calling tools, runs validators, then calls the Judge once. A Judge invocation is itself one-shot — it is not in a loop, though the outer Ralph loop calls it repeatedly across tasks.
 
 The Brain knows how to talk to a model. It does not know how to run code, manage state, or commit work. It hands tool calls off to Hands and writes the audit trail to Session.
 
@@ -15,6 +20,8 @@ The Brain knows how to talk to a model. It does not know how to run code, manage
 `tilth/workspace.py` (per-session git worktree) + `tilth/tools/` (allow-listed bash, file ops, search) + `tilth/hooks/` (pre-tool veto, post-edit lint).
 
 Hands knows how to *do things to a workspace*. Every tool call lands here. The pre-tool hook can veto dangerous commands; the post-edit hook can run a linter after a write. The workspace is a per-session git worktree, so Hands' blast radius is bounded to that branch.
+
+Today only the Worker Brain has Hands; the Judge runs without tools by design — its independence from the worker's tool history is the whole point. Nothing in the architecture prevents a future Judge from being given a constrained set of (likely read-only) Hands — e.g. running tests or fetching additional context — but the current implementation keeps it pure-evaluation.
 
 ### Session
 
@@ -26,7 +33,7 @@ Session is the durable record. Everything that happens — every model call, too
 
 ## Generator/evaluator separation
 
-A separate **judge** call (`tilth/prompts/judge.md`) reviews each finished task in a fresh context — diff + acceptance criteria, nothing else. The judge is stateless across tasks and (by design) sees none of the worker's chain-of-thought, tool history, or accumulated context. That independence is the whole point of having a judge.
+The Worker/Judge split above is a deliberate generator/evaluator separation. The Judge Brain (`tilth/prompts/judge.md`) sees none of the worker's chain-of-thought, tool history, or accumulated context — only the committed diff against the task's acceptance criteria. That isolation is what makes the verdict useful; if the judge could see the worker's reasoning, it would tend to agree with it.
 
 You can route the judge to a *different* provider than the worker via `TILTH_JUDGE_BASE_URL` / `TILTH_JUDGE_API_KEY`. Cross-family judging (e.g. open worker model + frontier closed judge) catches failure modes that same-family judging shares as blind spots.
 
