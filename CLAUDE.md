@@ -6,8 +6,6 @@ Guidance for Claude Code (claude.ai/code) when working in this repo.
 
 A minimal long-running agent harness against any OpenAI-compatible LLM endpoint. It implements the Brain / Hands / Session split, the Ralph loop, and the four memory channels from Addy Osmani's posts on long-running agents. Built as both a working tool and the practical centerpiece of an Altered Craft article.
 
-The repo is **not** a framework. It's an artefact. ~600 lines of Python, kept deliberately small.
-
 ## Where to look first
 
 - **`mkdocs.yml`** — **the canonical map of the documentation set**, and your primary entry point when looking for docs by topic. The `nav:` block has a one- to four-line comment above each leaf entry summarising what the linked `.md` covers and when you'd reach for it; skim those comments first, then open the page that fits. Everything that matters for users and contributors lives under `docs/`; `README.md` is the GitHub landing page and points into `docs/` for anything beyond the elevator pitch.
