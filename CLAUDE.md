@@ -12,7 +12,7 @@ A minimal long-running agent harness against any OpenAI-compatible LLM endpoint.
 - **`README.md`** — terse GitHub landing page: product elevator pitch (with the Brain/Hands/Session image), a minimal quickstart, and the working-with-the-codebase commands (lint, tests, docs). **Not a mirror** of `docs/index.md` — for any product detail beyond the pitch, README points readers into `docs/`. Edit the two files independently.
 - **`docs/getting-started/your-own-project.md`** — the "honest version" of using Tilth on a non-demo codebase: prepping the four seed files, test-filename convention, caveats, judge-model picking, when it's the wrong tool. (Successor to the old root-level `USAGE.md`.)
 - **`docs/deep-dives/`** — code-level walk-throughs of the two loops, iteration accounting, token recording/enforcement, and the agent-visibility boundary. Read this before changing any of those mechanics. (Successor to the old root-level `deep-dives.md`.)
-- **The demo workspace** — lives in its own repo at [`AlteredCraft/tilth-demo-todo-cli`](https://github.com/AlteredCraft/tilth-demo-todo-cli). Conventional clone path is `{{your projects folder}}/tilth-demo` (sibling to Tilth, matches README and the docs). Tilth treats the path as just an argument, so any path works.
+- **The demo workspace** — lives in its own repo at [`AlteredCraft/tilth-demo-todo-cli`](https://github.com/AlteredCraft/tilth-demo-todo-cli). Conventional clone path is `~/projects/tilth-demo` (sibling to Tilth, matches README and the docs). Tilth treats the path as just an argument, so any path works.
 - **`docs/assets/IMAGE_STYLE.md`** — the prompt scaffold for generating new docs *images*, anchored to the canonical `brain-hands-session.png`. Use this whenever you generate a new diagram or illustration so the visual voice stays consistent across pages. Not in the published nav (excluded via `not_in_nav` in `mkdocs.yml`).
 - **`docs/assets/SITE_STYLE.md`** — the visual identity for the rendered docs *site* (Material for MkDocs + custom CSS). Documents the provenance of the theme (Hex, from [refero.design](https://refero.design)), the load-bearing tokens, and the do's-and-don'ts to follow when editing `docs/stylesheets/extra.css` or `mkdocs.yml`. Companion to `IMAGE_STYLE.md`; also excluded from the published nav.
 
@@ -50,7 +50,7 @@ tilth/
 └── sessions/              # per-run state (gitignored)
 ```
 
-The demo workspace is a separate repo (`AlteredCraft/tilth-demo-todo-cli`) cloned alongside Tilth — by convention at `{{your projects folder}}/tilth-demo`. It is not part of the Tilth repo.
+The demo workspace is a separate repo (`AlteredCraft/tilth-demo-todo-cli`) cloned alongside Tilth — by convention at `~/projects/tilth-demo`. It is not part of the Tilth repo.
 
 ## Conventions
 
@@ -103,8 +103,8 @@ uv run --extra docs mkdocs serve
 
 # Demo (needs TILTH_API_KEY set in .env, and a local clone of the demo repo
 # at AlteredCraft/tilth-demo-todo-cli — conventional path is sibling to Tilth)
-git clone git@github.com:AlteredCraft/tilth-demo-todo-cli.git {{your projects folder}}/tilth-demo
-uv run tilth {{your projects folder}}/tilth-demo
+git clone git@github.com:AlteredCraft/tilth-demo-todo-cli.git ~/projects/tilth-demo
+uv run tilth ~/projects/tilth-demo
 
 # Resume an interrupted session (latest in sessions/, or by id)
 uv run tilth --resume
@@ -125,7 +125,7 @@ jq -c . sessions/<session_id>/events.jsonl | head -40
 
 ## Working with the demo
 
-The demo lives in its own repo at [`AlteredCraft/tilth-demo-todo-cli`](https://github.com/AlteredCraft/tilth-demo-todo-cli). Clone it as a sibling of Tilth (canonical path: `{{your projects folder}}/tilth-demo`) before running it. The path is just an argument to `uv run tilth`, so any path works.
+The demo lives in its own repo at [`AlteredCraft/tilth-demo-todo-cli`](https://github.com/AlteredCraft/tilth-demo-todo-cli). Clone it as a sibling of Tilth (canonical path: `~/projects/tilth-demo`) before running it. The path is just an argument to `uv run tilth`, so any path works.
 
 The demo has to be a git repo because Tilth's worktree machinery requires it. To tear down a session's artifacts (worktree, `session/<id>` branch, `sessions/<id>/`), use `--reset` rather than the manual recipe:
 
@@ -139,7 +139,7 @@ uv run tilth --reset <session_id>   # explicit
 If `--reset` itself can't run (e.g., session metadata missing), the manual fallback is:
 
 ```bash
-cd <demo-clone-path>                  # e.g. {{your projects folder}}/tilth-demo
+cd <demo-clone-path>                  # e.g. ~/projects/tilth-demo
 git worktree prune
 git branch -D session/<id>            # if it still exists
 rm -rf <tilth-clone-path>/sessions/<id>/

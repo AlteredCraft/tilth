@@ -61,7 +61,7 @@ tilth/
 └── sessions/              # per-run state (gitignored)
 ```
 
-The demo workspace is a separate repo (`AlteredCraft/tilth-demo-todo-cli`) cloned alongside Tilth — by convention at `{{your projects folder}}/tilth-demo`. It is not part of the Tilth repo.
+The demo workspace is a separate repo (`AlteredCraft/tilth-demo-todo-cli`) cloned alongside Tilth — by convention at `~/projects/tilth-demo`. It is not part of the Tilth repo.
 
 ## Architecture invariants worth preserving
 

@@ -5,15 +5,15 @@ The demo is a small todo-CLI workspace, pre-seeded with `prd.json`, `AGENTS.md`,
 ## Clone the demo workspace
 
 ```bash
-git clone git@github.com:AlteredCraft/tilth-demo-todo-cli.git {{your projects folder}}/tilth-demo
+git clone git@github.com:AlteredCraft/tilth-demo-todo-cli.git ~/projects/tilth-demo
 ```
 
-The conventional layout is to clone the demo as a sibling of Tilth itself, so paths in this site (and in the source tree) refer to `{{your projects folder}}/tilth-demo`. Tilth doesn't actually care where the workspace lives; the path is just an argument. Treat it as a stand-in for your own repo.
+The conventional layout is to clone the demo as a sibling of Tilth itself, so paths in this site (and in the source tree) refer to `~/projects/tilth-demo`. Tilth doesn't actually care where the workspace lives; the path is just an argument. Treat it as a stand-in for your own repo.
 
 ## Run a session against the demo
 
 ```bash
-uv run tilth {{your projects folder}}/tilth-demo
+uv run tilth ~/projects/tilth-demo
 ```
 
 What happens, end-to-end:
@@ -44,13 +44,13 @@ The console streams every tool call as it happens. Useful cues:
 ## After the run
 
 ```bash
-cd {{your projects folder}}/tilth-demo
+cd ~/projects/tilth-demo
 git log session/<id> --oneline
 git diff main..session/<id>
 ```
 
 Each task is one commit. If you like the work, merge it into `main` like any other branch; if not, delete the branch. The harness never auto-merges. (You can also use [Resetting a session](resetting.md) to throw away the worktree, branch, and the harness's session directory in one shot.)
 
-The session log lives at `{{your projects folder}}/tilth/sessions/<id>/events.jsonl` — every model call, tool call, validator run, judge verdict, and AGENTS.md update is recorded. Alongside it, `sessions/<id>/summary.json` carries a rolled-up snapshot (token totals, per-task iteration counts, tool histogram, hook outcomes, judge accept/reject) refreshed at every task boundary — read that when you want a quick stat without `jq`-ing the full log.
+The session log lives at `~/projects/tilth/sessions/<id>/events.jsonl` — every model call, tool call, validator run, judge verdict, and AGENTS.md update is recorded. Alongside it, `sessions/<id>/summary.json` carries a rolled-up snapshot (token totals, per-task iteration counts, tool histogram, hook outcomes, judge accept/reject) refreshed at every task boundary — read that when you want a quick stat without `jq`-ing the full log.
 
 For a more readable view of a finished run, see [Visualizing a session](visualizing.md).

@@ -11,9 +11,19 @@ Tilth is a small Python package; setup is straight `uv` plumbing plus a `.env`.
 
 ## Clone and install
 
+Tilth and the project you point it at are **independent checkouts**. A common layout:
+
+```
+~/projects/
+├── tilth/        ← this repo
+└── project-x/    ← the codebase Tilth works on
+```
+
+The two directories don't need to be siblings — Tilth treats the workspace path as a plain CLI argument (`uv run tilth <path>`), so any path works. The sibling layout is just a convention used throughout these docs.
+
 ```bash
-git clone git@github.com:AlteredCraft/tilth.git {{your projects folder}}/tilth
-cd {{your projects folder}}/tilth
+git clone git@github.com:AlteredCraft/tilth.git ~/projects/tilth
+cd ~/projects/tilth
 uv venv
 uv sync
 cp .env.example .env

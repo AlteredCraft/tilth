@@ -90,7 +90,7 @@ That's the seed state the harness branches from.
 ## 2. Run it
 
 ```bash
-cd {{your projects folder}}/tilth
+cd ~/projects/tilth
 uv run tilth /absolute/path/to/your/repo
 ```
 
@@ -128,7 +128,7 @@ The session log lives at `{{tilth-clone-path}}/sessions/<id>/events.jsonl` — e
 - **Costs are real.** A 2-hour run can mean hundreds of thousands of tokens across worker + judge + self-improvement calls. The `TILTH_MAX_TOKENS` cap exists for a reason — set it on first run. Cost per token varies wildly across providers; pick your worker accordingly. Be careful about reaching for a smaller judge model to cut costs — see [Picking a judge model](#5-picking-a-judge-model) below.
 - **AGENTS.md is yours forever.** It accumulates. Prune it periodically — old learnings that the model has clearly internalised should be removed (the ratchet works in both directions).
 - **Tools are intentionally narrow.** No web fetch, no MCP, no curl-based downloads. If your tasks require external API access, you add a tool to `tilth/tools/` and register it. Keep tools focused — every tool description ships in the prompt every turn.
-- **The harness commits to your repo's git db.** The worktree branch is in your repo, not the harness's. If you delete `{{your projects folder}}/tilth`, the branches in your project's repo remain. Clean up branches the same way you would for a normal feature branch.
+- **The harness commits to your repo's git db.** The worktree branch is in your repo, not the harness's. If you delete `~/projects/tilth`, the branches in your project's repo remain. Clean up branches the same way you would for a normal feature branch.
 
 ## 5. Picking a judge model
 

@@ -34,7 +34,7 @@ For the implementation walk-through and idempotency story, see [Reset mechanics]
 If `--reset` itself can't run (e.g. the session metadata is missing), the manual recipe still works:
 
 ```bash
-cd <demo-clone-path>                  # e.g. {{your projects folder}}/tilth-demo
+cd <demo-clone-path>                  # e.g. ~/projects/tilth-demo
 git worktree prune
 git branch -D session/<id>            # if it still exists
 rm -rf <tilth-clone-path>/sessions/<id>/
