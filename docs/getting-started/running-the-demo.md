@@ -31,7 +31,7 @@ What happens, end-to-end:
 
 > **Diagram suggestion** — *a left-to-right flow diagram of one task's lifecycle inside the harness: prompt assembly → tool-use loop → validators → judge → self-improvement → commit. Annotate which steps the agent sees and which are pure harness machinery.*
 
-You can interrupt at any point with Ctrl-C. See [Resuming a session](resuming.md) to pick up where it stopped.
+You can interrupt at any point with Ctrl-C. Ctrl-C and cap hits (iteration, wall-clock, token) both leave the run in a resumable state — see [Resuming a session](resuming.md) to pick it back up. If a cap was what stopped you, bump it in `.env` first or `--resume` will trip it again.
 
 ## What you should expect to see
 
@@ -48,6 +48,15 @@ A clean run ends with every task in `prd.json` marked `done` and a commit-per-ta
 - **Validator feedback loops** show as repeated `validator_failed → next iteration` patterns. A handful is normal; a long string usually means the test suite or the lint config is misaligned with the agent's idea of "done."
 
 ## After the run
+
+Once every task in `prd.json` is `done`, the harness closes out the final task and prints `all tasks complete` followed by a run summary:
+
+![Terminal capture of a Tilth run completing. Task T-005 iter 11 finishes; the model summary reports "All 17 tests pass (including all 6 T-005 acceptance tests). The task is complete." Validators pass and the judge accepts. The self-improvement step appends a new AGENTS.md gotcha about keeping formatting functions pure (no `sys.exit()` inside them). T-005 is committed (`88fb4a4`); the harness prints "all tasks complete". A run summary block follows: session 20260523-082151-45f0a5, branch session/20260523-082151-45f0a5, duration 6m10s (5.1% of TILTH_MAX_WALL_CLOCK_MINUTES=120), tasks done=5 failed=0 pending=0.](../assets/tilth-demo-terminal-complete.png)
+
+*A clean ending. The final task closes (model → validators → judge), the self-improvement step appends a new AGENTS.md gotcha, the commit lands, and the summary reports `done=5 failed=0 pending=0` with caps well under.*
+{: .caption }
+
+To inspect what just got committed:
 
 ```bash
 cd ~/projects/tilth-demo
