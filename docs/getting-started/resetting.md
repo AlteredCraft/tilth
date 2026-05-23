@@ -1,6 +1,6 @@
 # Resetting a session
 
-Drop a session's worktree, delete its `session/<id>` branch from the source repo, and remove `sessions/<id>/` — in a single command.
+Drop a session's worktree, delete its `session/<id>` branch from the source repo, and remove `sessions/<id>/` — in a single command. A run lives on disk in two places (working tree under Tilth's `sessions/`; branch in the source repo's `.git`); reset tears down both halves. See [Session layout](../deep-dives/session-layout.md) for the split.
 
 ## How to reset
 

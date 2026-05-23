@@ -10,3 +10,4 @@ The [Getting started](../getting-started/installation.md) and [Architecture](../
 - **[How the caps fit together](caps.md)** — the five things that can stop a run, and which level (session vs. task) each one operates at.
 - **[Resume mechanics](resume-mechanics.md)** — what `--resume` actually mutates on wake; resumable-session detection.
 - **[Reset mechanics](reset-mechanics.md)** — what `--reset` tears down, idempotency, the manual fallback.
+- **[Session layout](session-layout.md)** — where a run lives on disk: working tree under Tilth's `sessions/<id>/`, branch in the source repo's `.git`. Why the working tree stays on the harness side and out of the target repo.

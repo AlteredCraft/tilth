@@ -19,7 +19,7 @@ uv run tilth ~/projects/tilth-demo
 What happens, end-to-end:
 
 1. Tilth verifies the path is a git repo on a clean main.
-2. Creates a worktree at `sessions/<id>/workspace/` on a new branch `session/<id>` in **the demo repo's `.git`**.
+2. Creates a worktree of the demo repo. The working tree lives at `~/projects/tilth/sessions/<id>/workspace/` (inside Tilth, gitignored); the new branch `session/<id>` is registered in the demo repo's `.git`. The two halves live in different places by design — see [Session layout](../deep-dives/session-layout.md) for the why.
 3. Loops through pending tasks in `prd.json`. For each task:
     - Reset context. Prompt = system + AGENTS.md + recent progress + this task.
     - Tool-loop with the worker model (bash, file ops, search) until it stops calling tools.

@@ -87,6 +87,11 @@ nav:
       # checkpoint + `session_start` event → confirm → tear down. Idempotency
       # contract (already-missing pieces are skipped, not errored).
       - Reset mechanics: deep-dives/reset-mechanics.md
+      # Where a run lives on disk: working tree under Tilth's
+      # `sessions/<id>/workspace/`, branch + worktree admin entry in the
+      # source repo's `.git`. Why the working tree stays on the harness
+      # side and out of the target repo.
+      - Session layout: deep-dives/session-layout.md
 
   - Reference:
       # Compact summary of the safety story: hard stops (the caps), the

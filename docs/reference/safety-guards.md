@@ -28,7 +28,7 @@ A blocked call surfaces as a tool-error feedback message to the agent on the nex
 
 ## Worktree isolation
 
-Every run creates a per-session git worktree on a `session/<id>` branch in *your* repo's git database. The agent only ever touches files inside that worktree. The harness's hooks won't let it edit outside it.
+Every run creates a per-session git worktree on a `session/<id>` branch in *your* repo's git database. The working tree itself lives under Tilth's `sessions/<id>/workspace/` — see [Session layout](../deep-dives/session-layout.md) for the split. The agent only ever touches files inside that worktree; the harness's hooks won't let it edit outside it.
 
 The branch is **never auto-merged**. Open a PR and review like any other branch.
 

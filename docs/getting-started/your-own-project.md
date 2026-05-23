@@ -128,7 +128,7 @@ The session log lives at `{{tilth-clone-path}}/sessions/<id>/events.jsonl` — e
 - **Costs are real.** A 2-hour run can mean hundreds of thousands of tokens across worker + judge + self-improvement calls. The `TILTH_MAX_TOKENS` cap exists for a reason — set it on first run. Cost per token varies wildly across providers; pick your worker accordingly. Be careful about reaching for a smaller judge model to cut costs — see [Picking a judge model](#5-picking-a-judge-model) below.
 - **AGENTS.md is yours forever.** It accumulates. Prune it periodically — old learnings that the model has clearly internalised should be removed (the ratchet works in both directions).
 - **Tools are intentionally narrow.** No web fetch, no MCP, no curl-based downloads. If your tasks require external API access, you add a tool to `tilth/tools/` and register it. Keep tools focused — every tool description ships in the prompt every turn.
-- **The harness commits to your repo's git db.** The worktree branch is in your repo, not the harness's. If you delete `~/projects/tilth`, the branches in your project's repo remain. Clean up branches the same way you would for a normal feature branch.
+- **The harness commits to your repo's git db.** Tilth keeps the working tree under `sessions/<id>/workspace/` on its own side, but the branch `session/<id>` lives in *your* repo's `.git`. So if you delete `~/projects/tilth` without resetting first, those branches remain in your project. Clean up branches the same way you would for a normal feature branch — or run `--reset` before you blow Tilth away. See [Session layout](../deep-dives/session-layout.md) for the full split.
 
 ## 5. Picking a judge model
 
