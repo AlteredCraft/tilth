@@ -20,9 +20,16 @@ from typing import Any
 
 from openai import OpenAI
 
-_REASONING_FALSY = {"false", "0", "no", "off"}
-
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
+
+
+def _is_openrouter(base_url: str) -> bool:
+    """OpenRouter's normalised `reasoning.enabled` request param is OpenRouter-
+    specific syntax. Other OpenAI-compatible providers use different shapes
+    (OpenAI's top-level `reasoning_effort`, Anthropic's `thinking`, etc.), so
+    we only send the opt-in when the base URL is OpenRouter.
+    """
+    return "openrouter.ai" in base_url
 
 _HISTORY_KEEP = frozenset({
     "role",
@@ -84,7 +91,6 @@ class TilthConfig:
     max_judge_calls_per_task: int
     max_wall_clock_minutes: int
     max_tokens: int
-    reasoning_enabled: bool
 
     @classmethod
     def from_env(cls) -> TilthConfig:
@@ -110,8 +116,6 @@ class TilthConfig:
         judge_model = os.environ.get("TILTH_JUDGE_MODEL", "").strip() or worker_model
         judge_base_url = os.environ.get("TILTH_JUDGE_BASE_URL", "").strip() or base_url
         judge_api_key = os.environ.get("TILTH_JUDGE_API_KEY", "").strip() or api_key
-        reasoning_raw = os.environ.get("TILTH_REASONING_ENABLED", "").strip().lower()
-        reasoning_enabled = reasoning_raw not in _REASONING_FALSY
         return cls(
             base_url=base_url,
             api_key=api_key,
@@ -125,7 +129,6 @@ class TilthConfig:
             ),
             max_wall_clock_minutes=int(os.environ.get("TILTH_MAX_WALL_CLOCK_MINUTES", "120")),
             max_tokens=int(os.environ.get("TILTH_MAX_TOKENS", "2000000")),
-            reasoning_enabled=reasoning_enabled,
         )
 
 
@@ -168,14 +171,14 @@ class LLMClient:
         kwargs: dict[str, Any] = {"model": target, "messages": messages}
         if tools:
             kwargs["tools"] = tools
-        if self.config.reasoning_enabled:
+        if _is_openrouter(self.config.base_url):
             # OpenRouter-normalised opt-in for thinking-mode models. Without it,
             # parallel-tool-call turns sometimes return reasoning_details: null
             # — and the next request then 400s because the upstream protocol
             # expects reasoning to be echoed. With it, reasoning_details is
-            # always populated and `_assistant_history_message` echoes it back.
-            # Non-OpenRouter providers generally ignore this body field; set
-            # TILTH_REASONING_ENABLED=false if yours rejects it.
+            # always populated and `assistant_history_message` echoes it back.
+            # Only sent for OpenRouter base URLs since this is OpenRouter-
+            # specific syntax (other gateways use different shapes).
             kwargs["extra_body"] = {"reasoning": {"enabled": True}}
 
         resp = client.chat.completions.create(**kwargs)

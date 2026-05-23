@@ -146,7 +146,7 @@ Academic LLM-as-a-judge research bears this out: evaluators are typically run wi
 
 The `TILTH_JUDGE_BASE_URL` / `TILTH_JUDGE_API_KEY` feature is genuinely useful, but mostly for **cross-family independence**, not cost:
 
-- **Worker = open model on Ollama Cloud, judge = Claude on OpenRouter.** Different model families catch different failure modes. Same-family judging shares the worker's blind spots.
+- **Worker = open model, judge = Claude (both on OpenRouter).** Different model families catch different failure modes. Same-family judging shares the worker's blind spots.
 - **Worker = capable open model, judge = frontier closed model.** When you need the strongest possible gate, route the judge to whatever's at the top of the leaderboard for code review.
 
 Both of these are *upgrading* the judge, not downgrading it.
@@ -163,7 +163,7 @@ For a Ralph loop doing real code review, none of these usually apply. Default to
 
 ## 6. When this is the wrong tool
 
-- **Closed-source-only tasks.** If you can't share code with whichever provider you're pointed at, don't use this. Point at a self-hosted vLLM or LM Studio if you need to keep code on-prem.
+- **Closed-source-only tasks.** If you can't share code with OpenRouter, this isn't the right tool today. A self-hosted OpenAI-compatible endpoint (vLLM, LM Studio) might work via the OpenAI SDK but hasn't been validated.
 - **Models without tool-calling support.** Some OpenRouter routes, some smaller open models, and most "completion-only" endpoints will fail or hallucinate tool calls. Verify on the demo workspace first.
 - **Polyglot codebases.** Adapt the validators, or accept that only the judge model is gating quality.
 - **One-shot prompts.** If your work fits in one Claude Code or Cursor session, just use that.

@@ -1,4 +1,4 @@
-"""Regression test for forcing reasoning content on every chat completion.
+"""Regression test for the OpenRouter-only reasoning opt-in.
 
 Multi-tool-call turns from reasoning-mode models on OpenRouter sometimes return
 `reasoning_details: null` even though the upstream model is in thinking mode.
@@ -7,30 +7,26 @@ The fix is to opt into reasoning explicitly via OpenRouter's normalised
 `reasoning: { enabled: true }` request parameter — see
 https://openrouter.ai/docs/guides/best-practices/reasoning-tokens.
 
-This test pins that the parameter is on the wire by default and that
-TILTH_REASONING_ENABLED=false turns it off for providers that reject it.
+That parameter is OpenRouter-specific syntax (OpenAI uses a top-level
+`reasoning_effort`; Anthropic uses `thinking`), so we only put it on the wire
+when `TILTH_BASE_URL` points at OpenRouter. These tests pin both branches.
 """
 
 from __future__ import annotations
 
-import os
 from typing import Any
 from unittest.mock import MagicMock
 
-from tilth.client import LLMClient, TilthConfig
+from tilth.client import LLMClient, TilthConfig, _is_openrouter
 
 
-def _make_client(monkeypatch, reasoning_env: str | None) -> tuple[LLMClient, MagicMock]:
+def _make_client(monkeypatch, base_url: str) -> tuple[LLMClient, MagicMock]:
     monkeypatch.setenv("TILTH_API_KEY", "test-key")
-    monkeypatch.setenv("TILTH_BASE_URL", "https://test.invalid/v1")
+    monkeypatch.setenv("TILTH_BASE_URL", base_url)
     monkeypatch.setenv("TILTH_WORKER_MODEL", "test-model")
     monkeypatch.delenv("TILTH_JUDGE_MODEL", raising=False)
     monkeypatch.delenv("TILTH_JUDGE_BASE_URL", raising=False)
     monkeypatch.delenv("TILTH_JUDGE_API_KEY", raising=False)
-    if reasoning_env is None:
-        monkeypatch.delenv("TILTH_REASONING_ENABLED", raising=False)
-    else:
-        monkeypatch.setenv("TILTH_REASONING_ENABLED", reasoning_env)
 
     config = TilthConfig.from_env()
     client = LLMClient(config)
@@ -50,53 +46,24 @@ def _kwargs_for(create: MagicMock) -> dict[str, Any]:
     return create.call_args.kwargs
 
 
-def test_reasoning_param_default_enabled(monkeypatch):
-    client, create = _make_client(monkeypatch, reasoning_env=None)
-    client.chat([{"role": "user", "content": "hello"}])
-    kwargs = _kwargs_for(create)
-    assert kwargs["extra_body"] == {"reasoning": {"enabled": True}}
-
-
-def test_reasoning_param_explicit_true(monkeypatch):
-    client, create = _make_client(monkeypatch, reasoning_env="true")
+def test_reasoning_param_sent_for_openrouter(monkeypatch):
+    client, create = _make_client(monkeypatch, base_url="https://openrouter.ai/api/v1")
     client.chat([{"role": "user", "content": "hello"}])
     assert _kwargs_for(create)["extra_body"] == {"reasoning": {"enabled": True}}
 
 
-def test_reasoning_param_disabled(monkeypatch):
-    client, create = _make_client(monkeypatch, reasoning_env="false")
+def test_reasoning_param_omitted_for_non_openrouter(monkeypatch):
+    client, create = _make_client(monkeypatch, base_url="https://api.openai.com/v1")
     client.chat([{"role": "user", "content": "hello"}])
     kwargs = _kwargs_for(create)
     assert "extra_body" not in kwargs or not kwargs.get("extra_body")
 
 
-def _set_required(monkeypatch) -> None:
-    monkeypatch.setenv("TILTH_API_KEY", "k")
-    monkeypatch.setenv("TILTH_BASE_URL", "https://test.invalid/v1")
-    monkeypatch.setenv("TILTH_WORKER_MODEL", "test-model")
+def test_is_openrouter_recognises_canonical_host():
+    assert _is_openrouter("https://openrouter.ai/api/v1") is True
 
 
-def test_tilthconfig_reasoning_field_default_true(monkeypatch):
-    _set_required(monkeypatch)
-    monkeypatch.delenv("TILTH_REASONING_ENABLED", raising=False)
-    cfg = TilthConfig.from_env()
-    assert cfg.reasoning_enabled is True
-
-
-def test_tilthconfig_reasoning_field_disabled(monkeypatch):
-    _set_required(monkeypatch)
-    monkeypatch.setenv("TILTH_REASONING_ENABLED", "false")
-    cfg = TilthConfig.from_env()
-    assert cfg.reasoning_enabled is False
-
-
-def test_tilthconfig_reasoning_field_accepts_truthy_strings(monkeypatch):
-    _set_required(monkeypatch)
-    for val, expected in [("true", True), ("1", True), ("yes", True),
-                          ("false", False), ("0", False), ("no", False), ("", True)]:
-        if val == "":
-            os.environ.pop("TILTH_REASONING_ENABLED", None)
-        else:
-            os.environ["TILTH_REASONING_ENABLED"] = val
-        cfg = TilthConfig.from_env()
-        assert cfg.reasoning_enabled is expected, f"expected {expected} for {val!r}"
+def test_is_openrouter_rejects_other_hosts():
+    assert _is_openrouter("https://api.openai.com/v1") is False
+    assert _is_openrouter("https://ollama.com/v1") is False
+    assert _is_openrouter("http://localhost:8000/v1") is False
