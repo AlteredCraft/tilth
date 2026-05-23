@@ -17,7 +17,7 @@ For the full product story — the Brain/Hands/Session split in detail, the four
 ```bash
 git clone git@github.com:AlteredCraft/tilth.git
 cd tilth
-uv venv && uv sync
+uv sync
 cp .env.example .env
 # edit .env — TILTH_BASE_URL, TILTH_API_KEY, TILTH_WORKER_MODEL are all required
 # (Tilth refuses to start without them so a misconfigured run can't silently

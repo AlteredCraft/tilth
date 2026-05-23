@@ -11,24 +11,17 @@ Tilth is a small Python package; setup is straight `uv` plumbing plus a `.env`.
 
 ## Clone and install
 
-Tilth and the project you point it at are **independent checkouts**. A common layout:
-
-```
-~/projects/
-├── tilth/        ← this repo
-└── project-x/    ← the codebase Tilth works on
-```
-
-The two directories don't need to be siblings — Tilth treats the workspace path as a plain CLI argument (`uv run tilth <path>`), so any path works. The sibling layout is just a convention used throughout these docs.
+Tilth and the project you point it at are **independent checkouts** — Tilth lives in its own directory, and the codebase it works on lives somewhere else. Clone Tilth wherever you keep code; the `tilth` command takes the target repo as a plain path argument (`uv run tilth <path>`), so any layout works.
 
 ```bash
-git clone git@github.com:AlteredCraft/tilth.git ~/projects/tilth
-cd ~/projects/tilth
-uv venv
+git clone git@github.com:AlteredCraft/tilth.git
+cd tilth
 uv sync
 cp .env.example .env
 # edit .env, set TILTH_BASE_URL, TILTH_API_KEY, and TILTH_WORKER_MODEL
 ```
+
+> **About the example paths in these docs.** Later pages show commands like `uv run tilth ~/projects/project-x` and reference paths such as `~/projects/tilth/sessions/<id>/`. That layout — Tilth and the target repo sitting side-by-side under `~/projects/` — is just one illustrative choice for the worked examples. Substitute whatever paths match your own setup.
 
 All three of `TILTH_BASE_URL`, `TILTH_API_KEY`, and `TILTH_WORKER_MODEL` are **required** — Tilth refuses to start without them so a misconfigured run can't silently fall back to a provider/model your account doesn't have. The example `.env` points at OpenRouter.
 

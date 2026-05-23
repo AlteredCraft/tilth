@@ -12,7 +12,7 @@ A minimal long-running agent harness against any OpenAI-compatible LLM endpoint.
 - **`README.md`** — terse GitHub landing page: product elevator pitch (with the Brain/Hands/Session image), a minimal quickstart, and the working-with-the-codebase commands (lint, tests, docs). **Not a mirror** of `docs/index.md` — for any product detail beyond the pitch, README points readers into `docs/`. Edit the two files independently.
 - **`docs/getting-started/your-own-project.md`** — the "honest version" of using Tilth on a non-demo codebase: prepping the four seed files, test-filename convention, caveats, judge-model picking, when it's the wrong tool. (Successor to the old root-level `USAGE.md`.)
 - **`docs/deep-dives/`** — code-level walk-throughs of the two loops, iteration accounting, token recording/enforcement, and the agent-visibility boundary. Read this before changing any of those mechanics. (Successor to the old root-level `deep-dives.md`.)
-- **The demo workspace** — lives in its own repo at [`AlteredCraft/tilth-demo-todo-cli`](https://github.com/AlteredCraft/tilth-demo-todo-cli). Conventional clone path is `~/projects/tilth-demo` (sibling to Tilth, matches README and the docs). Tilth treats the path as just an argument, so any path works.
+- **The demo workspace** — lives in its own repo at [`AlteredCraft/tilth-demo-todo-cli`](https://github.com/AlteredCraft/tilth-demo-todo-cli). The docs use `~/projects/tilth-demo` as an illustrative path, but Tilth treats the path as just an argument so any layout works.
 - **`docs/assets/IMAGE_STYLE.md`** — the prompt scaffold for generating new docs *images*, anchored to the canonical `brain-hands-session.png`. Use this whenever you generate a new diagram or illustration so the visual voice stays consistent across pages. Not in the published nav (excluded via `not_in_nav` in `mkdocs.yml`).
 - **`docs/assets/SITE_STYLE.md`** — the visual identity for the rendered docs *site* (Material for MkDocs + custom CSS). Documents the provenance of the theme (Hex, from [refero.design](https://refero.design)), the load-bearing tokens, and the do's-and-don'ts to follow when editing `docs/stylesheets/extra.css` or `mkdocs.yml`. Companion to `IMAGE_STYLE.md`; also excluded from the published nav.
 
@@ -50,12 +50,12 @@ tilth/
 └── sessions/              # per-run state (gitignored)
 ```
 
-The demo workspace is a separate repo (`AlteredCraft/tilth-demo-todo-cli`) cloned alongside Tilth — by convention at `~/projects/tilth-demo`. It is not part of the Tilth repo.
+The demo workspace is a separate repo (`AlteredCraft/tilth-demo-todo-cli`) — not part of the Tilth repo. Clone it wherever you keep code; the docs use `~/projects/tilth-demo` as an illustrative path, but the location is arbitrary.
 
 ## Conventions
 
 - **Python 3.12.** `from __future__ import annotations` everywhere.
-- **`uv` for env management.** `uv venv && uv pip install -e .`
+- **`uv` for env management.** `uv sync`
 - **`ruff` for lint.** Config in `pyproject.toml`. Run `ruff check tilth/` before declaring work done.
 - **Type hints on public functions.** Internal helpers can skip them.
 - **No comments unless the WHY is non-obvious.** Don't narrate WHAT the code does.
@@ -88,7 +88,7 @@ These are load-bearing. Read the relevant page under `docs/deep-dives/` before b
 
 ```bash
 # Setup
-uv venv && uv pip install -e .
+uv sync
 
 # Lint
 .venv/bin/python -m ruff check tilth/
@@ -102,7 +102,7 @@ uv run --extra docs mkdocs build --strict --site-dir /tmp/tilth-site
 uv run --extra docs mkdocs serve
 
 # Demo (needs TILTH_API_KEY set in .env, and a local clone of the demo repo
-# at AlteredCraft/tilth-demo-todo-cli — conventional path is sibling to Tilth)
+# at AlteredCraft/tilth-demo-todo-cli — clone it wherever; path below is illustrative)
 git clone git@github.com:AlteredCraft/tilth-demo-todo-cli.git ~/projects/tilth-demo
 uv run tilth ~/projects/tilth-demo
 
@@ -125,7 +125,7 @@ jq -c . sessions/<session_id>/events.jsonl | head -40
 
 ## Working with the demo
 
-The demo lives in its own repo at [`AlteredCraft/tilth-demo-todo-cli`](https://github.com/AlteredCraft/tilth-demo-todo-cli). Clone it as a sibling of Tilth (canonical path: `~/projects/tilth-demo`) before running it. The path is just an argument to `uv run tilth`, so any path works.
+The demo lives in its own repo at [`AlteredCraft/tilth-demo-todo-cli`](https://github.com/AlteredCraft/tilth-demo-todo-cli). Clone it wherever you keep code before running it. The path is just an argument to `uv run tilth`, so any layout works; the docs use `~/projects/tilth-demo` as an illustrative example.
 
 The demo has to be a git repo because Tilth's worktree machinery requires it. To tear down a session's artifacts (worktree, `session/<id>` branch, `sessions/<id>/`), use `--reset` rather than the manual recipe:
 

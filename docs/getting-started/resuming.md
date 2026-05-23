@@ -11,6 +11,13 @@ uv run tilth --resume <session_id>  # or name one explicitly
 
 Bare `--resume` selects the most recent session in `sessions/` by directory name (the timestamp prefix sorts chronologically).
 
+Continuing the [cap-hit example from the caps deep-dive](../deep-dives/caps.md#what-hitting-a-cap-looks-like) — same session (`20260523-082151-45f0a5`), with `TILTH_MAX_ITERATIONS_PER_TASK` bumped from `8` to `16` in `.env` before resuming:
+
+![Terminal capture of `uv run tilth --resume`. The harness prints "↻ resume plan: retrying T-003 (was: failed); then: T-004, T-005; last stop: iter_cap", then the session header (session id, branch, worktree, model deepseek/deepseek-v4-flash), then "task T-003 iter 1" with a read_file call, "task T-003 iter 2" with two glob calls, and "task T-003 iter 3" beginning.](../assets/resume-after-iter-cap.png)
+
+*The plan banner spells out what's about to happen: T-003 retried with a fresh iteration budget, then T-004 and T-005 picked up in order. The iteration counter restarts at 1 — the bumped cap gives the retry 16 iterations to work with instead of the 8 that ran out last time.*
+{: .caption }
+
 ## What resume does
 
 - Skips tasks already marked `done` in `prd.json` (which lives on the worktree branch).

@@ -10,6 +10,17 @@ At any moment during a run, five things can stop it:
 
 Caps 2 and 3 are **session-level**. Caps 4 and 5 are **task-level**. There is no per-call cap and no per-task token cap. That's the full safety story.
 
+## What hitting a cap looks like
+
+A cap-4 (iter_cap) hit, with the post-run summary the harness prints on the way out:
+
+![Terminal capture: task T-003 reaches iter 8, the harness logs "task T-003 hit iteration cap [TILTH_MAX_ITERATIONS_PER_TASK=8]" and then "× T-003 failed (iter_cap); halting run". A run summary block follows: session 20260523-082151-45f0a5, branch session/20260523-082151-45f0a5, duration 2m27s (2.0% of TILTH_MAX_WALL_CLOCK_MINUTES=120), tokens 75,387 (3.8% of TILTH_MAX_TOKENS=2,000,000), tasks done=2 failed=1 pending=2.](../assets/iter-cap-and-summary.png)
+
+*Two things to read here. Top: the cap fires and the run halts mid-task list (T-003 of five). Bottom: the run summary surfaces every cap as a percentage, so it's obvious which one bit — duration and tokens are both well under, only iterations were tight.*
+{: .caption }
+
+The `failed=1 pending=2` line in the summary is what `--resume` reads to plan its retry — see [Resuming a session](../getting-started/resuming.md) for what picks up from this exact point (same session id).
+
 > **Diagram suggestion** — *a layered cap diagram: an outer ring labelled "Session-level caps (MAX_WALL_CLOCK_MINUTES, MAX_TOKENS)" containing an inner ring labelled "Task-level caps (MAX_ITERATIONS_PER_TASK, MAX_JUDGE_CALLS_PER_TASK)." A central node represents the worker model call. Annotate each ring with what happens on hit (run stops vs. task fails + run halts).*
 
 ## Cross-references

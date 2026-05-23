@@ -13,12 +13,12 @@ The agent's *working directory* sits inside Tilth's `sessions/`, but every `git`
 
 A session has more artifacts than just the worktree — the rest of `sessions/<id>/` (events log, summary, checkpoint, rendered chat) all belong to one run. Co-locating them under one directory means one logical container per run, and `--reset` only has to walk one tree on the harness side.
 
-The flip side: the target repo stays pristine. Tilth never asks you to add anything to your `.gitignore`, and never drops a `.worktrees/` directory at the root of your project. The only thing it writes into the target repo is the branch and the worktree admin entry — both reversible with one `git worktree remove --force` + one `git branch -D`. If you delete `~/projects/tilth` entirely, no harness directories are left behind in your project. `--reset` handles both halves cleanly in one command; see [Reset mechanics](reset-mechanics.md).
+The flip side: the target repo stays pristine. Tilth never asks you to add anything to your `.gitignore`, and never drops a `.worktrees/` directory at the root of your project. The only thing it writes into the target repo is the branch and the worktree admin entry — both reversible with one `git worktree remove --force` + one `git branch -D`. If you delete your Tilth clone entirely, no harness directories are left behind in your project. `--reset` handles both halves cleanly in one command; see [Reset mechanics](reset-mechanics.md).
 
 ## Implications worth knowing
 
 - **`ls` in the target repo won't show the worktree.** If you're looking for "where is the agent editing right now," look under Tilth's `sessions/<id>/workspace/`, not in the target repo.
-- **Branches accumulate in the target repo, not in Tilth.** Every run leaves a `session/<id>` branch in the target repo's `.git/refs/heads/`. If you delete `~/projects/tilth` without resetting first, those branches stay behind in your project. Clean them up the same way you would any feature branch (`git branch -D session/<id>` or `--reset` before you blow Tilth away).
+- **Branches accumulate in the target repo, not in Tilth.** Every run leaves a `session/<id>` branch in the target repo's `.git/refs/heads/`. If you delete your Tilth clone without resetting first, those branches stay behind in your project. Clean them up the same way you would any feature branch (`git branch -D session/<id>` or `--reset` before you blow Tilth away).
 - **Multiple concurrent sessions against the same target repo are fine.** Each gets its own `sessions/<id>/workspace/` directory on the left and its own branch + admin entry on the right. Git is happy to host many worktrees off one repo.
 - **The admin entry is the link.** If the working tree directory under Tilth gets removed manually (e.g., `rm -rf`), the `.git/worktrees/<id>/` admin entry becomes stale; `git worktree prune` cleans it up. `--reset` does this correctly.
 
