@@ -426,6 +426,8 @@ def _run_task(
             "eval_tokens": eval_tokens,
             "tokens_used_total": session.tokens_used,
         }
+        if finish_reason := resp.get("finish_reason"):
+            model_call_payload["finish_reason"] = finish_reason
         if reasoning_details := msg.get("reasoning_details"):
             model_call_payload["reasoning_details"] = reasoning_details
         else:
@@ -685,7 +687,8 @@ def _print_summary(session: Session, client: LLMClient, worktree: Path | None) -
     )
     tokens_dim = f"({tokens_pct:.1f}% of TILTH_MAX_TOKENS={cfg.max_tokens:,})"
     base_keys = ("done", "failed", "pending")
-    task_bits = [f"{k}={counts.get(k, 0)}" for k in base_keys]
+    total = sum(counts.values())
+    task_bits = [f"total={total}"] + [f"{k}={counts.get(k, 0)}" for k in base_keys]
     extras = [f"{k}={v}" for k, v in counts.items() if k not in base_keys]
 
     console.print()

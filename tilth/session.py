@@ -12,6 +12,11 @@ Event types:
                          structured form) when the model emitted any, falling
                          back to a flat `reasoning` string. Either is omitted
                          when absent so non-thinking models keep slim events.
+                         Also carries `finish_reason` when the provider returns
+                         one — watch for `"length"`, which means the response
+                         (often a tool argument) was cut off by the provider's
+                         max-tokens limit and the agent will be working from
+                         truncated output.
     tool_call          — a tool invocation by the model
     tool_result        — the harness's response to a tool call
     pre_tool_block     — pre_tool hook vetoed a tool call (also captured as a
