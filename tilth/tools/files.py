@@ -13,17 +13,19 @@ NAME_WRITE = "write_file"
 NAME_EDIT = "edit_file"
 
 
+# Path args may be workspace-relative or absolute; _resolve normalizes both
+# and enforces the workspace boundary.
 SCHEMA_READ: dict[str, Any] = {
     "type": "function",
     "function": {
         "name": NAME_READ,
         "description": (
-            "Read a file's contents (up to 50KB). Path must be relative to the workspace root."
+            "Read a file's contents (up to 50KB)."
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "Path relative to workspace root."},
+                "path": {"type": "string", "description": "Path inside the workspace."},
             },
             "required": ["path"],
         },
@@ -41,7 +43,7 @@ SCHEMA_WRITE: dict[str, Any] = {
         "parameters": {
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "Path relative to workspace root."},
+                "path": {"type": "string", "description": "Path inside the workspace."},
                 "content": {"type": "string", "description": "Full file contents to write."},
             },
             "required": ["path", "content"],
@@ -61,7 +63,7 @@ SCHEMA_EDIT: dict[str, Any] = {
         "parameters": {
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "Path relative to workspace root."},
+                "path": {"type": "string", "description": "Path inside the workspace."},
                 "old_string": {
                     "type": "string",
                     "description": "Exact substring currently in the file.",
@@ -77,6 +79,9 @@ SCHEMA_EDIT: dict[str, Any] = {
 }
 
 
+# Security boundary for agent file access. .resolve() collapses `..` and follows
+# symlinks; is_relative_to(ws) is what stops escape. Covered by
+# tests/test_files_path_escape.py — don't loosen without updating those.
 def _resolve(path_str: str, workspace: Path) -> Path:
     if not isinstance(path_str, str) or not path_str.strip():
         raise ValueError("'path' must be a non-empty string")
