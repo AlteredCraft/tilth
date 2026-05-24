@@ -134,6 +134,14 @@ theme:
   icon:
     repo: fontawesome/brands/github
 
+plugins:
+  # `search` is enabled by default, but declaring a `plugins:` block disables
+  # all defaults — list it explicitly so site search keeps working.
+  - search
+  # Click-to-zoom lightbox for images. Applies to every <img> by default; opt
+  # out per-image with `{ .off-glb }` (see Material docs → reference/images).
+  - glightbox
+
 markdown_extensions:
   - toc:
       permalink: true
