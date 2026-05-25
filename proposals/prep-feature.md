@@ -1,9 +1,9 @@
 # Proposal: `tilth prep-feature` and the seed-handoff cleanup
 
-**Status:** Draft for review
+**Status:** Draft for review; prerequisites settled (the `agents-md-stance` PR shipped, locking AGENTS.md as read-only to Tilth)
 **Author:** Sam
 **Date:** 2026-05-25
-**Related:** [#10](https://github.com/AlteredCraft/tilth/issues/10) (closed by this), [#13](https://github.com/AlteredCraft/tilth/issues/13) (complementary), [#14](https://github.com/AlteredCraft/tilth/issues/14) (supersedes)
+**Related:** [#10](https://github.com/AlteredCraft/tilth/issues/10) (closed by this), [#13](https://github.com/AlteredCraft/tilth/issues/13) (complementary), [#14](https://github.com/AlteredCraft/tilth/issues/14) (supersedes), [PR #15 — agents-md-stance](https://github.com/AlteredCraft/tilth/pull/15) (shipped sibling)
 
 ## 1. Problem
 
@@ -16,7 +16,7 @@ These compound: the demo's `main` ships with a hand-crafted `prd.json` committed
 
 ## 2. Goals
 
-- **G1.** Target repo gains zero ephemeral tilth artifacts. After a tilth-driven feature ships, the only things in the PR are source changes + tests + (optionally) AGENTS.md updates.
+- **G1.** Target repo gains zero ephemeral tilth artifacts. After a tilth-driven feature ships, the only things in the PR are source changes and tests. (AGENTS.md is read-only to Tilth per the shipped agents-md-stance — any changes there come from the user, not the harness.)
 - **G2.** Demo path == own-project path. The demo repo demonstrates the seeding workflow rather than skipping it.
 - **G3.** Seeding works without Claude Code. The user needs a reasoning-capable model (configured via Tilth's existing API env vars). No other assistant prerequisite.
 - **G4.** Preserve the "base tools strung together via the CLI" character. Seeding and running are independently invocable verbs, not fused.
@@ -45,18 +45,19 @@ The current bare invocation `uv run tilth <workspace>` becomes `uv run tilth run
 
 ```
 sessions/<id>/
-├── checkpoint.json     # existing; gains `status: prepared | running | all_done | failed`
-├── events.jsonl        # existing
-├── summary.json        # existing
-├── prd.json            # MOVED here (was: <workspace>/prd.json)
-├── progress.txt        # MOVED here (was: <workspace>/progress.txt)
-├── seed-meta.json      # NEW: { interviewer_model, started_at, ended_at,
-│                       #        open_questions: [...], blockers: [...],
-│                       #        scope_notes: "..." }
-└── workspace/          # existing worktree mount; no harness state inside
+├── checkpoint.json         # existing; gains `status: prepared | running | all_done | failed`
+├── events.jsonl            # existing
+├── summary.json            # existing
+├── proposed-learnings.md   # existing (from agents-md-stance) — self-improvement output
+├── prd.json                # MOVED here (was: <workspace>/prd.json)
+├── progress.txt            # MOVED here (was: <workspace>/progress.txt)
+├── seed-meta.json          # NEW: { interviewer_model, started_at, ended_at,
+│                           #        open_questions: [...], blockers: [...],
+│                           #        scope_notes: "..." }
+└── workspace/              # existing worktree mount; no harness state inside
 ```
 
-`seed-meta.json` is written once by the seeder and read only by the visualizer (worker never sees it).
+`seed-meta.json` is written once by the seeder and read only by the visualizer (worker never sees it). `proposed-learnings.md` is a session output for the user (and the future end-of-session findings hook); also never read by the worker or judge.
 
 ### 5.2 Code touch points in tilth
 
@@ -81,7 +82,7 @@ The seeder writes, atomically per session:
 - **`<workspace>/tests/test_t0NN_<slug>.py`** — one per task, named to match tilth's pytest filter. Written to the user's repo because they are legitimate test files that ship in the PR.
 - **`session_prepared` event** appended to `sessions/<id>/events.jsonl` so the timeline is continuous from interview through execution.
 
-The seeder **never writes to `<workspace>/AGENTS.md`**. If it exists, the seeder reads it for grounding context — project conventions there should inform task slicing and test style. If it doesn't exist, the seeder leaves it that way; it may surface "you don't have an AGENTS.md, your worker will fly blind on conventions" as a chat-summary suggestion, but doesn't create one. See §10 for the broader AGENTS.md follow-on.
+The seeder **never writes to `<workspace>/AGENTS.md`** — same posture as the rest of the harness (locked in by the agents-md-stance PR). If it exists, the seeder reads it for grounding context; project conventions there should inform task slicing and test style. If it doesn't exist, the seeder leaves it that way; it may surface "you don't have an AGENTS.md, your worker and judge will lack project context beyond what's in task descriptions" as a chat-summary suggestion, but doesn't create one.
 
 Tilth `run` then consumes `sessions/<id>/prd.json` and `sessions/<id>/progress.txt` (initially empty) as the per-task input and journal.
 
@@ -227,7 +228,7 @@ Phase 3 can land anytime after phase 2; it's a polish step, not load-bearing.
 2. **Re-prep on an existing prepared session.** If the user runs `prep-feature` and there's already a prepared session for that workspace: refuse with `--reset` hint? Append to the existing PRD as a follow-on feature? Refuse-by-default seems right — `--reset <id>` is the escape hatch.
 3. **Interview budget.** A 20-turn interview against a frontier model is real money. Worth surfacing a running token total in the TTY and a soft cap (`TILTH_PREP_MAX_TOKENS` defaulting to ~100k)?
 4. **Empty `tests/` directory.** If the project has no `tests/` at all, the seeder needs to create it. Confirm that's the right location (single-question check, no-op if it exists).
-5. **Surfacing a missing AGENTS.md to the user.** The seeder never writes it (see §5.3, §10). But if the workspace doesn't have one, the worker will fly blind on conventions. Should the seeder mention this in the chat summary as a suggestion ("you have no AGENTS.md — the worker won't have project context beyond what's in task descriptions; consider writing one before running")? Probably yes, as a non-blocking note.
+5. **Surfacing a missing AGENTS.md to the user.** The seeder never writes it (see §5.3). But if the workspace doesn't have one, the worker *and* the judge will lack project context beyond what's in task descriptions. Should the seeder mention this in the chat summary as a non-blocking suggestion ("you have no AGENTS.md — your worker and judge will fly blind on conventions; consider writing one before running")? Lean yes.
 
 ## 8. Risks
 
@@ -244,35 +245,10 @@ Phase 3 can land anytime after phase 2; it's a polish step, not load-bearing.
 - Cross-workspace shared seed library.
 - Cost dashboard for the interview model.
 
-## 10. Follow-on: revisit Tilth's stance on the target repo's AGENTS.md
+## 10. AGENTS.md stance — resolved
 
-The seeder change above is small and scoped: it reads AGENTS.md but never writes it. The bigger question this surfaces — and which this proposal **does not resolve** — is whether Tilth's *harness* should be mutating AGENTS.md at all.
+When this proposal was first drafted, "should Tilth's harness be mutating AGENTS.md at all?" was an open question, and the seeder's read-only posture in §5.3 deliberately sidestepped it.
 
-### What happens today
+The question has since been resolved in [PR #15 — agents-md-stance](https://github.com/AlteredCraft/tilth/pull/15), shipped on 2026-05-25. The harness no longer mutates AGENTS.md anywhere; self-improvement learnings collect in `sessions/<id>/proposed-learnings.md` for the user to review (and, eventually, an end-of-session findings hook to assist with). The seeder's read-only posture in this proposal aligns with that shipped stance — there is no longer a tension between "the seeder doesn't write AGENTS.md but the rest of the harness does." Now nothing writes it.
 
-`tilth/loop.py:158-216` runs a self-improvement step after each task. It asks the worker model whether anything from the just-completed task should land in AGENTS.md, validates the suggested section against `memory.VALID_AGENTS_MD_SECTIONS`, and if so calls `memory.append_to_agents_md(worktree, section, "- {entry}")`. The append happens inside the worktree, so it ends up in the session branch's diff and rides into the PR like any other change.
-
-The framing in `docs/architecture/memory-channels.md` calls this "the agent's own learned conventions" — a cross-session ratchet.
-
-### Why this needs another look
-
-AGENTS.md is increasingly a **user-owned project artifact** under modern conventions (mirrored by tools far beyond Tilth — it's how Claude Code, Codex, Cursor, and others read project context). When Tilth mutates it:
-
-- **Mid-run mutations land in the PR.** A line about "always use `argparse.BooleanOptionalAction`" appears in the same diff as the feature work and reviewers have to evaluate two unrelated changes.
-- **The agent is writing into the user's documentation.** Even with section validation and length capping, the user's voice in their own conventions file gets diluted by model output of variable quality.
-- **AGENTS.md is also load-bearing as worker context.** Every fresh task injects the file. If the model has been appending to it, the prompt grows; appended lines that are obvious in hindsight stay in the working set forever. This is the "AGENTS.md is yours forever; prune it periodically" caveat in `your-own-project.md` — a sign the current design pushes hygiene onto the user.
-
-### Options to weigh (not decide here)
-
-1. **Status quo, better documented.** Keep the append behavior; clarify in docs that AGENTS.md is a Tilth-mutated file the user is expected to prune.
-2. **Read-only on AGENTS.md.** Harness reads it for context but never writes. Self-improvement insights land somewhere else — perhaps `sessions/<id>/learnings.md` (private to the session) or a separate `LEARNINGS.md` that the user explicitly opts in to.
-3. **Opt-in mutation.** Env var or `prd.json`-level flag turns the append behavior on; default is off. Users who want the ratchet behavior get it; users who want AGENTS.md as their own doc get that.
-4. **Proposal-based.** Worker emits a learning, but it lands in `sessions/<id>/agents-md-proposals.md` for the human to review and merge by hand. Same ratchet, no surprise mutations.
-
-Option 2 is the cleanest read on "AGENTS.md is the user's." Option 4 preserves the original ratchet idea without the surprise. Option 3 is the chickenshit compromise that doubles the surface area.
-
-### Why this is a separate proposal
-
-The seeder change is *one* read-only consumer of AGENTS.md and is uncontroversial. The self-improvement loop is the load-bearing case and touches `loop.py`, `memory.py`, `session.py` (event types), the docs, and the article narrative around "memory channels." It deserves its own proposal where we can lay out the options, decide, and migrate cleanly.
-
-→ See [`agents-md-stance.md`](agents-md-stance.md) for the sibling proposal.
+No action required from this proposal. This section exists as a breadcrumb.
