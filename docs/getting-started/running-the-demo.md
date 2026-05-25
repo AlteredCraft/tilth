@@ -25,21 +25,19 @@ What happens, end-to-end:
     - Tool-loop with the worker model (bash, file ops, search) until it stops calling tools.
     - Run `ruff` + `pytest` in the worktree. Failures get fed back into the loop.
     - Judge model reviews the diff in a fresh context. Rejections get fed back.
-    - Self-improvement prompt — the worker decides whether anything should land in `AGENTS.md`.
+    - Self-improvement prompt — the worker considers whether the task surfaced a durable observation worth proposing. Any proposal lands in `sessions/<id>/proposed-learnings.md` (not in your repo) for end-of-run review.
     - Commit on the worktree branch. Append to `progress.txt`. Mark the task `done` in `prd.json`.
 4. Stops on: all tasks done, iteration cap, wall-clock cap, token cap, or error.
-
-> **Diagram suggestion** — *a left-to-right flow diagram of one task's lifecycle inside the harness: prompt assembly → tool-use loop → validators → judge → self-improvement → commit. Annotate which steps the agent sees and which are pure harness machinery.*
 
 You can interrupt at any point with Ctrl-C. Ctrl-C and cap hits (iteration, wall-clock, token) both leave the run in a resumable state — see [Resuming a session](resuming.md) to pick it back up. If a cap was what stopped you, bump it in `.env` first or `--resume` will trip it again.
 
 ## What you should expect to see
 
-The console streams every tool call as it happens. A clean run scrolls by like this:
+The console streams every tool call as it happens. The per-task loop has the shape below:
 
-![Terminal capture of `uv run tilth ~/projects/tilth-demo` in progress. Header lines show the worktree path, session id, branch `session/<id>`, and worker model `deepseek/deepseek-v4-flash`. Below, task T-001 runs through two iterations of bash and write_file tool calls, prints a "Done" summary, passes validators, gets accepted by the judge with a brief verdict, and is committed (`8a8839b`). Task T-002 iteration 1 begins at the bottom of the frame.](../assets/tilth-demo-terminal.png)
+![Six rounded boxes arranged left to right depicting one task's lifecycle inside Tilth's harness: PROMPT (a stack of three document icons representing AGENTS.md, progress.txt, and the task; caption "fresh context built from disk"); TOOL LOOP (a wrench-and-file glyph encircled by a loop arrow, with monospace tool labels bash, read_file, edit_file, grep; caption "worker iterates until it stops"); VALIDATORS (a checkmark over a terminal prompt, labels ruff and pytest; caption "objective gate"); JUDGE (a balance scale; caption "subjective gate, fresh context"); SELF-IMPROVE (a notebook with a sage-green bookmark ribbon; caption "propose a learning (optional)"); COMMIT (a git-branch glyph with a single new-commit dot; caption "one task = one commit"). Two label-bars span the top: "WORKER SEES" over PROMPT and TOOL LOOP, "HARNESS ONLY" over the remaining four boxes. Sage-green forward arrows connect each box to the next; two thinner sage-green feedback curves return to TOOL LOOP from VALIDATORS (labelled validator_failed) and from JUDGE (labelled judge_rejected).](../assets/per-task-lifecycle.jpg)
 
-*One session in flight. The header is what the harness picks up at start; the body is the per-task loop — tool calls, validators, judge verdict, commit — repeating until the task list is exhausted.*
+*One task's lifecycle inside the harness. The worker only sees the Prompt and the Tool Loop; everything from Validators onward is harness machinery the worker is unaware of. Failed validators or a rejected judge verdict feed back into the Tool Loop for another iteration.*
 {: .caption }
 
 A clean run ends with every task in `prd.json` marked `done` and a commit-per-task on the `session/<id>` branch. When the loop doesn't track this cleanly, watch for these patterns:
@@ -51,9 +49,9 @@ A clean run ends with every task in `prd.json` marked `done` and a commit-per-ta
 
 Once every task in `prd.json` is `done`, the harness closes out the final task and prints `all tasks complete` followed by a run summary:
 
-![Terminal capture of a Tilth run completing. Task T-005 iter 11 finishes; the model summary reports "All 17 tests pass (including all 6 T-005 acceptance tests). The task is complete." Validators pass and the judge accepts. The self-improvement step appends a new AGENTS.md gotcha about keeping formatting functions pure (no `sys.exit()` inside them). T-005 is committed (`88fb4a4`); the harness prints "all tasks complete". A run summary block follows: session 20260523-082151-45f0a5, branch session/20260523-082151-45f0a5, duration 6m10s (5.1% of TILTH_MAX_WALL_CLOCK_MINUTES=120), tasks done=5 failed=0 pending=0.](../assets/tilth-demo-terminal-complete.png)
+![A three-region diagram of Tilth's end-of-session state. Left region: a vertical stack of five small rounded rectangles, each containing a monospace task id (T-001 through T-005) and a checkmark; italic caption beneath reads "tasks done · one commit each". Centre region: a larger rounded panel titled "RUN SUMMARY" in bold sans-serif all caps, with four monospace key/value rows — session 20260525-103149-3800ea, duration 6m10s, tokens 412,800, tasks total=5 done=5 failed=0 pending=0 — and an italic caption beneath reading "harness reports out". Right region: a document icon labelled "proposed-learnings.md" with three short bullet lines inside, and a monospace path beneath: sessions/<id>/proposed-learnings.md. Two label-bars span the top: "ON THE SESSION BRANCH" over the task stack and run summary; "OUTSIDE THE WORKTREE" over the proposed-learnings document. A sage-green arrow curves from the bottom of the RUN SUMMARY panel up into the document icon, labelled alongside the curve "→ N proposed learnings written — review when ready".](../assets/session-end.png)
 
-*A clean ending. The final task closes (model → validators → judge), the self-improvement step appends a new AGENTS.md gotcha, the commit lands, and the summary reports `done=5 failed=0 pending=0` with caps well under.*
+*A clean ending. Every task is committed on the session branch; the run summary tallies what happened; proposed learnings (if any) land outside the worktree for the user to review and merge by hand. AGENTS.md is never touched by the run.*
 {: .caption }
 
 To inspect what just got committed:
@@ -66,6 +64,6 @@ git diff main..session/<id>
 
 Each task is one commit. If you like the work, merge it into `main` like any other branch; if not, delete the branch. The harness never auto-merges. (You can also use [Resetting a session](resetting.md) to throw away the worktree, branch, and the harness's session directory in one shot.)
 
-The session log lives at `<tilth-clone>/sessions/<id>/events.jsonl` — every model call, tool call, validator run, judge verdict, and AGENTS.md update is recorded. Alongside it, `sessions/<id>/summary.json` carries a rolled-up snapshot (token totals, per-task iteration counts, tool histogram, hook outcomes, judge accept/reject) refreshed at every task boundary — read that when you want a quick stat without `jq`-ing the full log.
+The session log lives at `<tilth-clone>/sessions/<id>/events.jsonl` — every model call, tool call, validator run, judge verdict, and proposed-learning verdict is recorded. Alongside it, `sessions/<id>/summary.json` carries a rolled-up snapshot (token totals, per-task iteration counts, tool histogram, hook outcomes, judge accept/reject) refreshed at every task boundary — read that when you want a quick stat without `jq`-ing the full log.
 
 For a more readable view of a finished run, see [Visualizing a session](visualizing.md).

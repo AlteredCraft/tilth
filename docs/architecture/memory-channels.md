@@ -1,19 +1,21 @@
 # Memory channels
 
-Four memory channels live *outside* the agent, in the workspace itself. The agent reads and writes some of them; the harness reads and writes others. Together they give a long-running run continuity without inflating the per-call context.
+Four memory channels live *outside* the agent. Some are project files the user owns; some are session-local artifacts the harness manages. Together they give a long-running run continuity by treating durable state as files on disk rather than messages the model has to carry between calls.
 
 | Channel | Lives in | Written by | Read by |
 |---|---|---|---|
-| `AGENTS.md` | the workspace | self-improvement step (worker, separate call) | worker (injected at task start) |
+| `AGENTS.md` | the workspace (user-owned) | the user | worker, judge (injected at task start / judge call) |
 | Git history | the worktree | the harness (one commit per task) | humans, judge (via diff) |
 | `progress.txt` | the workspace | the harness (one line per task outcome) | worker (last ~30 lines injected) |
 | `prd.json` | the workspace | the harness (status flips) | the harness (task selection) |
 
-> **Diagram suggestion** — *four labelled "channels" feeding into a worker bubble at the centre with arrows annotated with the cadence of each: AGENTS.md ("at task start"), progress.txt ("last 30 lines, at task start"), git history ("via judge diff"), prd.json ("not visible to worker — harness only"). Reinforces the asymmetry of what the agent sees.*
+The worker writes none of these. It writes code in the worktree, which the harness commits. The split is clean: **memory channels are inputs to the agents; session artifacts under `sessions/<id>/` (events.jsonl, summary.json, proposed-learnings.md) are outputs the harness produces during a run.**
 
-## `AGENTS.md` — the agent's own learned conventions
+> **Diagram suggestion** — *four labelled "channels" feeding into a worker bubble at the centre with arrows annotated with the cadence of each: AGENTS.md ("at task start, one-way from user"), progress.txt ("last 30 lines, at task start"), git history ("via judge diff"), prd.json ("not visible to worker — harness only"). Reinforces the asymmetry of what the agent sees and the one-way directionality of AGENTS.md.*
 
-Short markdown. The self-improvement step appends learnings under named sections. Use these section headings exactly so updates land in the right place:
+## `AGENTS.md` — your project conventions
+
+Short markdown. **User-owned, user-maintained.** Tilth reads it into the worker's user-prompt on every task and into the judge's user-prompt on every judge call, but never writes to it. Use whatever section headings make sense for your project; we suggest the ones below as a starting template:
 
 ```markdown
 # AGENTS.md
@@ -33,16 +35,11 @@ Where things live.
 - ...
 
 ## Patterns
-_(empty — agent appends here)_
+- (Add as you learn what works for this codebase.)
 
 ## Gotchas
-_(empty — agent appends here)_
-
-## Recent learnings
-_(empty — agent appends here)_
+- (Add as you trip over them.)
 ```
-
-If the headings don't exist or are named differently, learnings still land but in a new section appended to the end. The `_(empty — agent appends here)_` placeholder gets replaced by the first append.
 
 **AGENTS.md should stay project-focused.** It's for *project* conventions, not harness mechanics:
 
@@ -50,6 +47,12 @@ If the headings don't exist or are named differently, learnings still land but i
 - **Does *not* belong in AGENTS.md:** "record token counts in `events.jsonl`" (agent doesn't write that file), "update `prd.json` status when done" (agent doesn't manage prd), "stop after 8 iterations" (handled by `max_iterations_per_task`), "don't run dangerous commands" (handled by `pre_tool` hook), "the judge will evaluate your work" (see [Agent visibility](../deep-dives/agent-visibility.md)).
 
 The cleanest test: if you removed a rule from AGENTS.md and the harness still enforced the underlying behaviour, the rule shouldn't be there.
+
+### Where do learnings go?
+
+After each task, Tilth runs a *self-improvement* step that asks the worker model whether the task surfaced anything durable worth capturing for later. The output of that step does **not** land in your AGENTS.md. It lands in `sessions/<id>/proposed-learnings.md` — a session-local file outside the worktree, never in the PR diff.
+
+The user (and eventually an end-of-session findings hook) is the integrator: read the proposals at session end, decide which (if any) are worth promoting into your AGENTS.md, and merge them by hand. AGENTS.md stays in your voice, growing only when you decide it should.
 
 ## Git history — atomic commits per task
 

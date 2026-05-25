@@ -31,9 +31,9 @@ This is the work. The harness does not plan; **you plan**.
 
 The agent never sees `prd.json` directly — it receives one task at a time as the user message. See [Memory channels → `prd.json`](../architecture/memory-channels.md#prdjson-the-task-list) for the rationale.
 
-### `AGENTS.md` — your project's learned conventions
+### `AGENTS.md` — your project conventions
 
-Short markdown. The self-improvement step appends learnings under named sections. Use these section headings exactly so updates land in the right place:
+Short markdown. **You own this file.** Tilth reads it into the worker and judge but never writes to it. Use whatever section headings make sense; we suggest:
 
 ```markdown
 # AGENTS.md
@@ -53,18 +53,15 @@ Where things live.
 - ...
 
 ## Patterns
-_(empty — agent appends here)_
+- (Add as you learn what works.)
 
 ## Gotchas
-_(empty — agent appends here)_
-
-## Recent learnings
-_(empty — agent appends here)_
+- (Add as you trip over them.)
 ```
 
-If the headings don't exist or are named differently, learnings still land but in a new section appended to the end. The `_(empty — agent appends here)_` placeholder gets replaced by the first append.
+After each task, Tilth's self-improvement step may propose a learning. Proposals land in `sessions/<id>/proposed-learnings.md` (session-local, never in your PR) — review at session end and promote anything worth keeping into `AGENTS.md` by hand.
 
-`AGENTS.md` should stay project-focused — see [Memory channels → `AGENTS.md`](../architecture/memory-channels.md#agentsmd-the-agents-own-learned-conventions) for what does and doesn't belong in it.
+`AGENTS.md` should stay project-focused — see [Memory channels → `AGENTS.md`](../architecture/memory-channels.md#agentsmd-your-project-conventions) for what does and doesn't belong in it.
 
 ### `progress.txt` — the journal
 
@@ -126,7 +123,7 @@ The session log lives at `{{tilth-clone-path}}/sessions/<id>/events.jsonl` — e
 - **Ruff config matters.** If your project doesn't already use ruff, the validator will fire constantly and the agent will spend iterations fixing things that aren't really broken. Either add a permissive `[tool.ruff]` block to your `pyproject.toml`, or swap the ruff validator for whatever linter you already use.
 - **The planner is you.** Writing a good `prd.json` (small enough tasks, sharp acceptance criteria, tests upfront) is where most of the value is. Vague PRDs make the harness fail loudly and burn tokens.
 - **Costs are real.** A 2-hour run can mean hundreds of thousands of tokens across worker + judge + self-improvement calls. The `TILTH_MAX_TOKENS` cap exists for a reason — set it on first run. Cost per token varies wildly across providers; pick your worker accordingly. Be careful about reaching for a smaller judge model to cut costs — see [Picking a judge model](#5-picking-a-judge-model) below.
-- **AGENTS.md is yours forever.** It accumulates. Prune it periodically — old learnings that the model has clearly internalised should be removed (the ratchet works in both directions).
+- **AGENTS.md is yours.** Tilth reads it, never writes it. The self-improvement step's proposals land in `sessions/<id>/proposed-learnings.md` for you to review and (optionally) promote into AGENTS.md by hand. The file only grows when you decide it should.
 - **Tools are intentionally narrow.** No web fetch, no MCP, no curl-based downloads. If your tasks require external API access, you add a tool to `tilth/tools/` and register it. Keep tools focused — every tool description ships in the prompt every turn.
 - **The harness commits to your repo's git db.** Tilth keeps the working tree under `sessions/<id>/workspace/` on its own side, but the branch `session/<id>` lives in *your* repo's `.git`. So if you delete your Tilth clone without resetting first, those branches remain in your project. Clean up branches the same way you would for a normal feature branch — or run `--reset` before you blow Tilth away. See [Session layout](../deep-dives/session-layout.md) for the full split.
 
