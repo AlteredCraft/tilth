@@ -5,7 +5,8 @@ For each pending task in the workspace's prd.json:
   2. Tool-loop with the worker model.
   3. When model stops calling tools, run validators (ruff + pytest).
      - Pass: judge model evaluates the diff in a fresh context.
-       - Accept: prompt for AGENTS.md update, commit, mark done, next task.
+       - Accept: collect a proposed learning (session-local, user-reviewed),
+                 commit, mark done, next task.
        - Reject: inject judge feedback into worker loop; another iteration.
      - Fail: inject validator failure into worker loop; another iteration.
 """
@@ -67,8 +68,8 @@ def _judge_prompt() -> str:
     return (PROMPTS_DIR / "judge.md").read_text()
 
 
-def _agents_update_prompt() -> str:
-    return (PROMPTS_DIR / "agents_update.md").read_text()
+def _propose_learning_prompt() -> str:
+    return (PROMPTS_DIR / "propose_learning.md").read_text()
 
 
 # --- judge ------------------------------------------------------------------
@@ -98,6 +99,14 @@ def _judge_task(
     criteria = task.get("acceptance_criteria") or []
     if criteria:
         parts += ["", "## Acceptance criteria"] + [f"- {c}" for c in criteria]
+    agents_md = memory.load_agents_md(worktree)
+    if agents_md.strip():
+        parts += [
+            "",
+            "## Project context (AGENTS.md)",
+            "",
+            agents_md.rstrip(),
+        ]
     parts += [
         "",
         "## Validator status",
@@ -155,34 +164,42 @@ def _judge_task(
     return accept, reasoning
 
 
-# --- self-improvement: AGENTS.md update -------------------------------------
+# --- self-improvement: propose a learning -----------------------------------
 
 def _self_improve(
     task: dict[str, Any],
     worktree: Path,
-    client: LLMClient,
     session: Session,
+    client: LLMClient,
     trace_id: str,
 ) -> None:
-    """Ask the worker model whether anything from this task should land in AGENTS.md."""
+    """Ask the worker model whether this task surfaced a durable learning worth capturing.
+
+    A "yes" appends to sessions/<id>/proposed-learnings.md — a session output
+    for the user's later review. The worker never reads that file back; the
+    learning does not influence subsequent tasks in this run. Cross-run
+    persistence happens when the user (or a future end-of-session hook)
+    promotes proposals into AGENTS.md by hand.
+    """
     diff = ws.task_diff(worktree)
     if len(diff) > JUDGE_DIFF_MAX_CHARS:
         diff = diff[:JUDGE_DIFF_MAX_CHARS] + "\n... [truncated]"
 
+    agents_md = memory.load_agents_md(worktree).strip() or "(no AGENTS.md in this project)"
     user = (
         f"Task just completed: {task['id']} — {task['title']}\n\n"
         f"Description:\n{task.get('description', '').strip()}\n\n"
         f"## Current AGENTS.md\n\n"
-        f"{memory.load_agents_md(worktree).strip()}\n\n"
+        f"{agents_md}\n\n"
         f"## Diff produced\n\n```diff\n{diff or '(empty)'}\n```\n\n"
         "Respond with strict JSON only."
     )
-    update_messages = [
-        {"role": "system", "content": _agents_update_prompt()},
+    messages = [
+        {"role": "system", "content": _propose_learning_prompt()},
         {"role": "user", "content": user},
     ]
     span_id = _span_id()
-    resp = client.chat(update_messages)
+    resp = client.chat(messages)
     usage = resp.get("usage") or {}
     prompt_tokens = int(usage.get("prompt_tokens") or 0)
     eval_tokens = int(usage.get("completion_tokens") or 0)
@@ -194,31 +211,30 @@ def _self_improve(
     parsed = parse_json_lenient(content)
     if not parsed:
         session.log(
-            "agents_md_update",
-            {**base, "applied": False, "reason": "unparseable", "raw": content[:500]},
+            "proposed_learnings",
+            {**base, "emitted": False, "reason": "unparseable", "raw": content[:500]},
         )
         return
 
-    if str(parsed.get("update", "")).lower() != "yes":
-        session.log("agents_md_update", {**base, "applied": False, "reason": "no_update"})
-        return
-
-    section = str(parsed.get("section", "Recent learnings")).strip()
-    if section not in memory.VALID_AGENTS_MD_SECTIONS:
-        section = "Recent learnings"
-    entry = str(parsed.get("entry", "")).strip()
-    if not entry:
+    if str(parsed.get("propose", "")).lower() != "yes":
         session.log(
-            "agents_md_update", {**base, "applied": False, "reason": "empty_entry"}
+            "proposed_learnings", {**base, "emitted": False, "reason": "no_proposal"}
         )
         return
 
-    memory.append_to_agents_md(worktree, section, f"- {entry}")
+    learning = str(parsed.get("learning", "")).strip()
+    if not learning:
+        session.log(
+            "proposed_learnings", {**base, "emitted": False, "reason": "empty_learning"}
+        )
+        return
+
+    memory.append_proposed_learning(session.root, task["id"], task["title"], learning)
     session.log(
-        "agents_md_update",
-        {**base, "applied": True, "section": section, "entry": entry},
+        "proposed_learnings",
+        {**base, "emitted": True, "entry": learning},
     )
-    console.print(f"[blue]→ AGENTS.md ({section})[/blue] {entry}")
+    console.print(f"[blue]→ proposed learning[/blue] {learning}")
 
 
 # --- prd handling -----------------------------------------------------------
@@ -616,7 +632,7 @@ def run(worktree: Path, session: Session, client: LLMClient) -> None:
         outcome = _run_task(task, worktree, client, session, trace_id)
 
         if outcome == "done":
-            _self_improve(task, worktree, client, session, trace_id)
+            _self_improve(task, worktree, session, client, trace_id)
             task["status"] = "done"
             _save_prd(worktree, prd)
             memory.append_progress(worktree, f"{task['id']}\tdone\t{task['title']}")
@@ -691,6 +707,13 @@ def _print_summary(session: Session, client: LLMClient, worktree: Path | None) -
     task_bits = [f"total={total}"] + [f"{k}={counts.get(k, 0)}" for k in base_keys]
     extras = [f"{k}={v}" for k, v in counts.items() if k not in base_keys]
 
+    learnings_emitted = sum(
+        1
+        for rec in iter_events(session.events_path)
+        if rec.get("type") == "proposed_learnings"
+        and (rec.get("payload") or {}).get("emitted") is True
+    )
+
     console.print()
     console.print("[bold]── run summary ──[/bold]")
     console.print(f"  session   {session.session_id}")
@@ -699,6 +722,13 @@ def _print_summary(session: Session, client: LLMClient, worktree: Path | None) -
     console.print(f"  duration  {_format_duration(elapsed)} [dim]{wall_dim}[/dim]")
     console.print(f"  tokens    {session.tokens_used:,} [dim]{tokens_dim}[/dim]")
     console.print(f"  tasks     {' '.join(task_bits + extras)}")
+    if learnings_emitted > 0:
+        path = session.root / "proposed-learnings.md"
+        plural = "s" if learnings_emitted != 1 else ""
+        console.print(
+            f"[blue]→ {learnings_emitted} proposed learning{plural} written to {path}"
+            f" — review when ready[/blue]"
+        )
 
 
 # --- reset ------------------------------------------------------------------

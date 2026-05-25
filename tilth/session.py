@@ -33,7 +33,13 @@ Event types:
     judge_verdict      — judge model verdict on a finished task
     task_done          — task accepted (validators + judge passed)
     task_failed        — task could not be completed; payload.reason ∈ {iter_cap}
-    agents_md_update   — agent appended a learning to AGENTS.md
+    proposed_learnings — self-improvement step's per-task verdict. Payload:
+                         {task_id, trace_id, span_id, emitted, entry?, reason?}.
+                         When emitted=True, `entry` carries the learning text
+                         appended to sessions/<id>/proposed-learnings.md (a
+                         session output for the user; never read by the worker
+                         or judge). When emitted=False, `reason` carries why
+                         (no_proposal | unparseable | empty_learning).
     context_reset      — beginning of a new task; messages rebuilt from disk
     session_start      — fresh session began (worktree created)
     session_resume     — --resume woke a session; payload carries the resume plan
@@ -47,7 +53,7 @@ Per-task observability fields:
                          events as a trace.
     span_id            — 16-hex (OTel-shape). Per-iteration for events inside an
                          iteration; per-sub-operation for memory_load and
-                         agents_md_update.
+                         proposed_learnings.
 """
 
 from __future__ import annotations

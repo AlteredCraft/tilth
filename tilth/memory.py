@@ -1,7 +1,7 @@
 """Memory plumbing — load the four channels into a fresh prompt each task.
 
 The four channels (per Osmani's self-improving agents post):
-    AGENTS.md       semantic knowledge (patterns, gotchas, style, recent learnings)
+    AGENTS.md       semantic knowledge — user-owned project conventions; read-only to Tilth
     git history     atomic commits — accessed via bash, not loaded here
     progress.txt    chronological journal — we inject a tail (last N lines)
     prd.json        machine-readable task list — caller picks the next task
@@ -13,6 +13,11 @@ disk are the source of truth, not the prior conversation.
 Every load returns a manifest alongside the text so the harness can emit a
 `memory_load` event — observability of what the agent actually saw, including
 truncation and a content hash to spot drift between tasks.
+
+A separate write path — `append_proposed_learning` — collects the self-improvement
+step's per-task observations into `sessions/<id>/proposed-learnings.md`. That file
+is a session output for the user (and a future end-of-session hook) to review;
+it is never read by the worker or judge.
 """
 
 from __future__ import annotations
@@ -25,9 +30,14 @@ PROGRESS_TAIL_LINES = 30
 AGENTS_MD_MAX_CHARS = 8_000
 PROGRESS_MAX_CHARS = 4_000
 
-VALID_AGENTS_MD_SECTIONS = frozenset(
-    {"Patterns", "Gotchas", "Style", "Recent learnings"}
-)
+PROPOSED_LEARNINGS_HEADER = """# Proposed learnings — session {session_id}
+
+Tilth's self-improvement step collected these during the run as candidates worth
+persisting. They are NOT applied anywhere automatically — they are observations
+the worker made about this codebase that might be worth keeping. Review and
+decide which (if any) belong in your AGENTS.md, your team docs, or anywhere
+else. The end-of-session findings hook will eventually assist with this.
+"""
 
 
 def _hash8(text: str) -> str:
@@ -85,30 +95,21 @@ def append_progress(workspace: Path, line: str) -> None:
         f.write(line.rstrip() + "\n")
 
 
-def append_to_agents_md(workspace: Path, section: str, line: str) -> None:
-    """Append `line` under `## {section}` in AGENTS.md, creating the section if missing."""
-    p = workspace / "AGENTS.md"
-    text = p.read_text() if p.is_file() else ""
-    heading = f"## {section}"
-    if heading in text:
-        placeholder = "_(empty — agent appends here)_"
-        parts = text.split(heading, 1)
-        before = parts[0] + heading
-        rest = parts[1]
-        next_h2 = rest.find("\n## ")
-        if next_h2 == -1:
-            section_body = rest
-            tail = ""
-        else:
-            section_body = rest[:next_h2]
-            tail = rest[next_h2:]
-        if placeholder in section_body:
-            new_body = section_body.replace(placeholder, line)
-        else:
-            new_body = section_body.rstrip() + f"\n{line}\n"
-        p.write_text(before + new_body + tail)
-    else:
-        p.write_text((text.rstrip() + f"\n\n## {section}\n\n{line}\n").lstrip("\n"))
+def append_proposed_learning(
+    session_dir: Path, task_id: str, task_title: str, entry: str
+) -> None:
+    """Append a proposed learning to sessions/<id>/proposed-learnings.md.
+
+    Creates the file with a header on first append. The entry is added as a
+    bullet under a task-tagged section. The file is never read by the worker
+    or judge — it is a session output for the user (and the future hook).
+    """
+    p = session_dir / "proposed-learnings.md"
+    if not p.is_file():
+        p.write_text(PROPOSED_LEARNINGS_HEADER.format(session_id=session_dir.name))
+    block = f"\n## From {task_id} — {task_title}\n\n- {entry.strip()}\n"
+    with p.open("a") as f:
+        f.write(block)
 
 
 def build_user_prompt(

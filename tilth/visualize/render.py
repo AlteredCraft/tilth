@@ -209,15 +209,14 @@ def _render_task_failed(_typ: str, ts: str, p: dict[str, Any]) -> str:
     return _card(f"task failed · {p.get('reason', '')}", ts, "", kind="bad")
 
 
-def _render_agents_md_update(_typ: str, ts: str, p: dict[str, Any]) -> str:
-    if not p.get("applied"):
+def _render_proposed_learnings(_typ: str, ts: str, p: dict[str, Any]) -> str:
+    if not p.get("emitted"):
         return _card(
-            f"AGENTS.md unchanged · {p.get('reason', '')}", ts, "", kind="dim",
+            f"no learning proposed · {p.get('reason', '')}", ts, "", kind="dim",
         )
-    section = p.get("section", "")
     entry = p.get("entry", "")
     return _card(
-        f"AGENTS.md ← {section}",
+        "proposed learning",
         ts,
         f'<div class="prose">{html.escape(entry)}</div>',
         kind="info",
@@ -254,7 +253,7 @@ _RENDERERS: dict[str, Callable[[str, str, dict[str, Any]], str]] = {
     "judge_verdict": _render_judge_verdict,
     "task_done": _render_task_done,
     "task_failed": _render_task_failed,
-    "agents_md_update": _render_agents_md_update,
+    "proposed_learnings": _render_proposed_learnings,
     "commit": _render_commit,
     "stop": _render_stop,
 }
