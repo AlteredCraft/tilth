@@ -20,7 +20,7 @@ Continuing the [cap-hit example from the caps deep-dive](../deep-dives/caps.md#w
 
 ## What resume does
 
-- Skips tasks already marked `done` in `prd.json` (which lives on the worktree branch).
+- Skips tasks already marked `done` in `prd.json` (which lives in `sessions/<id>/`, not on the worktree branch).
 - **Retries the trailing failed task**, if any. Iter-cap, wall-clock-cap, token-cap, interrupt, and error stops all leave the in-flight task marked `failed`; resume flips that task back to `pending` and unwinds its `FAILED (...)` placeholder commit so the retry sees the partial work as uncommitted changes (and the judge will see a single cumulative diff, not just the new edits).
 - **Resets the wall-clock budget** for this resume — otherwise a resume the next day would trip `TILTH_MAX_WALL_CLOCK_MINUTES` immediately.
 - **Preserves the token total.** If the original run hit `TILTH_MAX_TOKENS`, bump it in `.env` before resuming or the new run will stop on the first token check.
