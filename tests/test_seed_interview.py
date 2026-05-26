@@ -351,3 +351,40 @@ def test_sink_can_raise_unexpected_error_without_corrupting_status(sessions_root
             frontend=FakeFrontend(), sink=BoomSink(), feature_brief="thing",
         )
     assert session.status == "running"
+
+
+def test_malformed_tool_args_recover_via_tool_result(sessions_root, source, worktree):
+    """A tool call with unparseable JSON args (e.g. write_seed payload corrupted
+    by a token-boundary glitch) must not crash the interview — the engine feeds
+    the parse error back as a tool_result and the model gets to retry. We model
+    this with two turns: turn 1 produces broken args, turn 2 produces a valid
+    write_seed."""
+    bad_args_call = {
+        "id": "bad1",
+        "type": "function",
+        "function": {
+            "name": "write_seed",
+            # Two JSON objects concatenated — produces "Extra data" error
+            # exactly like the deepseek-pro failure mode we saw in the wild.
+            "arguments": '{"prd_entries": []}{"trailing": "garbage"}',
+        },
+    }
+    client = FakeClient(
+        responses=[
+            _model_response(tool_calls=[bad_args_call]),
+            _model_response(tool_calls=[_good_seed_call()]),
+        ],
+        config=_Config(),
+    )
+    session = Session.new(sessions_root)
+    session.source = source
+
+    run_interview(
+        session=session, source=source, worktree=worktree, client=client,
+        frontend=FakeFrontend(), sink=FileSeedSink(), feature_brief="thing",
+    )
+    assert session.status == "prepared"
+    # Second turn's history should contain the parse-error tool_result feedback.
+    second_turn = client.seen_requests[1]
+    feedback = [m for m in second_turn if m.get("role") == "tool"]
+    assert any("failed to parse as JSON" in (m.get("content") or "") for m in feedback)

@@ -134,7 +134,54 @@ def run_interview(
             fn = tc.get("function") or {}
             tool_name = fn.get("name") or ""
             raw_args = fn.get("arguments") or {}
-            args = raw_args if isinstance(raw_args, dict) else _parse_args(raw_args)
+
+            try:
+                args = raw_args if isinstance(raw_args, dict) else _parse_args(raw_args)
+            except ValueError as exc:
+                # Model emitted invalid JSON for its tool arguments. Common on
+                # long write_seed payloads where a token boundary corrupts the
+                # structure (e.g. concatenated JSON values produce
+                # "Extra data" errors). Feed the parse error back as a
+                # tool_result so the model can retry with a smaller / cleaner
+                # payload, same pattern as sink.write_seed failures below.
+                raw_len = len(raw_args) if isinstance(raw_args, str) else 0
+                session.log(
+                    "tool_call",
+                    {
+                        "phase": "interview",
+                        "trace_id": trace_id,
+                        "span_id": iter_span,
+                        "iter": iter_n + 1,
+                        "tool": tool_name,
+                        "args": "(unparseable JSON)",
+                        "args_chars": raw_len,
+                    },
+                )
+                result_msg = (
+                    f"ERROR: your `{tool_name}` arguments failed to parse "
+                    f"as JSON: {exc}. This often happens when a long payload "
+                    "(e.g. write_seed with verbose test_files) crosses a "
+                    "token boundary and corrupts the structure. Retry the "
+                    "call with terser content — for write_seed, keep the same "
+                    "single-call contract but write shorter test bodies (one "
+                    "assert per criterion, no decorative comments)."
+                )
+                session.log(
+                    "tool_result",
+                    {
+                        "phase": "interview",
+                        "trace_id": trace_id,
+                        "span_id": iter_span,
+                        "iter": iter_n + 1,
+                        "tool": tool_name,
+                        "result_preview": result_msg[:500],
+                        "result_chars": len(result_msg),
+                    },
+                )
+                messages.append(
+                    {"role": "tool", "tool_call_id": tc_id, "content": result_msg}
+                )
+                continue
 
             session.log(
                 "tool_call",
