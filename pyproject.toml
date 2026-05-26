@@ -44,3 +44,12 @@ select = ["E", "F", "I", "B", "UP", "RUF"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 norecursedirs = ["sessions", ".venv", "build", "dist"]
+
+# Session worktrees under sessions/<id>/workspace/ each contain a
+# pyproject.toml that the worker creates as part of T-001 (`uv init`). uv's
+# default workspace auto-discovery would add each one to `members`, which
+# couples their dependency graphs to tilth's lockfile and breaks `uv sync`
+# every time `tilth reset` removes the worktree. Exclude them outright.
+[tool.uv.workspace]
+members = []
+exclude = ["sessions"]
