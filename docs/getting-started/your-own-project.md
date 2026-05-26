@@ -13,7 +13,7 @@ Your project must be a **git repo with a clean `main` branch**. That's it for ha
 - **`AGENTS.md`** at the repo root. User-owned, user-maintained — Tilth reads it as project context for the worker and judge but never writes to it. Even a short one helps both the seeding interview and the worker understand your conventions. A starting template lives at [Memory channels → `AGENTS.md`](../architecture/memory-channels.md#agentsmd-your-project-conventions); the same page covers what does and doesn't belong there.
 - **An existing `tests/` directory with at least one example file.** The seeder samples your test style during the interview and mirrors it in the new test files. With no examples, you'll be asked to confirm the convention.
 
-You do **not** write `prd.json`, `progress.txt`, or the acceptance tests by hand. `prd.json` and `progress.txt` are harness-owned and live under `sessions/<id>/` — they never enter your repo. The tests come out of `tilth prep-feature` and land in `tests/`.
+You do **not** write `prd.json`, `progress.txt`, or the acceptance tests by hand. `prd.json` and `progress.txt` are harness-owned and live under `sessions/<id>/` — they never enter your repo's working tree. The acceptance tests come out of `tilth prep-feature` and land in `sessions/<id>/workspace/tests/` (the session worktree, on branch `session/<id>`), not your source repo's `tests/`. Your working tree stays clean across both prep and run; the only artifact in your source repo is the `session/<id>` branch in `.git`.
 
 ## 2. Seed a task list
 
@@ -30,7 +30,7 @@ You'll be prompted once for a one-line brief (the feature or refactor you want),
 
 For the full interview-engine story — frontend protocol, write-seed atomicity, how to swap the TTY for a different frontend — see [Seeding a session](../deep-dives/seeding.md). For a worked example of what a finished seed looks like, browse [`examples/seed-reference/todo-cli/`](https://github.com/AlteredCraft/tilth/tree/main/examples/seed-reference/todo-cli) in the Tilth repo.
 
-The proposal explicitly forbids re-prepping over an in-flight session: if `prepared`, `running`, or `failed` sessions for the same workspace already exist, `prep-feature` refuses and points you at `tilth reset <id>`. Discard or resume before starting a fresh prep.
+If a `prepared`, `running`, or `failed` session for the same workspace already exists, `prep-feature` opens an interactive picker: *run/resume the existing one, discard and re-prep, start a new session alongside it, or cancel*. The "start alongside" option is for when you want to try a different angle without losing in-flight work — but the next `tilth run` will refuse until exactly one prepared session remains, so you'll need to `tilth reset` the extras eventually. On a non-TTY (CI/scripts) the picker is skipped and you get the previous refuse-and-hint behavior; pass `--force` to auto-discard blockers, or `--keep-existing` to start fresh alongside them.
 
 ## 3. Run it
 
@@ -38,7 +38,9 @@ The proposal explicitly forbids re-prepping over an in-flight session: if `prepa
 uv run tilth run /absolute/path/to/your/repo
 ```
 
-If exactly one prepared session for this workspace exists, the harness wakes it, creates the worktree, and starts the worker loop. The per-task lifecycle is identical to the demo — see [Running the demo → end-to-end flow](running-the-demo.md#run-a-session-against-the-demo) for the breakdown. Follow-on operations:
+If exactly one prepared session for this workspace exists, the harness wakes it (worktree already exists from prep), flips status to `running`, and starts the worker loop. The per-task lifecycle is identical to the demo — see [Running the demo → end-to-end flow](running-the-demo.md#run-a-session-against-the-demo) for the breakdown.
+
+If no prepared session exists, `tilth run` shows a picker rather than crashing — *resume a prior session* (when one's resumable), *prep one now*, or *cancel*. Non-TTY callers get a clean exit-2 pointer instead. See [Resumable-session detection](resuming.md#resumable-session-detection) for the picker shape. Follow-on operations:
 
 - [Resuming a session](resuming.md) — `tilth resume` semantics, what survives across runs.
 - [Resetting a session](resetting.md) — `tilth reset` tears down a session's worktree, branch, and `sessions/<id>/`.

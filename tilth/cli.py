@@ -61,6 +61,24 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="TEXT",
         help="One-line feature/refactor brief. Prompted interactively if omitted.",
     )
+    prep.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "Auto-discard any blocking sessions (prepared/running/failed) for "
+            "this workspace and proceed. Bypasses the interactive picker."
+        ),
+    )
+    prep.add_argument(
+        "--keep-existing",
+        action="store_true",
+        help=(
+            "Start a new session alongside any existing in-flight sessions for "
+            "this workspace (don't discard them). The next `tilth run` will "
+            "refuse until only one prepared session remains. Mutually "
+            "exclusive with --force."
+        ),
+    )
 
     run_p = sub.add_parser(
         "run",
@@ -124,7 +142,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "prep-feature":
-        return loop.do_prep_feature_cmd(args.workspace, args.brief)
+        return loop.do_prep_feature_cmd(
+            args.workspace,
+            args.brief,
+            force=args.force,
+            keep_existing=args.keep_existing,
+        )
     if args.command == "run":
         return loop.do_run_cmd(args.workspace)
     if args.command == "resume":

@@ -35,7 +35,7 @@ from tilth.client import (
 )
 from tilth.seed import FileSeedSink, TTYFrontend, run_interview
 from tilth.seed.interview import InterviewAbort
-from tilth.session import Session, iter_events
+from tilth.session import Session, iter_events, session_label
 
 console = Console()
 
@@ -380,6 +380,173 @@ def _find_blocking_sessions(sessions_root: Path, source: Path) -> list[tuple[str
         if isinstance(status, str) and status in blocking_statuses:
             out.append((d.name, status))
     return out
+
+
+# --- interactive pickers ----------------------------------------------------
+#
+# The two failure cases that benefit most from interactive recovery:
+#   - prep-feature with a blocking session for this workspace
+#   - run with no prepared session for this workspace
+#
+# Both helpers take an injectable `prompt_func` so tests can drive them
+# without touching real stdin. Default prompt_func is the built-in `input`.
+# Each returns a short action string; the call site dispatches.
+
+# Actions returned by _prompt_blocking_action.
+_PREP_ACTION_RUN = "run_existing"          # one prepared → launch worker
+_PREP_ACTION_RESUME = "resume_existing"    # one running/failed → resume it
+_PREP_ACTION_RESET_AND_PREP = "reset_and_prep"
+_PREP_ACTION_PREP_FRESH = "prep_fresh"     # start a new session, leave blockers alone
+_PREP_ACTION_CANCEL = "cancel"
+
+# Actions returned by _prompt_no_prep_action.
+_RUN_ACTION_PREP_NOW = "prep_now"
+_RUN_ACTION_RESUME = "resume"
+_RUN_ACTION_RESET_AND_PREP = "reset_and_prep"
+_RUN_ACTION_CANCEL = "cancel"
+
+
+def _format_session_row(sid: str, status: str, sessions_root: Path) -> str:
+    """`sessions/<sid>/  <status>  <label>` for a picker row."""
+    label = session_label(sessions_root / sid)
+    if label:
+        return f"sessions/{sid}/  {status:<9}  {label}"
+    return f"sessions/{sid}/  {status}"
+
+
+def _ask_choice(prompt_func, valid: set[str]) -> str:
+    """Loop on prompt_func until the answer is in `valid`. EOF/Ctrl-D → cancel."""
+    while True:
+        try:
+            raw = prompt_func("> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return ""
+        if raw in valid:
+            return raw
+        console.print(f"[yellow]please choose one of: {sorted(valid)}[/yellow]")
+
+
+def _prompt_blocking_action(
+    blocking: list[tuple[str, str]],
+    sessions_root: Path,
+    prompt_func=input,
+) -> str:
+    """Picker shown when prep-feature finds blocking sessions for this workspace.
+
+    Single-blocker shape: offers run-or-resume (depending on status) vs.
+    reset-and-prep vs. cancel. Multi-blocker shape: offers reset-all vs. cancel.
+    """
+    fresh_note = (
+        "  3) start a new session (don't touch any existing sessions)"
+    )
+    if len(blocking) == 1:
+        sid, status = blocking[0]
+        console.print(
+            "[yellow]This workspace already has a session in flight:[/yellow]"
+        )
+        console.print(f"  {_format_session_row(sid, status, sessions_root)}")
+        console.print()
+        console.print("What would you like to do?")
+        if status == "prepared":
+            console.print("  1) run it now")
+            console.print("  2) discard it and start a new prep")
+            console.print(fresh_note)
+            console.print("  0) cancel")
+            choice = _ask_choice(prompt_func, {"0", "1", "2", "3"})
+            return {
+                "1": _PREP_ACTION_RUN,
+                "2": _PREP_ACTION_RESET_AND_PREP,
+                "3": _PREP_ACTION_PREP_FRESH,
+                "0": _PREP_ACTION_CANCEL,
+                "": _PREP_ACTION_CANCEL,
+            }[choice]
+        # running or failed
+        console.print("  1) resume it")
+        console.print("  2) discard it and start a new prep")
+        console.print(fresh_note)
+        console.print("  0) cancel")
+        choice = _ask_choice(prompt_func, {"0", "1", "2", "3"})
+        return {
+            "1": _PREP_ACTION_RESUME,
+            "2": _PREP_ACTION_RESET_AND_PREP,
+            "3": _PREP_ACTION_PREP_FRESH,
+            "0": _PREP_ACTION_CANCEL,
+            "": _PREP_ACTION_CANCEL,
+        }[choice]
+
+    console.print(
+        f"[yellow]This workspace has {len(blocking)} sessions in flight:[/yellow]"
+    )
+    for sid, status in blocking:
+        console.print(f"  {_format_session_row(sid, status, sessions_root)}")
+    console.print()
+    console.print(
+        "Heads up: `tilth run` requires exactly one prepared session per workspace, "
+        "so starting a new one alongside means you'll need to `tilth reset` the "
+        "extras before the next run."
+    )
+    console.print("What would you like to do?")
+    console.print(f"  1) discard all {len(blocking)} and start a new prep")
+    console.print("  2) start a new session (don't touch any existing sessions)")
+    console.print("  0) cancel")
+    choice = _ask_choice(prompt_func, {"0", "1", "2"})
+    return {
+        "1": _PREP_ACTION_RESET_AND_PREP,
+        "2": _PREP_ACTION_PREP_FRESH,
+        "0": _PREP_ACTION_CANCEL,
+        "": _PREP_ACTION_CANCEL,
+    }[choice]
+
+
+def _prompt_no_prep_action(
+    prior: tuple[str, str | None] | None,
+    sessions_root: Path,
+    prompt_func=input,
+) -> str:
+    """Picker shown when `tilth run` finds no prepared session for this workspace.
+
+    Distinguishes two cases:
+      - no prior session at all → just offer prep-now or cancel.
+      - resumable prior exists → offer resume / reset-and-prep / cancel.
+    """
+    if prior is None:
+        console.print(
+            "[yellow]No prepared session for this workspace, "
+            "and no prior session to resume.[/yellow]"
+        )
+        console.print()
+        console.print("What would you like to do?")
+        console.print("  1) prep one now (anchored interview)")
+        console.print("  0) cancel")
+        choice = _ask_choice(prompt_func, {"0", "1"})
+        return {
+            "1": _RUN_ACTION_PREP_NOW,
+            "0": _RUN_ACTION_CANCEL,
+            "": _RUN_ACTION_CANCEL,
+        }[choice]
+
+    sid, last_stop = prior
+    status = _checkpoint_status(sessions_root / sid) or "(unknown)"
+    console.print(
+        "[yellow]No prepared session for this workspace, "
+        "but a prior session is resumable:[/yellow]"
+    )
+    row = _format_session_row(sid, status, sessions_root)
+    if last_stop:
+        row = f"{row}  [last stop: {last_stop}]"
+    console.print(f"  {row}")
+    console.print()
+    console.print("What would you like to do?")
+    console.print("  1) resume that session")
+    console.print("  2) discard it and prep a new one")
+    console.print("  0) cancel")
+    choice = _ask_choice(prompt_func, {"0", "1", "2"})
+    return {
+        "1": _RUN_ACTION_RESUME,
+        "2": _RUN_ACTION_RESET_AND_PREP,
+        "0": _RUN_ACTION_CANCEL,
+        "": _RUN_ACTION_CANCEL,
+    }[choice]
 
 
 def _prepare_resume(session: Session, worktree: Path) -> str:
@@ -858,21 +1025,73 @@ def _do_reset(session_id: str, assume_yes: bool) -> int:
 
 # --- prep-feature -----------------------------------------------------------
 
-def _do_prep_feature(source: Path, brief: str | None) -> int:
-    blocking = _find_blocking_sessions(SESSIONS_DIR, source)
-    if blocking:
-        console.print(
-            f"[red]cannot prep:[/red] this workspace already has "
-            f"{len(blocking)} session(s) in flight:"
-        )
-        for sid, status in blocking:
-            console.print(f"  [bold]{status}[/bold]  sessions/{sid}/")
-        console.print(
-            "[yellow]hint:[/yellow] discard with "
-            "[bold]uv run tilth --reset <id>[/bold] (or "
-            "[bold]--resume[/bold] to continue a running/failed session)."
-        )
+def _do_prep_feature(
+    source: Path,
+    brief: str | None,
+    *,
+    force: bool = False,
+    keep_existing: bool = False,
+) -> int:
+    if force and keep_existing:
+        console.print("[red]--force and --keep-existing are mutually exclusive[/red]")
         return 2
+
+    blocking = _find_blocking_sessions(SESSIONS_DIR, source)
+    if blocking and keep_existing:
+        # Non-interactive equivalent of picker option "start a new session
+        # (don't touch any existing sessions)". Falls through to normal prep.
+        console.print(
+            f"[dim]--keep-existing: prepping alongside {len(blocking)} "
+            f"existing in-flight session(s)[/dim]"
+        )
+        blocking = []  # skip the picker / refusal logic below
+    if blocking and not force:
+        # Non-TTY → today's refuse-and-hint (preserves CI behavior).
+        if not sys.stdin.isatty():
+            console.print(
+                f"[red]cannot prep:[/red] this workspace already has "
+                f"{len(blocking)} session(s) in flight:"
+            )
+            for sid, status in blocking:
+                console.print(f"  {_format_session_row(sid, status, SESSIONS_DIR)}")
+            console.print(
+                "[yellow]hint:[/yellow] discard with "
+                "[bold]tilth reset <id>[/bold] (or "
+                "[bold]tilth resume[/bold] to continue), or pass "
+                "[bold]--force[/bold] to auto-discard."
+            )
+            return 2
+
+        # TTY → interactive picker. Dispatch on the user's choice.
+        action = _prompt_blocking_action(blocking, SESSIONS_DIR)
+        if action == _PREP_ACTION_CANCEL:
+            console.print("[yellow]cancelled[/yellow]")
+            return 0
+        if action == _PREP_ACTION_RUN:
+            return do_run_cmd(source)
+        if action == _PREP_ACTION_RESUME:
+            sid = blocking[0][0]
+            return do_resume_cmd(sid)
+        if action == _PREP_ACTION_PREP_FRESH:
+            # Leave blockers alone; just fall through to normal prep flow.
+            pass
+        elif action == _PREP_ACTION_RESET_AND_PREP:
+            for sid, _status in blocking:
+                rc = _do_reset(sid, assume_yes=True)
+                if rc != 0:
+                    console.print(f"[red]reset of {sid} failed; aborting prep[/red]")
+                    return rc
+
+    elif blocking and force:
+        # --force: auto-discard blockers, proceed silently (with a one-line note).
+        console.print(
+            f"[dim]--force: discarding {len(blocking)} blocking session(s)[/dim]"
+        )
+        for sid, _status in blocking:
+            rc = _do_reset(sid, assume_yes=True)
+            if rc != 0:
+                console.print(f"[red]reset of {sid} failed; aborting prep[/red]")
+                return rc
 
     config = TilthConfig.from_env()
     client = LLMClient(config)
@@ -891,13 +1110,24 @@ def _do_prep_feature(source: Path, brief: str | None) -> int:
 
     session = Session.new(SESSIONS_DIR)
     session.source = source
+    worktree, branch = ws.ensure_worktree(
+        source, session.session_id, session.root / "workspace"
+    )
+    session.workspace = worktree
+    session.branch = branch
     session.save_checkpoint()
     session.log(
         "session_start",
-        {"source": str(source), "phase": "prep-feature"},
+        {
+            "source": str(source),
+            "phase": "prep-feature",
+            "worktree": str(worktree),
+            "branch": branch,
+        },
     )
 
     console.print(f"[bold]session[/bold]  {session.session_id}")
+    console.print(f"[bold]branch[/bold]   {branch}")
     console.print(f"[bold]model[/bold]    {config.prep_model}")
 
     frontend = TTYFrontend(console=console)
@@ -907,6 +1137,7 @@ def _do_prep_feature(source: Path, brief: str | None) -> int:
         run_interview(
             session=session,
             source=source,
+            worktree=worktree,
             client=client,
             frontend=frontend,
             sink=sink,
@@ -975,10 +1206,16 @@ def do_visualize_cmd(maybe_id: str | None) -> int:
     return 0
 
 
-def do_prep_feature_cmd(workspace: Path, brief: str | None) -> int:
+def do_prep_feature_cmd(
+    workspace: Path,
+    brief: str | None,
+    *,
+    force: bool = False,
+    keep_existing: bool = False,
+) -> int:
     source = workspace.resolve()
     ws.ensure_git_repo(source)
-    return _do_prep_feature(source, brief)
+    return _do_prep_feature(source, brief, force=force, keep_existing=keep_existing)
 
 
 def do_resume_cmd(maybe_id: str | None) -> int:
@@ -1016,7 +1253,7 @@ def do_run_cmd(workspace: Path) -> int:
             f"{len(prepared)} found"
         )
         for sid in prepared:
-            console.print(f"  • sessions/{sid}/")
+            console.print(f"  {_format_session_row(sid, 'prepared', SESSIONS_DIR)}")
         console.print(
             "[yellow]hint:[/yellow] discard the ones you don't want with "
             "[bold]tilth reset <id>[/bold] until exactly one remains."
@@ -1029,7 +1266,7 @@ def do_run_cmd(workspace: Path) -> int:
         )
         session = Session.wake(SESSIONS_DIR, sid)
         session.source = source
-        worktree, branch = ws.create_worktree(
+        worktree, branch = ws.ensure_worktree(
             source, session.session_id, session.root / "workspace"
         )
         session.workspace = worktree
@@ -1040,35 +1277,56 @@ def do_run_cmd(workspace: Path) -> int:
             {"source": str(source), "worktree": str(worktree), "branch": branch},
         )
     else:
+        # No prepared session for this workspace. Don't create state and crash
+        # later at PRD-load — surface the choice up front.
         prior = _find_resumable_session(SESSIONS_DIR, source)
-        if prior is not None:
+
+        if not sys.stdin.isatty():
+            # Non-TTY: clean error with the right pointer; exit 2, no orphan
+            # session or worktree.
+            if prior is None:
+                console.print(
+                    f"[red]no prepared session for {source}.[/red]"
+                )
+                console.print(
+                    f"  → [bold]tilth prep-feature {source}[/bold] to seed one first"
+                )
+                return 2
             sid, last_stop = prior
             reason = last_stop or "no stop event"
             console.print(
-                f"[yellow]heads up:[/yellow] sessions/{sid}/ ended in "
-                f"[bold]{reason}[/bold] and is resumable"
+                f"[red]no prepared session for {source}; "
+                f"sessions/{sid}/ is resumable ({reason}).[/red]"
             )
-            console.print("  → [bold]tilth resume[/bold]       (continue that work)")
-            console.print("  → [bold]tilth reset --yes[/bold]  (discard it first)")
-            console.print("[dim]starting fresh anyway in 5s... (Ctrl-C to abort)[/dim]")
-            try:
-                time.sleep(5)
-            except KeyboardInterrupt:
-                console.print("[yellow]aborted[/yellow]")
-                return 130
+            console.print(f"  → [bold]tilth resume {sid}[/bold]  (continue it)")
+            console.print(
+                f"  → [bold]tilth reset {sid} && tilth prep-feature {source}[/bold]  "
+                "(discard and start fresh)"
+            )
+            return 2
 
-        session = Session.new(SESSIONS_DIR)
-        session.source = source
-        worktree, branch = ws.create_worktree(
-            source, session.session_id, session.root / "workspace"
-        )
-        session.workspace = worktree
-        session.branch = branch
-        session.save_checkpoint()
-        session.log(
-            "session_start",
-            {"source": str(source), "worktree": str(worktree), "branch": branch},
-        )
+        # TTY: interactive picker.
+        action = _prompt_no_prep_action(prior, SESSIONS_DIR)
+        if action == _RUN_ACTION_CANCEL:
+            console.print("[yellow]cancelled[/yellow]")
+            return 0
+        if action == _RUN_ACTION_RESUME:
+            assert prior is not None
+            return do_resume_cmd(prior[0])
+        if action == _RUN_ACTION_RESET_AND_PREP:
+            assert prior is not None
+            rc = _do_reset(prior[0], assume_yes=True)
+            if rc != 0:
+                return rc
+            rc = _do_prep_feature(source, brief=None)
+            if rc != 0:
+                return rc
+            return do_run_cmd(source)
+        # _RUN_ACTION_PREP_NOW
+        rc = _do_prep_feature(source, brief=None)
+        if rc != 0:
+            return rc
+        return do_run_cmd(source)
 
     return _run_session(session, worktree, client, config)
 
@@ -1268,7 +1526,7 @@ def _legacy_main() -> int:
             )
             session = Session.wake(SESSIONS_DIR, sid)
             session.source = source
-            worktree, branch = ws.create_worktree(
+            worktree, branch = ws.ensure_worktree(
                 source, session.session_id, session.root / "workspace"
             )
             session.workspace = worktree
@@ -1279,35 +1537,11 @@ def _legacy_main() -> int:
                 {"source": str(source), "worktree": str(worktree), "branch": branch},
             )
         else:
-            prior = _find_resumable_session(SESSIONS_DIR, source)
-            if prior is not None:
-                sid, last_stop = prior
-                reason = last_stop or "no stop event"
-                console.print(
-                    f"[yellow]heads up:[/yellow] sessions/{sid}/ ended in "
-                    f"[bold]{reason}[/bold] and is resumable"
-                )
-                console.print("  → [bold]uv run tilth --resume[/bold]       (continue that work)")
-                console.print("  → [bold]uv run tilth --reset --yes[/bold]  (discard it first)")
-                console.print("[dim]starting fresh anyway in 5s... (Ctrl-C to abort)[/dim]")
-                try:
-                    time.sleep(5)
-                except KeyboardInterrupt:
-                    console.print("[yellow]aborted[/yellow]")
-                    return 130
-
-            session = Session.new(SESSIONS_DIR)
-            session.source = source
-            worktree, branch = ws.create_worktree(
-                source, session.session_id, session.root / "workspace"
-            )
-            session.workspace = worktree
-            session.branch = branch
-            session.save_checkpoint()
-            session.log(
-                "session_start",
-                {"source": str(source), "worktree": str(worktree), "branch": branch},
-            )
+            # No prepared session for this workspace — delegate to the verb-router
+            # behavior (picker on TTY, clean error pointer on non-TTY). Keeps
+            # legacy and verb-router paths identical so we have one code path to
+            # maintain when the legacy flags are eventually removed.
+            return do_run_cmd(source)
 
     console.print(f"[bold]session[/bold] {session.session_id}")
     console.print(f"[bold]worktree[/bold] {worktree}")

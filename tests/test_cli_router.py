@@ -21,8 +21,8 @@ def patched_handlers(monkeypatch):
     calls: list[tuple[str, tuple]] = []
 
     def make_stub(name: str):
-        def stub(*args):
-            calls.append((name, args))
+        def stub(*args, **kwargs):
+            calls.append((name, args, kwargs))
             return 0
         return stub
 
@@ -58,49 +58,75 @@ def test_top_level_help_exits_zero(monkeypatch, capsys):
 def test_run_subcommand_dispatches_to_do_run_cmd(monkeypatch, patched_handlers):
     rc = _run(monkeypatch, ["run", "/tmp/some-repo"])
     assert rc == 0
-    assert patched_handlers == [("run", (Path("/tmp/some-repo"),))]
+    assert patched_handlers == [("run", (Path("/tmp/some-repo"),), {})]
 
 
 def test_prep_feature_dispatches_with_workspace_and_brief(monkeypatch, patched_handlers):
     rc = _run(monkeypatch, ["prep-feature", "/tmp/repo", "--brief", "add X"])
     assert rc == 0
-    assert patched_handlers == [("prep-feature", (Path("/tmp/repo"), "add X"))]
+    assert patched_handlers == [
+        ("prep-feature", (Path("/tmp/repo"), "add X"), {"force": False, "keep_existing": False})
+    ]
 
 
 def test_prep_feature_brief_defaults_to_none(monkeypatch, patched_handlers):
     rc = _run(monkeypatch, ["prep-feature", "/tmp/repo"])
     assert rc == 0
-    assert patched_handlers == [("prep-feature", (Path("/tmp/repo"), None))]
+    assert patched_handlers == [
+        ("prep-feature", (Path("/tmp/repo"), None), {"force": False, "keep_existing": False})
+    ]
+
+
+def test_prep_feature_force_passes_through(monkeypatch, patched_handlers):
+    _run(monkeypatch, ["prep-feature", "/tmp/repo", "--brief", "x", "--force"])
+    assert patched_handlers == [
+        (
+            "prep-feature",
+            (Path("/tmp/repo"), "x"),
+            {"force": True, "keep_existing": False},
+        )
+    ]
+
+
+def test_prep_feature_keep_existing_passes_through(monkeypatch, patched_handlers):
+    _run(monkeypatch, ["prep-feature", "/tmp/repo", "--brief", "x", "--keep-existing"])
+    assert patched_handlers == [
+        (
+            "prep-feature",
+            (Path("/tmp/repo"), "x"),
+            {"force": False, "keep_existing": True},
+        )
+    ]
 
 
 def test_resume_with_id(monkeypatch, patched_handlers):
     _run(monkeypatch, ["resume", "20260525-100000-aaa"])
-    assert patched_handlers == [("resume", ("20260525-100000-aaa",))]
+    assert patched_handlers == [("resume", ("20260525-100000-aaa",), {})]
 
 
 def test_resume_without_id_passes_none(monkeypatch, patched_handlers):
     _run(monkeypatch, ["resume"])
-    assert patched_handlers == [("resume", (None,))]
+    assert patched_handlers == [("resume", (None,), {})]
 
 
 def test_reset_with_id_and_yes(monkeypatch, patched_handlers):
     _run(monkeypatch, ["reset", "20260525-100000-aaa", "-y"])
-    assert patched_handlers == [("reset", ("20260525-100000-aaa", True))]
+    assert patched_handlers == [("reset", ("20260525-100000-aaa", True), {})]
 
 
 def test_reset_without_id_or_yes(monkeypatch, patched_handlers):
     _run(monkeypatch, ["reset"])
-    assert patched_handlers == [("reset", (None, False))]
+    assert patched_handlers == [("reset", (None, False), {})]
 
 
 def test_visualize_with_id(monkeypatch, patched_handlers):
     _run(monkeypatch, ["visualize", "20260525-100000-aaa"])
-    assert patched_handlers == [("visualize", ("20260525-100000-aaa",))]
+    assert patched_handlers == [("visualize", ("20260525-100000-aaa",), {})]
 
 
 def test_visualize_without_id(monkeypatch, patched_handlers):
     _run(monkeypatch, ["visualize"])
-    assert patched_handlers == [("visualize", (None,))]
+    assert patched_handlers == [("visualize", (None,), {})]
 
 
 # --- back-compat -----------------------------------------------------------
@@ -115,7 +141,7 @@ def test_bare_positional_workspace_routes_to_legacy_with_deprecation(
     out = capsys.readouterr().out
     assert "deprecated" in out
     assert "tilth run /tmp/some-repo" in out
-    assert patched_handlers == [("legacy", ())]
+    assert patched_handlers == [("legacy", (), {})]
 
 
 def test_legacy_flag_routes_to_legacy_without_deprecation(
@@ -128,7 +154,7 @@ def test_legacy_flag_routes_to_legacy_without_deprecation(
     assert rc == 0
     out = capsys.readouterr().out
     assert "deprecated" not in out
-    assert patched_handlers == [("legacy", ())]
+    assert patched_handlers == [("legacy", (), {})]
 
 
 def test_loop_main_shim_still_callable(monkeypatch, patched_handlers):
@@ -137,7 +163,7 @@ def test_loop_main_shim_still_callable(monkeypatch, patched_handlers):
     monkeypatch.setattr(sys, "argv", ["tilth", "run", "/tmp/x"])
     rc = loop.main()
     assert rc == 0
-    assert patched_handlers == [("run", (Path("/tmp/x"),))]
+    assert patched_handlers == [("run", (Path("/tmp/x"),), {})]
 
 
 # --- error surface ---------------------------------------------------------
@@ -150,4 +176,4 @@ def test_unknown_subcommand_treated_as_bare_positional(monkeypatch, patched_hand
     assert rc == 0
     out = capsys.readouterr().out
     assert "deprecated" in out
-    assert patched_handlers == [("legacy", ())]
+    assert patched_handlers == [("legacy", (), {})]

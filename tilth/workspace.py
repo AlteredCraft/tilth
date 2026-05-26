@@ -58,6 +58,31 @@ def create_worktree(source: Path, session_id: str, target: Path) -> tuple[Path, 
     return target, branch
 
 
+def ensure_worktree(source: Path, session_id: str, target: Path) -> tuple[Path, str]:
+    """Return the worktree at `target` if it already exists, else create it.
+
+    Used by prep-feature (creates the worktree up front so seed test files land
+    inside the session branch instead of the source repo's working tree) and by
+    run (tolerates a worktree already existing from a prior prep). A run with no
+    prior prep falls through to create_worktree exactly as before.
+    """
+    branch = f"session/{session_id}"
+    proc = _git(["worktree", "list", "--porcelain"], source)
+    if proc.returncode == 0:
+        target_resolved = target.resolve() if target.exists() else target
+        for record in proc.stdout.split("\n\n"):
+            wt_line = next(
+                (ln for ln in record.splitlines() if ln.startswith("worktree ")),
+                None,
+            )
+            if wt_line is None:
+                continue
+            existing = Path(wt_line[len("worktree "):]).resolve()
+            if existing == target_resolved:
+                return target, branch
+    return create_worktree(source, session_id, target)
+
+
 def commit_task(worktree: Path, task_id: str, title: str) -> str | None:
     """Stage and commit. Returns short SHA, or None if there was nothing to commit."""
     _git(["add", "-A"], worktree)

@@ -106,6 +106,16 @@ def source(tmp_path: Path) -> Path:
     return s
 
 
+@pytest.fixture
+def worktree(tmp_path: Path) -> Path:
+    """Stand-in for a session worktree. The engine treats it as an opaque write
+    target — no git involved at this layer; ws.ensure_worktree is the only
+    place that touches git, and it's exercised in test_workspace.py."""
+    w = tmp_path / "worktree"
+    w.mkdir()
+    return w
+
+
 def _good_seed_call() -> dict[str, Any]:
     return _tool_call(
         "c1",
@@ -129,7 +139,7 @@ def _good_seed_call() -> dict[str, Any]:
     )
 
 
-def test_single_turn_write_seed_terminates_and_flips_status(sessions_root, source):
+def test_single_turn_write_seed_terminates_and_flips_status(sessions_root, source, worktree):
     client = FakeClient(
         responses=[_model_response(tool_calls=[_good_seed_call()])],
         config=_Config(),
@@ -140,7 +150,7 @@ def test_single_turn_write_seed_terminates_and_flips_status(sessions_root, sourc
     session.source = source
 
     result = run_interview(
-        session=session, source=source, client=client,
+        session=session, source=source, worktree=worktree, client=client,
         frontend=frontend, sink=sink, feature_brief="add a thing",
     )
 
@@ -149,13 +159,16 @@ def test_single_turn_write_seed_terminates_and_flips_status(sessions_root, sourc
     assert result.tokens_used == 150
     assert (session.root / "prd.json").is_file()
     assert (session.root / "seed-meta.json").is_file()
-    assert (source / "tests" / "test_t001_scaffold.py").is_file()
+    assert (worktree / "tests" / "test_t001_scaffold.py").is_file()
+    assert not (source / "tests").exists(), (
+        "seed tests must land in the worktree, not the source repo"
+    )
     # Frontend got the closing summary and a token update.
     assert frontend.summaries and "scaffold" in frontend.summaries[0][0]
     assert frontend.token_updates[-1] == (100, 50)
 
 
-def test_ask_user_routes_to_frontend_then_write_seed_terminates(sessions_root, source):
+def test_ask_user_routes_to_frontend_then_write_seed_terminates(sessions_root, source, worktree):
     """Two-turn interview: ask_user, get answer, then write_seed."""
     client = FakeClient(
         responses=[
@@ -177,7 +190,7 @@ def test_ask_user_routes_to_frontend_then_write_seed_terminates(sessions_root, s
     session.source = source
 
     run_interview(
-        session=session, source=source, client=client,
+        session=session, source=source, worktree=worktree, client=client,
         frontend=frontend, sink=FileSeedSink(), feature_brief="add a thing",
     )
 
@@ -186,7 +199,7 @@ def test_ask_user_routes_to_frontend_then_write_seed_terminates(sessions_root, s
     assert len(frontend.token_updates) == 2
 
 
-def test_read_file_routes_to_source_repo(sessions_root, source):
+def test_read_file_routes_to_source_repo(sessions_root, source, worktree):
     client = FakeClient(
         responses=[
             _model_response(
@@ -201,7 +214,7 @@ def test_read_file_routes_to_source_repo(sessions_root, source):
     session.source = source
 
     run_interview(
-        session=session, source=source, client=client,
+        session=session, source=source, worktree=worktree, client=client,
         frontend=frontend, sink=FileSeedSink(), feature_brief="add a thing",
     )
 
@@ -211,7 +224,7 @@ def test_read_file_routes_to_source_repo(sessions_root, source):
     assert "def main()" in tool_msg["content"]
 
 
-def test_unknown_tool_returns_error_string(sessions_root, source):
+def test_unknown_tool_returns_error_string(sessions_root, source, worktree):
     client = FakeClient(
         responses=[
             _model_response(tool_calls=[_tool_call("c1", "nonexistent", {})]),
@@ -223,7 +236,7 @@ def test_unknown_tool_returns_error_string(sessions_root, source):
     session.source = source
 
     run_interview(
-        session=session, source=source, client=client,
+        session=session, source=source, worktree=worktree, client=client,
         frontend=FakeFrontend(), sink=FileSeedSink(), feature_brief="thing",
     )
 
@@ -231,7 +244,7 @@ def test_unknown_tool_returns_error_string(sessions_root, source):
     assert "unknown tool" in tool_msg["content"]
 
 
-def test_model_stopping_without_write_seed_aborts(sessions_root, source):
+def test_model_stopping_without_write_seed_aborts(sessions_root, source, worktree):
     client = FakeClient(
         responses=[_model_response(content="I'm done thinking but did nothing.")],
         config=_Config(),
@@ -241,13 +254,13 @@ def test_model_stopping_without_write_seed_aborts(sessions_root, source):
 
     with pytest.raises(InterviewAbort, match="stopped before calling write_seed"):
         run_interview(
-            session=session, source=source, client=client,
+            session=session, source=source, worktree=worktree, client=client,
             frontend=FakeFrontend(), sink=FileSeedSink(), feature_brief="thing",
         )
     assert session.status == "running"  # status not flipped on abort
 
 
-def test_sink_failure_feeds_error_back_and_allows_retry(sessions_root, source):
+def test_sink_failure_feeds_error_back_and_allows_retry(sessions_root, source, worktree):
     """A failed write_seed shouldn't terminate; the model can fix and retry."""
     bad_call = _tool_call(
         "c1",
@@ -276,7 +289,7 @@ def test_sink_failure_feeds_error_back_and_allows_retry(sessions_root, source):
     session.source = source
 
     run_interview(
-        session=session, source=source, client=client,
+        session=session, source=source, worktree=worktree, client=client,
         frontend=FakeFrontend(), sink=FileSeedSink(), feature_brief="thing",
     )
 
@@ -290,7 +303,7 @@ def test_sink_failure_feeds_error_back_and_allows_retry(sessions_root, source):
     assert session.status == "prepared"  # second call succeeded
 
 
-def test_session_prepared_event_is_logged_with_counts(sessions_root, source):
+def test_session_prepared_event_is_logged_with_counts(sessions_root, source, worktree):
     client = FakeClient(
         responses=[_model_response(tool_calls=[_good_seed_call()])],
         config=_Config(),
@@ -299,7 +312,7 @@ def test_session_prepared_event_is_logged_with_counts(sessions_root, source):
     session.source = source
 
     run_interview(
-        session=session, source=source, client=client,
+        session=session, source=source, worktree=worktree, client=client,
         frontend=FakeFrontend(), sink=FileSeedSink(), feature_brief="thing",
     )
 
@@ -313,7 +326,7 @@ def test_session_prepared_event_is_logged_with_counts(sessions_root, source):
     assert payload["interviewer_model"] == "stub-model"
 
 
-def test_sink_can_raise_unexpected_error_without_corrupting_status(sessions_root, source):
+def test_sink_can_raise_unexpected_error_without_corrupting_status(sessions_root, source, worktree):
     """A non-validation sink failure (e.g. disk full) propagates without flipping
     status to prepared. We simulate this with a sink that always raises."""
 
@@ -334,7 +347,7 @@ def test_sink_can_raise_unexpected_error_without_corrupting_status(sessions_root
 
     with pytest.raises(InterviewAbort):
         run_interview(
-            session=session, source=source, client=client,
+            session=session, source=source, worktree=worktree, client=client,
             frontend=FakeFrontend(), sink=BoomSink(), feature_brief="thing",
         )
     assert session.status == "running"

@@ -58,6 +58,7 @@ def run_interview(
     *,
     session: Session,
     source: Path,
+    worktree: Path,
     client: LLMClient,
     frontend: InterviewFrontend,
     sink: SeedSink,
@@ -65,9 +66,14 @@ def run_interview(
 ) -> InterviewResult:
     """Drive the interview to completion. Persists the seed via `sink`.
 
-    `session` must already exist (Session.new) with `source` recorded. On
-    success: appends a `session_prepared` event, flips status to `prepared`,
-    and returns the InterviewResult.
+    `session` must already exist (Session.new) with `source` recorded, and
+    `worktree` must point at a real session-branch worktree (typically created
+    by ws.ensure_worktree just before this call). Reads (`read_file`, `glob`,
+    `grep`) route to `source` so the seeder sees uncommitted in-flight work;
+    writes (`write_seed`) route to `worktree` so the seed bundle lands in the
+    session branch instead of dirtying the source repo. On success: appends a
+    `session_prepared` event, flips status to `prepared`, returns the
+    InterviewResult.
     """
     trace_id = _trace_id()
     started_at = time.time()
@@ -155,7 +161,7 @@ def run_interview(
                 try:
                     sink.write_seed(
                         session_dir=session.root,
-                        workspace=source,
+                        workspace=worktree,
                         prd_entries=prd_entries,
                         test_files=test_files,
                         meta=meta,

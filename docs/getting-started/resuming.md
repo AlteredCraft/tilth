@@ -33,13 +33,19 @@ For the under-the-hood story of what resume actually mutates, see [Resume mechan
 
 ## Resumable-session detection
 
-If you run `uv run tilth run <workspace>` and there's no prepared session for this workspace but there *is* a resumable session under `sessions/`, the harness prints a heads-up and pauses 5 seconds before starting a new session:
+If you run `uv run tilth run <workspace>` and there's no prepared session for this workspace, the harness checks for a resumable prior session and offers an interactive picker rather than silently starting a new session:
 
 ```
-heads up: sessions/20260430-121316-51ead4/ ended in iter_cap and is resumable
-  → tilth resume       (continue that work)
-  → tilth reset --yes  (discard it first)
-starting fresh anyway in 5s... (Ctrl-C to abort)
+No prepared session for this workspace, but a prior session is resumable:
+  sessions/20260430-121316-51ead4/  failed     T-001: Scaffold CSVExporter  [last stop: iter_cap]
+
+What would you like to do?
+  1) resume that session
+  2) discard it and prep a new one
+  0) cancel
+>
 ```
 
-"Resumable" means: same source path AND last `stop.reason` is anything other than `all_done` (or no stop event was logged at all — covers crashes that died before logging) AND the session is *not* in `prepared` state (those get picked up directly by `tilth run` without a warning). The detection is read-only — it doesn't touch the prior session. Hit Ctrl-C during the pause if the warning surprised you and you want to switch to `tilth resume` or [`tilth reset`](resetting.md) instead.
+"Resumable" means: same source path AND last `stop.reason` is anything other than `all_done` (or no stop event was logged at all — covers crashes that died before logging) AND the session is *not* in `prepared` state (those get picked up directly by `tilth run` without a warning). The detection is read-only — it doesn't touch the prior session until you pick option 2.
+
+When stdin isn't a TTY (CI, scripts, piped invocations) the picker is skipped — the harness exits 2 with a single-line pointer at `tilth resume <sid>` or `tilth prep-feature <ws>` so callers fail loudly instead of hanging on a prompt that nobody will ever answer.

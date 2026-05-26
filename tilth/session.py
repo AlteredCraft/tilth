@@ -191,3 +191,64 @@ class Session:
 
     def elapsed_minutes(self) -> float:
         return (time.time() - self.started_at) / 60.0
+
+
+_LABEL_MAX_CHARS = 60
+
+
+def session_label(session_dir: Path, max_chars: int = _LABEL_MAX_CHARS) -> str:
+    """Short human-readable label for a session, for use in picker menus.
+
+    Best-effort: tries seed-meta.json's tldr first, then prd.json's first entry
+    title, then returns "". Never raises — pickers can't tolerate a malformed
+    sessions/<id>/ taking down the menu.
+    """
+    label = _label_from_seed_meta(session_dir) or _label_from_prd(session_dir) or ""
+    if max_chars and len(label) > max_chars:
+        label = label[: max_chars - 1].rstrip() + "…"
+    return label
+
+
+def _label_from_seed_meta(session_dir: Path) -> str:
+    path = session_dir / "seed-meta.json"
+    if not path.is_file():
+        return ""
+    try:
+        meta = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return ""
+    tldr = meta.get("tldr") if isinstance(meta, dict) else None
+    if not isinstance(tldr, str):
+        return ""
+    for raw in tldr.splitlines():
+        stripped = raw.strip()
+        if not stripped:
+            continue
+        # Strip a leading list-bullet marker (`- ` or `* `) but preserve
+        # markdown emphasis like `**T-001:**` verbatim — balancing it would
+        # need a real parser.
+        if stripped[:2] in ("- ", "* "):
+            stripped = stripped[2:].strip()
+        if stripped:
+            return stripped
+    return ""
+
+
+def _label_from_prd(session_dir: Path) -> str:
+    path = session_dir / "prd.json"
+    if not path.is_file():
+        return ""
+    try:
+        prd = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return ""
+    if not isinstance(prd, list) or not prd:
+        return ""
+    first = prd[0]
+    if not isinstance(first, dict):
+        return ""
+    tid = first.get("id", "")
+    title = first.get("title", "")
+    if tid and title:
+        return f"{tid}: {title}"
+    return str(title or tid or "")

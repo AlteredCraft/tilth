@@ -36,3 +36,11 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "RUF"]
+
+# Scope pytest to the harness's own tests — `sessions/*/workspace/tests/` may
+# contain seed tests from past runs (and, since prep-time worktree creation,
+# from past preps). They're meant for the worker, not for Tilth's own suite,
+# and their identical basenames (test_t001_*.py, etc.) collide on collection.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["sessions", ".venv", "build", "dist"]

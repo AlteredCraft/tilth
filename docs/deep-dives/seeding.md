@@ -19,17 +19,18 @@
 
 ```
 sessions/<id>/
-├── checkpoint.json     # status: prepared (until tilth run flips it to running)
-├── events.jsonl        # model_call, tool_call, tool_result, session_prepared
-├── prd.json            # written atomically by the sink
-├── seed-meta.json      # interview audit trail — see below
-└── (no worktree yet — that happens on tilth run)
-
-<workspace>/tests/
-├── test_t001_<slug>.py # one per task, named to match tilth's pytest filter
-├── test_t002_<slug>.py
-└── ...
+├── checkpoint.json         # status: prepared (until tilth run flips it to running)
+├── events.jsonl            # model_call, tool_call, tool_result, session_prepared
+├── prd.json                # written atomically by the sink
+├── seed-meta.json          # interview audit trail — see below
+└── workspace/              # the session-branch worktree (created at prep time)
+    └── tests/
+        ├── test_t001_<slug>.py  # one per task, named to match tilth's pytest filter
+        ├── test_t002_<slug>.py
+        └── ...
 ```
+
+The worktree is created **at prep time**, not at run time — `ws.ensure_worktree` runs immediately after the session is created, branches `session/<id>` off the source repo's HEAD, and the sink writes seed test files directly into it. `tilth run` then `ensure_worktree`s the same path idempotently (returning the existing worktree if it's still there, recreating it if you deleted it by hand between prep and run) and starts the worker. The source repo's working tree is **never touched** by prep — the only filesystem effect outside `sessions/<id>/` is the new `session/<id>` branch in the source repo's `.git` (where Tilth's branches always live; see [Session layout](session-layout.md)).
 
 The worker never sees `seed-meta.json` — it's the interview audit trail for the visualizer and the human reviewer. Contents:
 
@@ -83,7 +84,7 @@ The interview model is given exactly five tools:
 | `ask_user` | Pose a question; optional menu of options | `frontend.ask_user` |
 | `write_seed` | TERMINAL — write the bundle atomically | `sink.write_seed`, then `session.set_status("prepared")` |
 
-Conspicuously absent: `bash`, `write_file`, `edit_file`. The seeder is **read-only against your source repo** until the terminal write — there's no path for the model to mutate code outside of producing the `test_files` content in `write_seed`.
+Conspicuously absent: `bash`, `write_file`, `edit_file`. The seeder is **read-only against your source repo** until the terminal write — there's no path for the model to mutate code outside of producing the `test_files` content in `write_seed`. And even that terminal write lands in the **session worktree**, not the source repo: `sink.write_seed` is given the worktree path as its `workspace`, so seed tests end up under `sessions/<id>/workspace/tests/` on the `session/<id>` branch. Your source repo's working tree stays clean across the prep.
 
 ## Interview shapes: cold start vs. existing-PRD anchor
 
@@ -99,7 +100,9 @@ The existing-PRD path needs no new tool surface — `read_file` is already there
 
 `tilth run <workspace>` looks at `sessions/*/checkpoint.json` and finds those whose `source` matches `<workspace>` and `status == "prepared"`. The cases:
 
-- **Exactly one prepared session.** Wake it, create the worktree at `sessions/<id>/workspace/` on branch `session/<id>`, flip status to `running`, log `session_start`, start the worker loop.
+- **Exactly one prepared session.** Wake it, ensure the worktree at `sessions/<id>/workspace/` (created at prep time on branch `session/<id>`; `ensure_worktree` recreates it if you deleted it between prep and run), flip status to `running`, log `session_start`, start the worker loop.
+
+- **Zero prepared sessions.** Don't crash — surface the choice up front. On a TTY, the harness shows an interactive picker: *resume the prior session* (if one's resumable) / *discard it and prep a new one* / *prep one now* (if no prior exists) / *cancel*. On a non-TTY (CI, scripts), the picker is skipped and the harness exits 2 with a single-line pointer at the right next command. Either way, no orphan session or worktree is created when the user's intent isn't yet clear. See [Resumable-session detection](../getting-started/resuming.md#resumable-session-detection) for the picker mockup.
 - **Multiple prepared sessions.** Refuse and list them — you discard the ones you don't want with `tilth reset <id>` until one remains.
 - **Zero prepared sessions.** Falls back to the legacy "start fresh" path, which will fail at PRD-load with a clear pointer to `tilth prep-feature`.
 
