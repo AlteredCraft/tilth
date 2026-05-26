@@ -84,6 +84,13 @@ nav:
       # atomic terminal write, and how a prepared session flows into
       # `tilth run`.
       - Seeding a session: deep-dives/seeding.md
+      # The schema of `prd.json` — fields, validators, who reads what, where
+      # the soft 1:1 convention between acceptance_criteria and test
+      # assertions lives (in the seeder prompt, not the harness). Reach for
+      # this when extending the seed shape, debugging "why did the worker
+      # think it was done", or understanding what `_load_prd` actually
+      # returns.
+      - The PRD format: deep-dives/prd-json.md
       # The five stop conditions for a run and which layer each operates at
       # (session-level vs. task-level). Cross-references the loops, token
       # recording, and resume pages.
