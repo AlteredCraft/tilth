@@ -5,14 +5,14 @@ Drop a session's worktree, delete its `session/<id>` branch from the source repo
 ## How to reset
 
 ```bash
-uv run tilth --reset                  # most recent session
-uv run tilth --reset <session_id>     # or name one explicitly
-uv run tilth --reset --yes            # skip the y/N confirmation
+uv run tilth reset                  # most recent session
+uv run tilth reset <session_id>     # or name one explicitly
+uv run tilth reset --yes            # skip the y/N confirmation
 ```
 
-`--reset` is **destructive by design** — it force-removes the worktree even if dirty, since its whole purpose is to discard a session's work. The `[y/N]` prompt (or `--yes` to skip) is the safety gate.
+`tilth reset` is **destructive by design** — it force-removes the worktree even if dirty, since its whole purpose is to discard a session's work. The `[y/N]` prompt (or `--yes` to skip) is the safety gate.
 
-`--reset` and `--resume` are mutually exclusive on a single invocation.
+The pre-Phase-3 flag form `--reset` still works for one minor version.
 
 ## What reset removes
 
@@ -31,7 +31,7 @@ For the implementation walk-through and idempotency story, see [Reset mechanics]
 
 ## Manual fallback
 
-If `--reset` itself can't run (e.g. the session metadata is missing), the manual recipe still works:
+If `tilth reset` itself can't run (e.g. the session metadata is missing), the manual recipe still works:
 
 ```bash
 cd <demo-clone-path>                  # e.g. ~/projects/tilth-demo

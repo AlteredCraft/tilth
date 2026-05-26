@@ -5,17 +5,20 @@ Render `events.jsonl` as a chat-style HTML page. Easier to skim than `jq`-ing th
 ## How to visualize
 
 ```bash
-uv run tilth --visualize                # most recent session
-uv run tilth --visualize <session_id>   # or name one explicitly
+uv run tilth visualize                # most recent session
+uv run tilth visualize <session_id>   # or name one explicitly
 ```
+
+The pre-Phase-3 flag form `--visualize` still works for one minor version.
 
 Writes `sessions/<id>/chat.html` — a single self-contained file (inline CSS, no JS) that renders the log as a conversation:
 
+- the **seed context panel** above the timeline when `sessions/<id>/seed-meta.json` exists — TL;DR, open questions, blockers, and scope notes from the prep-feature interview, so the reviewer sees them before scrolling through per-task events,
 - model calls (with collapsible reasoning blocks where the model emitted any),
 - tool calls and results,
 - validator runs,
 - judge verdicts,
-- AGENTS.md updates,
+- proposed learnings,
 - commits,
 - and stops,
 

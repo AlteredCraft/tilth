@@ -271,3 +271,58 @@ pre {
 .checks li.pass { color: var(--ok); }
 .checks li.fail { color: var(--bad); }
 .checks .check-mark { font-weight: 700; }
+
+.seed-panel {
+  background: var(--card);
+  border: 1px solid var(--judge-line);
+  border-left: 4px solid var(--judge-line);
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin: 0 0 28px;
+}
+.seed-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--line);
+}
+.seed-panel-title {
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--judge-fg);
+}
+.seed-panel-meta {
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--muted);
+}
+.seed-panel-section {
+  margin-top: 12px;
+}
+.seed-panel-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 0 0 4px;
+}
+.seed-panel-section.blockers .seed-panel-section-title {
+  color: var(--bad);
+}
+.seed-panel-section ul { margin: 0; padding-left: 18px; }
+.seed-panel-section li { margin: 2px 0; }
+.seed-panel-tldr {
+  white-space: pre-wrap;
+  font-size: 13px;
+  margin: 0;
+}
+.seed-panel-scope {
+  white-space: pre-wrap;
+  font-size: 13px;
+  margin: 0;
+  color: var(--muted);
+}

@@ -23,26 +23,30 @@ nav:
       # required and optional `TILTH_*` env vars, tested provider/base-URL
       # combinations, and how to build the docs site locally.
       - Installation: getting-started/installation.md
-      # End-to-end walkthrough of `uv run tilth <workspace>`: the per-task
-      # lifecycle (prompt assembly → tool-use loop → validators → judge →
+      # End-to-end walkthrough of the two-step `tilth prep-feature` →
+      # `tilth run` flow: the seeding interview, then the per-task lifecycle
+      # (prompt assembly → tool-use loop → validators → judge →
       # self-improvement → commit), what the console streams, and where to
       # look in `sessions/<id>/` after the run.
       - Running the demo: getting-started/running-the-demo.md
-      # `--resume` semantics: skips `done` tasks, retries the trailing `failed`
-      # one, resets wall-clock budget, preserves cumulative tokens. Also covers
-      # resumable-session detection (the 5s heads-up before a fresh run).
+      # `tilth resume` semantics: skips `done` tasks, retries the trailing
+      # `failed` one, resets wall-clock budget, preserves cumulative tokens.
+      # Also covers resumable-session detection (the 5s heads-up before a
+      # fresh run).
       - Resuming a session: getting-started/resuming.md
-      # `--reset` tears down a session: `git worktree remove --force` +
+      # `tilth reset` tears down a session: `git worktree remove --force` +
       # `git branch -D session/<id>` + `rm -rf sessions/<id>/`. Idempotent,
       # destructive by design, gated by `[y/N]` (or `--yes`).
       - Resetting a session: getting-started/resetting.md
-      # `--visualize` renders `events.jsonl` as a self-contained `chat.html`
-      # grouped by task. Read-only, safe to invoke mid-run.
+      # `tilth visualize` renders `events.jsonl` (plus `seed-meta.json` if
+      # present, as a context panel above the timeline) as a self-contained
+      # `chat.html` grouped by task. Read-only, safe to invoke mid-run.
       - Visualizing a session: getting-started/visualizing.md
       # The "honest version" of using Tilth on your own (non-demo) codebase:
-      # prepping the four seed files (prd.json, AGENTS.md, progress.txt, tests/),
-      # the test-filename convention, the caveats list, picking a judge model,
-      # when this is the wrong tool, and what to do on a first run.
+      # what prep your repo actually needs (a clean git repo, optionally an
+      # AGENTS.md), seeding with `tilth prep-feature`, the test-filename
+      # convention, the caveats list, picking a judge model, when this is
+      # the wrong tool, and what to do on a first run.
       - Using on your own project: getting-started/your-own-project.md
 
   - Architecture:
@@ -74,6 +78,12 @@ nav:
       # the harness hides from it (`prd.json`, `events.jsonl`, the judge,
       # token counts, the worktree branch). Justifies *why* the wall exists.
       - Agent visibility: deep-dives/agent-visibility.md
+      # `tilth prep-feature`'s interview engine: the seed bundle (prd.json +
+      # tests + seed-meta.json), the InterviewFrontend / SeedSink protocols,
+      # the narrowed tool surface (no bash / write_file / edit_file), the
+      # atomic terminal write, and how a prepared session flows into
+      # `tilth run`.
+      - Seeding a session: deep-dives/seeding.md
       # The five stop conditions for a run and which layer each operates at
       # (session-level vs. task-level). Cross-references the loops, token
       # recording, and resume pages.

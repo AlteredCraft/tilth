@@ -1,7 +1,8 @@
 """Ralph loop entry point.
 
-For each pending task in the workspace's prd.json:
-  1. Reset context — build a fresh message list from disk (AGENTS.md + progress tail + task).
+For each pending task in sessions/<id>/prd.json:
+  1. Reset context — build a fresh message list from disk
+     (workspace AGENTS.md + session progress tail + task).
   2. Tool-loop with the worker model.
   3. When model stops calling tools, run validators (ruff + pytest).
      - Pass: judge model evaluates the diff in a fresh context.
@@ -32,6 +33,8 @@ from tilth.client import (
     assistant_history_message,
     parse_json_lenient,
 )
+from tilth.seed import FileSeedSink, TTYFrontend, run_interview
+from tilth.seed.interview import InterviewAbort
 from tilth.session import Session, iter_events
 
 console = Console()
@@ -239,15 +242,18 @@ def _self_improve(
 
 # --- prd handling -----------------------------------------------------------
 
-def _load_prd(worktree: Path) -> list[dict[str, Any]]:
-    prd_path = worktree / "prd.json"
+def _load_prd(session_dir: Path) -> list[dict[str, Any]]:
+    prd_path = session_dir / "prd.json"
     if not prd_path.is_file():
-        raise FileNotFoundError(f"No prd.json at {prd_path}")
+        raise FileNotFoundError(
+            f"No prd.json at {prd_path}. "
+            "Seed a prepared session first (Phase 2: `tilth prep-feature`)."
+        )
     return json.loads(prd_path.read_text())
 
 
-def _save_prd(worktree: Path, prd: list[dict[str, Any]]) -> None:
-    (worktree / "prd.json").write_text(json.dumps(prd, indent=2) + "\n")
+def _save_prd(session_dir: Path, prd: list[dict[str, Any]]) -> None:
+    (session_dir / "prd.json").write_text(json.dumps(prd, indent=2) + "\n")
 
 
 def _next_pending(prd: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -301,12 +307,17 @@ def _find_resumable_session(sessions_root: Path, source: Path) -> tuple[str, str
 
     Returns (session_id, last_stop_reason) or None. Sessions that haven't logged a
     stop event yet (e.g. crashed before stop) are still treated as resumable.
+
+    Prepared sessions (created by `prep-feature` but never run) are skipped —
+    they're picked up by the normal `tilth <workspace>` flow, not by --resume.
     """
     if not sessions_root.is_dir():
         return None
     target = str(source)
     for d in sorted(sessions_root.iterdir(), key=lambda p: p.name, reverse=True):
         if not d.is_dir():
+            continue
+        if _checkpoint_status(d) == "prepared":
             continue
         sess_source: str | None = None
         last_stop: str | None = None
@@ -324,6 +335,53 @@ def _find_resumable_session(sessions_root: Path, source: Path) -> tuple[str, str
     return None
 
 
+def _checkpoint_status(session_dir: Path) -> str | None:
+    cp = _read_checkpoint(session_dir)
+    s = cp.get("status")
+    return s if isinstance(s, str) else None
+
+
+def _find_prepared_sessions(sessions_root: Path, source: Path) -> list[str]:
+    """All session IDs for `source` whose checkpoint status is `prepared`.
+
+    Used by `tilth <workspace>` to pick up a session prep-feature seeded.
+    """
+    if not sessions_root.is_dir():
+        return []
+    target = str(source)
+    out: list[str] = []
+    for d in sorted(sessions_root.iterdir()):
+        if not d.is_dir():
+            continue
+        cp = _read_checkpoint(d)
+        if cp.get("status") == "prepared" and cp.get("source") == target:
+            out.append(d.name)
+    return out
+
+
+def _find_blocking_sessions(sessions_root: Path, source: Path) -> list[tuple[str, str]]:
+    """Sessions for `source` in non-terminal states (`prepared|running|failed`).
+
+    Used by prep-feature to refuse re-prep when an earlier session is still in
+    flight. Returns a list of (session_id, status) sorted by id.
+    """
+    if not sessions_root.is_dir():
+        return []
+    target = str(source)
+    blocking_statuses = {"prepared", "running", "failed"}
+    out: list[tuple[str, str]] = []
+    for d in sorted(sessions_root.iterdir()):
+        if not d.is_dir():
+            continue
+        cp = _read_checkpoint(d)
+        if cp.get("source") != target:
+            continue
+        status = cp.get("status")
+        if isinstance(status, str) and status in blocking_statuses:
+            out.append((d.name, status))
+    return out
+
+
 def _prepare_resume(session: Session, worktree: Path) -> str:
     """Flip trailing failed tasks back to pending and unwind their FAILED commits.
 
@@ -335,7 +393,7 @@ def _prepare_resume(session: Session, worktree: Path) -> str:
     pending: list[str] = []
     unwound = False
 
-    prd = _load_prd(worktree)
+    prd = _load_prd(session.root)
 
     if last_stop == "all_done":
         plan = "session reached all_done; nothing to resume"
@@ -344,7 +402,7 @@ def _prepare_resume(session: Session, worktree: Path) -> str:
         if failed:
             for t in failed:
                 t["status"] = "pending"
-            _save_prd(worktree, prd)
+            _save_prd(session.root, prd)
             unwound = ws.unwind_failed_commit(worktree)
             retried = [t["id"] for t in failed]
 
@@ -403,7 +461,7 @@ def _run_task(
         {"task_id": task["id"], "trace_id": trace_id, "span_id": setup_span},
     )
 
-    user_prompt, mem_manifest = memory.build_user_prompt(task, worktree)
+    user_prompt, mem_manifest = memory.build_user_prompt(task, worktree, session.root)
     session.log(
         "memory_load",
         {
@@ -514,7 +572,7 @@ def _run_task(
         content = (msg.get("content") or "").strip()
         console.print(f"[dim]task {task['id']} model summary:[/dim] {content[:200]}")
 
-        prd = _load_prd(worktree)
+        prd = _load_prd(session.root)
         done_ids = [t["id"] for t in prd if t.get("status") == "done"]
         results = validators.run_all(worktree, [*done_ids, task["id"]])
         passed = validators.all_passed(results)
@@ -606,6 +664,23 @@ def _stop_reason(client: LLMClient, session: Session) -> str | None:
     return None
 
 
+_TERMINAL_FAILURE_STOPS = frozenset({"iter_cap", "judge_cap", "error"})
+
+
+def _stop_to_status(reason: str) -> str:
+    """Map a `stop` reason to the resulting session status.
+
+    `all_done` is terminal-success; iter_cap/judge_cap/error are terminal-failure;
+    everything else (wall_clock, token_cap, interrupted) leaves the session
+    `running` — those are stops the user can resume from.
+    """
+    if reason == "all_done":
+        return "all_done"
+    if reason in _TERMINAL_FAILURE_STOPS:
+        return "failed"
+    return "running"
+
+
 def run(worktree: Path, session: Session, client: LLMClient) -> None:
     while True:
         stop = _stop_reason(client, session)
@@ -617,14 +692,16 @@ def run(worktree: Path, session: Session, client: LLMClient) -> None:
                 detail = f" [TILTH_MAX_TOKENS={client.config.max_tokens}]"
             console.print(f"[yellow]stopping: {stop}[/yellow][dim]{detail}[/dim]")
             session.log("stop", {"reason": stop})
+            session.set_status(_stop_to_status(stop))
             _refresh_summary(session)
             return
 
-        prd = _load_prd(worktree)
+        prd = _load_prd(session.root)
         task = _next_pending(prd)
         if task is None:
             console.print("[green]all tasks complete[/green]")
             session.log("stop", {"reason": "all_done"})
+            session.set_status("all_done")
             _refresh_summary(session)
             return
 
@@ -634,8 +711,8 @@ def run(worktree: Path, session: Session, client: LLMClient) -> None:
         if outcome == "done":
             _self_improve(task, worktree, session, client, trace_id)
             task["status"] = "done"
-            _save_prd(worktree, prd)
-            memory.append_progress(worktree, f"{task['id']}\tdone\t{task['title']}")
+            _save_prd(session.root, prd)
+            memory.append_progress(session.root, f"{task['id']}\tdone\t{task['title']}")
             sha = ws.commit_task(worktree, task["id"], task["title"])
             session.log(
                 "commit", {"task_id": task["id"], "trace_id": trace_id, "sha": sha}
@@ -644,8 +721,10 @@ def run(worktree: Path, session: Session, client: LLMClient) -> None:
             _refresh_summary(session)
         else:
             task["status"] = "failed"
-            _save_prd(worktree, prd)
-            memory.append_progress(worktree, f"{task['id']}\tfailed:{outcome}\t{task['title']}")
+            _save_prd(session.root, prd)
+            memory.append_progress(
+                session.root, f"{task['id']}\tfailed:{outcome}\t{task['title']}"
+            )
             ws.commit_task(worktree, task["id"], f"FAILED ({outcome}): {task['title']}")
             detail = ""
             if outcome == "iter_cap":
@@ -659,6 +738,7 @@ def run(worktree: Path, session: Session, client: LLMClient) -> None:
                 f"[dim]{detail}[/dim]"
             )
             session.log("stop", {"reason": outcome})
+            session.set_status(_stop_to_status(outcome))
             _refresh_summary(session)
             return
 
@@ -676,7 +756,7 @@ def _format_duration(seconds: float) -> str:
     return f"{s}s"
 
 
-def _print_summary(session: Session, client: LLMClient, worktree: Path | None) -> None:
+def _print_summary(session: Session, client: LLMClient) -> None:
     elapsed = time.time() - session.started_at
     cfg = client.config
     tokens_pct = (session.tokens_used / cfg.max_tokens * 100) if cfg.max_tokens else 0.0
@@ -687,16 +767,16 @@ def _print_summary(session: Session, client: LLMClient, worktree: Path | None) -
     )
 
     counts = {"done": 0, "failed": 0, "pending": 0}
-    if worktree is not None:
-        try:
-            prd = _load_prd(worktree)
-            for t in prd:
-                status = t.get("status", "pending")
-                if status not in counts:
-                    counts[status] = 0
-                counts[status] += 1
-        except Exception:
-            pass
+    try:
+        prd = _load_prd(session.root)
+    except Exception:
+        prd = None
+    if prd is not None:
+        for t in prd:
+            status = t.get("status", "pending")
+            if status not in counts:
+                counts[status] = 0
+            counts[status] += 1
 
     wall_dim = (
         f"({wall_pct:.1f}% of TILTH_MAX_WALL_CLOCK_MINUTES={cfg.max_wall_clock_minutes})"
@@ -776,9 +856,268 @@ def _do_reset(session_id: str, assume_yes: bool) -> int:
     return 0
 
 
+# --- prep-feature -----------------------------------------------------------
+
+def _do_prep_feature(source: Path, brief: str | None) -> int:
+    blocking = _find_blocking_sessions(SESSIONS_DIR, source)
+    if blocking:
+        console.print(
+            f"[red]cannot prep:[/red] this workspace already has "
+            f"{len(blocking)} session(s) in flight:"
+        )
+        for sid, status in blocking:
+            console.print(f"  [bold]{status}[/bold]  sessions/{sid}/")
+        console.print(
+            "[yellow]hint:[/yellow] discard with "
+            "[bold]uv run tilth --reset <id>[/bold] (or "
+            "[bold]--resume[/bold] to continue a running/failed session)."
+        )
+        return 2
+
+    config = TilthConfig.from_env()
+    client = LLMClient(config)
+
+    if not brief:
+        console.print(f"[bold]prep-feature[/bold]  {source}")
+        console.print("Describe the feature or refactor (one line):")
+        try:
+            brief = input("> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            console.print("\n[yellow]aborted[/yellow]")
+            return 130
+        if not brief:
+            console.print("[red]empty brief; aborting[/red]")
+            return 2
+
+    session = Session.new(SESSIONS_DIR)
+    session.source = source
+    session.save_checkpoint()
+    session.log(
+        "session_start",
+        {"source": str(source), "phase": "prep-feature"},
+    )
+
+    console.print(f"[bold]session[/bold]  {session.session_id}")
+    console.print(f"[bold]model[/bold]    {config.prep_model}")
+
+    frontend = TTYFrontend(console=console)
+    sink = FileSeedSink()
+
+    try:
+        run_interview(
+            session=session,
+            source=source,
+            client=client,
+            frontend=frontend,
+            sink=sink,
+            feature_brief=brief,
+        )
+    except KeyboardInterrupt:
+        console.print("\n[yellow]interrupted[/yellow]")
+        session.log("stop", {"reason": "interrupted"})
+        _refresh_summary(session)
+        return 130
+    except InterviewAbort as exc:
+        console.print(f"[red]interview aborted:[/red] {exc}")
+        session.log("stop", {"reason": "error", "error": str(exc)})
+        session.set_status("failed")
+        _refresh_summary(session)
+        return 1
+    except Exception as exc:
+        console.print(f"[red]error: {type(exc).__name__}: {exc}[/red]")
+        session.log("stop", {"reason": "error", "error": f"{type(exc).__name__}: {exc}"})
+        session.set_status("failed")
+        _refresh_summary(session)
+        raise
+
+    _refresh_summary(session)
+    console.print()
+    console.print(f"[green]prepared[/green] sessions/{session.session_id}/")
+    console.print(
+        f"[green]→[/green] run [bold]uv run tilth {source}[/bold] to start work"
+    )
+    return 0
+
+
+# --- per-subcommand handlers ------------------------------------------------
+
+def _resolve_session_id(maybe_id: str | None) -> str | None:
+    """Translate '' or None into the latest session id; return None if no
+    sessions exist at all. Callers print the 'no sessions found' message."""
+    if maybe_id:
+        return maybe_id
+    return _latest_session_id(SESSIONS_DIR)
+
+
+def do_reset_cmd(maybe_id: str | None, assume_yes: bool) -> int:
+    sid = _resolve_session_id(maybe_id)
+    if not sid:
+        console.print(f"[red]no sessions found under {SESSIONS_DIR}[/red]")
+        return 2
+    if not maybe_id:
+        console.print(f"[dim]reset: latest session is {sid}[/dim]")
+    return _do_reset(sid, assume_yes=assume_yes)
+
+
+def do_visualize_cmd(maybe_id: str | None) -> int:
+    sid = _resolve_session_id(maybe_id)
+    if not sid:
+        console.print(f"[red]no sessions found under {SESSIONS_DIR}[/red]")
+        return 2
+    if not maybe_id:
+        console.print(f"[dim]visualize: latest session is {sid}[/dim]")
+    session_dir = SESSIONS_DIR / sid
+    if not session_dir.is_dir():
+        console.print(f"[red]no session at {session_dir}[/red]")
+        return 2
+    out = visualize.write_session_html(session_dir)
+    console.print(f"[green]wrote[/green] {out}")
+    return 0
+
+
+def do_prep_feature_cmd(workspace: Path, brief: str | None) -> int:
+    source = workspace.resolve()
+    ws.ensure_git_repo(source)
+    return _do_prep_feature(source, brief)
+
+
+def do_resume_cmd(maybe_id: str | None) -> int:
+    sid = _resolve_session_id(maybe_id)
+    if not sid:
+        console.print(f"[red]no sessions found under {SESSIONS_DIR}[/red]")
+        return 2
+    if not maybe_id:
+        console.print(f"[dim]resume: latest session is {sid}[/dim]")
+    config = TilthConfig.from_env()
+    client = LLMClient(config)
+    session = Session.wake(SESSIONS_DIR, sid)
+    if session.workspace is None:
+        console.print(
+            "[red]session has no worktree recorded[/red] — if it's a `prepared` "
+            "session, run [bold]tilth run <workspace>[/bold] to pick it up."
+        )
+        return 2
+    worktree = session.workspace
+    plan = _prepare_resume(session, worktree)
+    console.print(f"[bold]resume plan[/bold] {plan}")
+    return _run_session(session, worktree, client, config)
+
+
+def do_run_cmd(workspace: Path) -> int:
+    source = workspace.resolve()
+    ws.ensure_git_repo(source)
+    config = TilthConfig.from_env()
+    client = LLMClient(config)
+
+    prepared = _find_prepared_sessions(SESSIONS_DIR, source)
+    if len(prepared) > 1:
+        console.print(
+            f"[red]multiple prepared sessions for this workspace:[/red] "
+            f"{len(prepared)} found"
+        )
+        for sid in prepared:
+            console.print(f"  • sessions/{sid}/")
+        console.print(
+            "[yellow]hint:[/yellow] discard the ones you don't want with "
+            "[bold]tilth reset <id>[/bold] until exactly one remains."
+        )
+        return 2
+    if len(prepared) == 1:
+        sid = prepared[0]
+        console.print(
+            f"[dim]picking up prepared session sessions/{sid}/[/dim]"
+        )
+        session = Session.wake(SESSIONS_DIR, sid)
+        session.source = source
+        worktree, branch = ws.create_worktree(
+            source, session.session_id, session.root / "workspace"
+        )
+        session.workspace = worktree
+        session.branch = branch
+        session.set_status("running")
+        session.log(
+            "session_start",
+            {"source": str(source), "worktree": str(worktree), "branch": branch},
+        )
+    else:
+        prior = _find_resumable_session(SESSIONS_DIR, source)
+        if prior is not None:
+            sid, last_stop = prior
+            reason = last_stop or "no stop event"
+            console.print(
+                f"[yellow]heads up:[/yellow] sessions/{sid}/ ended in "
+                f"[bold]{reason}[/bold] and is resumable"
+            )
+            console.print("  → [bold]tilth resume[/bold]       (continue that work)")
+            console.print("  → [bold]tilth reset --yes[/bold]  (discard it first)")
+            console.print("[dim]starting fresh anyway in 5s... (Ctrl-C to abort)[/dim]")
+            try:
+                time.sleep(5)
+            except KeyboardInterrupt:
+                console.print("[yellow]aborted[/yellow]")
+                return 130
+
+        session = Session.new(SESSIONS_DIR)
+        session.source = source
+        worktree, branch = ws.create_worktree(
+            source, session.session_id, session.root / "workspace"
+        )
+        session.workspace = worktree
+        session.branch = branch
+        session.save_checkpoint()
+        session.log(
+            "session_start",
+            {"source": str(source), "worktree": str(worktree), "branch": branch},
+        )
+
+    return _run_session(session, worktree, client, config)
+
+
+def _run_session(
+    session: Session, worktree: Path, client: LLMClient, config: TilthConfig
+) -> int:
+    console.print(f"[bold]session[/bold] {session.session_id}")
+    console.print(f"[bold]worktree[/bold] {worktree}")
+    if session.branch:
+        console.print(f"[bold]branch[/bold] {session.branch}")
+    console.print(f"[bold]model[/bold] {config.worker_model}")
+
+    try:
+        run(worktree, session, client)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]interrupted[/yellow]")
+        session.log("stop", {"reason": "interrupted"})
+        session.set_status(_stop_to_status("interrupted"))
+        _refresh_summary(session)
+        return 130
+    except Exception as exc:
+        console.print(f"[red]error: {type(exc).__name__}: {exc}[/red]")
+        session.log("stop", {"reason": "error", "error": f"{type(exc).__name__}: {exc}"})
+        session.set_status(_stop_to_status("error"))
+        _refresh_summary(session)
+        raise
+    finally:
+        _print_summary(session, client)
+    return 0
+
+
 # --- CLI --------------------------------------------------------------------
 
 def main() -> int:
+    """Legacy entry point. Delegates to tilth.cli.main so old callers stay green."""
+    from tilth.cli import main as cli_main
+
+    return cli_main()
+
+
+def _legacy_main() -> int:
+    """The pre-Phase-3 argparse surface, retained for back-compat dispatch.
+
+    The verb router (tilth.cli) calls this when the user invokes the bare
+    positional form `tilth <workspace>` or one of the old action flags.
+    Emits a deprecation warning on the bare form per proposals/prep-feature.md
+    §5.5; removal scheduled for one minor version out.
+    """
     load_dotenv()
     parser = argparse.ArgumentParser(
         prog="tilth",
@@ -788,7 +1127,11 @@ def main() -> int:
         "workspace",
         nargs="?",
         type=Path,
-        help="Path to a workspace dir (a git repo containing prd.json, AGENTS.md, progress.txt).",
+        help=(
+            "Path to a workspace dir (a git repo, optionally with AGENTS.md). "
+            "prd.json and progress.txt live under sessions/<id>/ — they're "
+            "harness-owned runtime artifacts, not workspace files."
+        ),
     )
     action = parser.add_mutually_exclusive_group()
     action.add_argument(
@@ -826,6 +1169,24 @@ def main() -> int:
             "sessions/<id>/chat.html. With no value, targets the most recent session."
         ),
     )
+    action.add_argument(
+        "--prep-feature",
+        action="store_true",
+        help=(
+            "Interview the reasoning model against the workspace to produce a task "
+            "seed (prd.json + matching test files), then stop. The seeded session is "
+            "picked up by a subsequent bare `tilth <workspace>` invocation."
+        ),
+    )
+    parser.add_argument(
+        "--brief",
+        default=None,
+        metavar="TEXT",
+        help=(
+            "One-line feature/refactor brief for --prep-feature. If omitted, you'll "
+            "be prompted interactively."
+        ),
+    )
     parser.add_argument(
         "-y", "--yes",
         action="store_true",
@@ -857,6 +1218,13 @@ def main() -> int:
         console.print(f"[green]wrote[/green] {out}")
         return 0
 
+    if args.prep_feature:
+        if args.workspace is None:
+            parser.error("--prep-feature requires a workspace path")
+        source = args.workspace.resolve()
+        ws.ensure_git_repo(source)
+        return _do_prep_feature(source, args.brief)
+
     config = TilthConfig.from_env()
     client = LLMClient(config)
 
@@ -880,34 +1248,66 @@ def main() -> int:
         source = args.workspace.resolve()
         ws.ensure_git_repo(source)
 
-        prior = _find_resumable_session(SESSIONS_DIR, source)
-        if prior is not None:
-            sid, last_stop = prior
-            reason = last_stop or "no stop event"
+        prepared = _find_prepared_sessions(SESSIONS_DIR, source)
+        if len(prepared) > 1:
             console.print(
-                f"[yellow]heads up:[/yellow] sessions/{sid}/ ended in "
-                f"[bold]{reason}[/bold] and is resumable"
+                f"[red]multiple prepared sessions for this workspace:[/red] "
+                f"{len(prepared)} found"
             )
-            console.print("  → [bold]uv run tilth --resume[/bold]       (continue that work)")
-            console.print("  → [bold]uv run tilth --reset --yes[/bold]  (discard it first)")
-            console.print("[dim]starting fresh anyway in 5s... (Ctrl-C to abort)[/dim]")
-            try:
-                time.sleep(5)
-            except KeyboardInterrupt:
-                console.print("[yellow]aborted[/yellow]")
-                return 130
+            for sid in prepared:
+                console.print(f"  • sessions/{sid}/")
+            console.print(
+                "[yellow]hint:[/yellow] discard the ones you don't want with "
+                "[bold]uv run tilth --reset <id>[/bold] until exactly one remains."
+            )
+            return 2
+        if len(prepared) == 1:
+            sid = prepared[0]
+            console.print(
+                f"[dim]picking up prepared session sessions/{sid}/[/dim]"
+            )
+            session = Session.wake(SESSIONS_DIR, sid)
+            session.source = source
+            worktree, branch = ws.create_worktree(
+                source, session.session_id, session.root / "workspace"
+            )
+            session.workspace = worktree
+            session.branch = branch
+            session.set_status("running")
+            session.log(
+                "session_start",
+                {"source": str(source), "worktree": str(worktree), "branch": branch},
+            )
+        else:
+            prior = _find_resumable_session(SESSIONS_DIR, source)
+            if prior is not None:
+                sid, last_stop = prior
+                reason = last_stop or "no stop event"
+                console.print(
+                    f"[yellow]heads up:[/yellow] sessions/{sid}/ ended in "
+                    f"[bold]{reason}[/bold] and is resumable"
+                )
+                console.print("  → [bold]uv run tilth --resume[/bold]       (continue that work)")
+                console.print("  → [bold]uv run tilth --reset --yes[/bold]  (discard it first)")
+                console.print("[dim]starting fresh anyway in 5s... (Ctrl-C to abort)[/dim]")
+                try:
+                    time.sleep(5)
+                except KeyboardInterrupt:
+                    console.print("[yellow]aborted[/yellow]")
+                    return 130
 
-        session = Session.new(SESSIONS_DIR)
-        worktree, branch = ws.create_worktree(
-            source, session.session_id, session.root / "workspace"
-        )
-        session.workspace = worktree
-        session.branch = branch
-        session.save_checkpoint()
-        session.log(
-            "session_start",
-            {"source": str(source), "worktree": str(worktree), "branch": branch},
-        )
+            session = Session.new(SESSIONS_DIR)
+            session.source = source
+            worktree, branch = ws.create_worktree(
+                source, session.session_id, session.root / "workspace"
+            )
+            session.workspace = worktree
+            session.branch = branch
+            session.save_checkpoint()
+            session.log(
+                "session_start",
+                {"source": str(source), "worktree": str(worktree), "branch": branch},
+            )
 
     console.print(f"[bold]session[/bold] {session.session_id}")
     console.print(f"[bold]worktree[/bold] {worktree}")
@@ -920,15 +1320,17 @@ def main() -> int:
     except KeyboardInterrupt:
         console.print("\n[yellow]interrupted[/yellow]")
         session.log("stop", {"reason": "interrupted"})
+        session.set_status(_stop_to_status("interrupted"))
         _refresh_summary(session)
         return 130
     except Exception as exc:
         console.print(f"[red]error: {type(exc).__name__}: {exc}[/red]")
         session.log("stop", {"reason": "error", "error": f"{type(exc).__name__}: {exc}"})
+        session.set_status(_stop_to_status("error"))
         _refresh_summary(session)
         raise
     finally:
-        _print_summary(session, client, worktree)
+        _print_summary(session, client)
     return 0
 
 

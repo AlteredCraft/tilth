@@ -1,10 +1,14 @@
 """Memory plumbing — load the four channels into a fresh prompt each task.
 
 The four channels (per Osmani's self-improving agents post):
-    AGENTS.md       semantic knowledge — user-owned project conventions; read-only to Tilth
+    AGENTS.md       semantic knowledge — user-owned project conventions; read-only to Tilth.
+                    Lives in the user's workspace (the source repo).
     git history     atomic commits — accessed via bash, not loaded here
-    progress.txt    chronological journal — we inject a tail (last N lines)
-    prd.json        machine-readable task list — caller picks the next task
+    progress.txt    chronological journal — we inject a tail (last N lines).
+                    Lives under sessions/<id>/ — a harness-owned runtime artifact,
+                    never written into the workspace.
+    prd.json        machine-readable task list — caller picks the next task.
+                    Also under sessions/<id>/ for the same reason.
 
 This module is the place where context is *rebuilt from disk* on each task. That's
 what makes "context resets, not just compaction" work — the durable artifacts on
@@ -62,8 +66,8 @@ def _load_agents_md(workspace: Path) -> tuple[str, dict[str, Any]]:
     }
 
 
-def _load_progress_tail(workspace: Path) -> tuple[str, dict[str, Any]]:
-    p = workspace / "progress.txt"
+def _load_progress_tail(session_dir: Path) -> tuple[str, dict[str, Any]]:
+    p = session_dir / "progress.txt"
     if not p.is_file():
         return "", {"present": False, "chars": 0, "lines": 0, "truncated": False}
     raw_lines = p.read_text().splitlines()
@@ -85,12 +89,12 @@ def load_agents_md(workspace: Path) -> str:
     return _load_agents_md(workspace)[0]
 
 
-def load_progress_tail(workspace: Path) -> str:
-    return _load_progress_tail(workspace)[0]
+def load_progress_tail(session_dir: Path) -> str:
+    return _load_progress_tail(session_dir)[0]
 
 
-def append_progress(workspace: Path, line: str) -> None:
-    p = workspace / "progress.txt"
+def append_progress(session_dir: Path, line: str) -> None:
+    p = session_dir / "progress.txt"
     with p.open("a") as f:
         f.write(line.rstrip() + "\n")
 
@@ -113,16 +117,19 @@ def append_proposed_learning(
 
 
 def build_user_prompt(
-    task: dict[str, Any], workspace: Path
+    task: dict[str, Any], workspace: Path, session_dir: Path
 ) -> tuple[str, dict[str, Any]]:
     """Assemble the user-side prompt and a manifest of what was loaded.
+
+    AGENTS.md is read from `workspace` (user-owned, in the source repo). The
+    progress tail is read from `session_dir` (harness-owned runtime journal).
 
     Returns (prompt, manifest). The manifest is suitable as the payload for a
     `memory_load` event — it describes which channels were present, their
     char counts, whether anything was truncated, and a short content hash.
     """
     agents_md, agents_meta = _load_agents_md(workspace)
-    progress_tail, progress_meta = _load_progress_tail(workspace)
+    progress_tail, progress_meta = _load_progress_tail(session_dir)
 
     parts: list[str] = []
 

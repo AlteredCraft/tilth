@@ -18,12 +18,13 @@ A minimal long-running agent harness against any OpenAI-compatible LLM endpoint.
 
 ## Don't confuse the three "agent instruction" files
 
-The repo has *three* files that look like agent instructions but speak to different audiences:
+The repo has *four* files that look like agent instructions but speak to different audiences:
 
 | File | Audience | Purpose |
 |---|---|---|
 | `CLAUDE.md` (this file) | Claude Code working on the harness itself | Conventions for editing this codebase |
 | `tilth/prompts/system.md` | The worker agent inside the harness loop | Role, tool guidance, "done" criteria |
+| `tilth/seed/prompts.md` | The seeder agent inside `tilth prep-feature` | Anchored interview workflow, tool surface, write_seed contract |
 | `<demo-workspace>/AGENTS.md` | The worker agent operating on the demo workspace | Project conventions for the toy todo-cli |
 
 When the user says "update the agent's instructions," ask which one — they're not the same thing.
@@ -36,17 +37,20 @@ tilth/
 ├── docs/                  # MkDocs source (annotated nav in mkdocs.yml is the topic index)
 ├── pyproject.toml, .env.example, .gitignore
 ├── tilth/
-│   ├── loop.py            # Ralph loop CLI + the inner tool-use loop
-│   ├── client.py          # OpenAI-compat wrapper, dual-client routing
+│   ├── cli.py             # verb-routed entry: prep-feature / run / resume / reset / visualize
+│   ├── loop.py            # Ralph loop + inner tool-use loop + subcommand handlers
+│   ├── client.py          # OpenAI-compat wrapper, dual-client routing (worker / judge / prep)
 │   ├── session.py         # events.jsonl + checkpoint.json + wake()
 │   ├── summary.py         # roll events.jsonl into summary.json (denormalised view)
-│   ├── memory.py          # AGENTS.md / progress.txt I/O + injection
+│   ├── memory.py          # AGENTS.md (workspace) + progress.txt (session) I/O + injection
 │   ├── workspace.py       # git worktree create / commit / diff
 │   ├── validators.py      # ruff + pytest runners
-│   ├── tools/             # bash, files, search — registered in __init__.py
+│   ├── tools/             # bash, files, search — registered in __init__.py (worker)
 │   ├── hooks/             # pre_tool, post_edit
-│   ├── prompts/           # system.md, judge.md, agents_update.md
-│   └── visualize/         # --visualize: events.jsonl → chat.html
+│   ├── prompts/           # system.md, judge.md, propose_learning.md
+│   ├── seed/              # tilth prep-feature: interview engine + frontend / sink protocols
+│   └── visualize/         # tilth visualize: events.jsonl + seed-meta.json → chat.html
+├── examples/seed-reference/  # frozen example seeds (teaching artifacts, not runtime)
 └── sessions/              # per-run state (gitignored)
 ```
 
@@ -69,7 +73,7 @@ These are load-bearing. Read the relevant page under `docs/deep-dives/` before b
 1. **Brain / Hands / Session split.** Don't blur the three. New code goes in the module whose job it is — model calls in `client.py`, sandbox/tool ops in `workspace.py` and `tools/`, durable state in `session.py`.
 2. **The agent doesn't see harness mechanics.** No `prd.json` structure, no `events.jsonl`, no `summary.json`, no token counts, no judge, no checkpoints. Hiding these prevents gaming, shortcutting, and self-managed state. New features should preserve this boundary unless the user explicitly asks otherwise.
 
-    **Honest scope.** This is a *design goal*, not an enforcement guarantee in default mode. The worker has `bash` and the worktree is mounted at `sessions/<id>/workspace/`, so a determined model can reach harness state via relative paths. `prd.json` is the most exposed today — it lives in the worktree itself (open question in [#10](https://github.com/AlteredCraft/tilth/issues/10)). The invariant's near-term purpose is to keep new code from making harness state *more* obviously surfaced to the worker; real enforcement is opt-in process isolation, planned in [#13](https://github.com/AlteredCraft/tilth/issues/13).
+    **Honest scope.** This is a *design goal*, not an enforcement guarantee in default mode. The worker has `bash` and the worktree is mounted at `sessions/<id>/workspace/`, so a determined model can reach harness state via relative paths — `events.jsonl`, `summary.json`, `checkpoint.json`, `prd.json`, `progress.txt` all live one directory up (`../`). The invariant's near-term purpose is to keep new code from making harness state *more* obviously surfaced to the worker; real enforcement is opt-in process isolation, planned in [#13](https://github.com/AlteredCraft/tilth/issues/13). (Phase 1 of `proposals/prep-feature.md` moved `prd.json` and `progress.txt` out of the worktree and under `sessions/<id>/`, closing [#10](https://github.com/AlteredCraft/tilth/issues/10) — they're no longer inside the worktree, but they're still reachable via `../` from a determined worker.)
 3. **Tool registry is the canonical source for "what tools exist".** `tilth/tools/__init__.py` defines the registry; system.md should *not* enumerate tools (it gets stale).
 4. **Hook contract: "success silent, failures verbose" — to the *agent*.** Pass states inject nothing into the loop's message history; failures inject a feedback message that the next worker iteration sees. **Telemetry is separate.** Every hook invocation should emit a `hook_run` event regardless of outcome — observability is for the developer reading `events.jsonl`, not the agent. "Silent to the agent" must not mean "invisible in the log".
 5. **The worktree branch is never auto-merged.** `commit_task` commits to the session branch; humans review and merge. Don't add an "auto-merge on success" feature without an explicit ask.
@@ -106,20 +110,24 @@ uv run --extra docs mkdocs serve
 # Demo (needs TILTH_API_KEY set in .env, and a local clone of the demo repo
 # at AlteredCraft/tilth-demo-todo-cli — clone it wherever; path below is illustrative)
 git clone git@github.com:AlteredCraft/tilth-demo-todo-cli.git ~/projects/tilth-demo
-uv run tilth ~/projects/tilth-demo
+uv run tilth prep-feature ~/projects/tilth-demo   # interview → seed
+uv run tilth run          ~/projects/tilth-demo   # run the seeded session
 
 # Resume an interrupted session (latest in sessions/, or by id)
-uv run tilth --resume
-uv run tilth --resume <session_id>
+uv run tilth resume
+uv run tilth resume <session_id>
 
 # Reset a session — removes the worktree, deletes session/<id>, drops sessions/<id>/
-uv run tilth --reset
-uv run tilth --reset <session_id>
-uv run tilth --reset --yes  # skip the confirmation prompt
+uv run tilth reset
+uv run tilth reset <session_id>
+uv run tilth reset --yes  # skip the confirmation prompt
 
-# Render a session's events.jsonl as a chat-style HTML page (sessions/<id>/chat.html)
-uv run tilth --visualize
-uv run tilth --visualize <session_id>
+# Render a session's events.jsonl + seed-meta.json as chat-style HTML (sessions/<id>/chat.html)
+uv run tilth visualize
+uv run tilth visualize <session_id>
+
+# Legacy single-dash flag forms (--resume / --reset / --visualize / --prep-feature)
+# still work for one minor version; prefer the verbs above.
 
 # Inspect a session log
 jq -c . sessions/<session_id>/events.jsonl | head -40
@@ -129,16 +137,16 @@ jq -c . sessions/<session_id>/events.jsonl | head -40
 
 The demo lives in its own repo at [`AlteredCraft/tilth-demo-todo-cli`](https://github.com/AlteredCraft/tilth-demo-todo-cli). Clone it wherever you keep code before running it. The path is just an argument to `uv run tilth`, so any layout works; the docs use `~/projects/tilth-demo` as an illustrative example.
 
-The demo has to be a git repo because Tilth's worktree machinery requires it. To tear down a session's artifacts (worktree, `session/<id>` branch, `sessions/<id>/`), use `--reset` rather than the manual recipe:
+The demo has to be a git repo because Tilth's worktree machinery requires it. To tear down a session's artifacts (worktree, `session/<id>` branch, `sessions/<id>/`), use `tilth reset` rather than the manual recipe:
 
 ```bash
-uv run tilth --reset                # most recent session
-uv run tilth --reset <session_id>   # explicit
+uv run tilth reset                # most recent session
+uv run tilth reset <session_id>   # explicit
 ```
 
-`--reset` reads the session's checkpoint and `session_start` event to recover the source repo + worktree path + branch, runs `git worktree remove --force` and `git branch -D` against the source repo, and deletes `sessions/<id>/`. Force-removes a dirty worktree by design — its whole purpose is to discard a session's work; the `[y/N]` prompt is the safety gate.
+`tilth reset` reads the session's checkpoint and `session_start` event to recover the source repo + worktree path + branch, runs `git worktree remove --force` and `git branch -D` against the source repo, and deletes `sessions/<id>/`. Force-removes a dirty worktree by design — its whole purpose is to discard a session's work; the `[y/N]` prompt is the safety gate.
 
-If `--reset` itself can't run (e.g., session metadata missing), the manual fallback is:
+If `tilth reset` itself can't run (e.g., session metadata missing), the manual fallback is:
 
 ```bash
 cd <demo-clone-path>                  # e.g. ~/projects/tilth-demo
@@ -147,7 +155,7 @@ git branch -D session/<id>            # if it still exists
 rm -rf <tilth-clone-path>/sessions/<id>/
 ```
 
-Don't commit changes the agent made on `session/*` branches into the demo clone's `main`. Those are run artefacts; the demo's `main` should stay seeded-state-only.
+Don't commit changes the agent made on `session/*` branches into the demo clone's `main`. Those are run artefacts; the demo's `main` should stay unsealed (no `prd.json`, no per-task tests — those are produced by `prep-feature` into `sessions/<id>/` and `<workspace>/tests/` at run time).
 
 ## Things not to do without asking
 

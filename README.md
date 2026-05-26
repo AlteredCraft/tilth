@@ -24,14 +24,15 @@ cp .env.example .env
 # fall back to a provider/model your account doesn't have)
 ```
 
-Run the demo against a small todo-CLI workspace, pre-seeded with the four files Tilth expects (`prd.json`, `AGENTS.md`, `progress.txt`, `tests/`):
+Run the demo against a small todo-CLI workspace (a tiny Python project with an `AGENTS.md` and an empty `tests/`). Tilth's task list and matching tests come from an interview the harness runs against your code:
 
 ```bash
 git clone git@github.com:AlteredCraft/tilth-demo-todo-cli.git tilth-demo
-uv run tilth ./tilth-demo
+uv run tilth prep-feature ./tilth-demo   # interview, produce the seed
+uv run tilth run          ./tilth-demo   # run the seeded session
 ```
 
-For tested provider/model combinations, the full `TILTH_*` env-var table, `--resume` / `--reset` / `--visualize` semantics, and the honest guide to using Tilth on your own non-demo project, see the **[docs](./docs/index.md)**.
+For tested provider/model combinations, the full `TILTH_*` env-var table, the `resume` / `reset` / `visualize` subcommands, and the honest guide to using Tilth on your own non-demo project, see the **[docs](./docs/index.md)**.
 
 ## Working with the codebase
 

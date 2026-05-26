@@ -42,6 +42,12 @@ Event types:
                          (no_proposal | unparseable | empty_learning).
     context_reset      — beginning of a new task; messages rebuilt from disk
     session_start      — fresh session began (worktree created)
+    session_prepared   — `tilth prep-feature` finished an interview and wrote a
+                         seed bundle. Payload carries `prd_entries` (count),
+                         `test_files` (count), `interviewer_model`, and
+                         `tokens_used` for the interview. Flips checkpoint
+                         status to `prepared`. No worktree exists yet — that's
+                         created on the subsequent `tilth run`.
     session_resume     — --resume woke a session; payload carries the resume plan
                          (which failed tasks were retried, FAILED commit unwound, etc.)
     stop               — run terminated; payload.reason ∈
@@ -91,6 +97,9 @@ def iter_events(events_path: Path) -> Iterator[dict[str, Any]]:
                 continue
 
 
+SESSION_STATUSES = frozenset({"prepared", "running", "all_done", "failed"})
+
+
 @dataclass
 class Session:
     session_id: str
@@ -98,9 +107,11 @@ class Session:
     events_path: Path                   # sessions/<id>/events.jsonl
     checkpoint_path: Path               # sessions/<id>/checkpoint.json
     started_at: float = field(default_factory=time.time)
-    workspace: Path | None = None       # set by workspace.py later
+    source: Path | None = None          # user's source repo path; set by callers
+    workspace: Path | None = None       # worktree path; set when worktree exists
     branch: str | None = None
     tokens_used: int = 0
+    status: str = "running"             # prepared | running | all_done | failed
 
     @classmethod
     def new(cls, sessions_root: Path) -> Session:
@@ -125,6 +136,10 @@ class Session:
         than cumulatively (otherwise a resume tomorrow trips the cap immediately).
         `tokens_used` is preserved — if the run hit `token_cap`, bump the env var
         explicitly before resuming.
+
+        `status` is preserved from disk. Callers (e.g. `tilth run` waking a
+        `prepared` session) are responsible for flipping it to `running` and
+        re-saving.
         """
         root = sessions_root / session_id
         if not root.is_dir():
@@ -136,9 +151,11 @@ class Session:
             events_path=root / "events.jsonl",
             checkpoint_path=root / "checkpoint.json",
             started_at=time.time(),
+            source=Path(cp["source"]) if cp.get("source") else None,
             workspace=Path(cp["workspace"]) if cp.get("workspace") else None,
             branch=cp.get("branch"),
             tokens_used=cp.get("tokens_used", 0),
+            status=cp.get("status", "running"),
         )
         s.save_checkpoint()
         return s
@@ -152,11 +169,21 @@ class Session:
         cp = {
             "session_id": self.session_id,
             "started_at": self.started_at,
+            "source": str(self.source) if self.source else None,
             "workspace": str(self.workspace) if self.workspace else None,
             "branch": self.branch,
             "tokens_used": self.tokens_used,
+            "status": self.status,
         }
         self.checkpoint_path.write_text(json.dumps(cp, indent=2))
+
+    def set_status(self, status: str) -> None:
+        if status not in SESSION_STATUSES:
+            raise ValueError(
+                f"unknown session status {status!r}; expected one of {sorted(SESSION_STATUSES)}"
+            )
+        self.status = status
+        self.save_checkpoint()
 
     def add_tokens(self, n: int) -> None:
         self.tokens_used += n

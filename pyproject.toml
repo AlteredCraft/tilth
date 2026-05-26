@@ -21,7 +21,7 @@ docs = [
 ]
 
 [project.scripts]
-tilth = "tilth.loop:main"
+tilth = "tilth.cli:main"
 
 [build-system]
 requires = ["hatchling"]

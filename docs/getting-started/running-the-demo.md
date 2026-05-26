@@ -1,6 +1,6 @@
 # Running the demo
 
-The demo is a small todo-CLI workspace, pre-seeded with `prd.json`, `AGENTS.md`, `progress.txt`, and `tests/` — exactly the shape you'd give Tilth for your own project. It lives in its own repo so it's a realistic example, not a special case.
+The demo is a small todo-CLI workspace — a tiny Python project with `AGENTS.md` and an existing `tests/__init__.py`, otherwise empty. The demo path mirrors what a real first-time user does: seed a task list with `tilth prep-feature`, then run it. The seed is not pre-baked.
 
 ## Clone the demo workspace
 
@@ -10,10 +10,22 @@ The demo is a small todo-CLI workspace, pre-seeded with `prd.json`, `AGENTS.md`,
 git clone git@github.com:AlteredCraft/tilth-demo-todo-cli.git ~/projects/tilth-demo
 ```
 
+## Seed a task list
+
+Tilth's task list (`prd.json`) and the matching acceptance tests come from an *interview* the harness runs against your codebase. Kick it off:
+
+```bash
+uv run tilth prep-feature ~/projects/tilth-demo
+```
+
+The interview prompts you for a one-line brief (try: *"build a minimal todo CLI with add, list, and done subcommands, on-disk format `- [ ] item` in `TODOS.md`"*), then asks a few targeted questions to slice the work and lock acceptance criteria. The output lands as `sessions/<id>/prd.json` plus one `test_t<NNN>_*.py` per task under `~/projects/tilth-demo/tests/`. See [Seeding a session](../deep-dives/seeding.md) for the full interview-engine story.
+
+You can preview what a finished seed for this codebase looks like by reading [`examples/seed-reference/todo-cli/`](https://github.com/AlteredCraft/tilth/tree/main/examples/seed-reference/todo-cli) in the Tilth repo — same project, a hand-crafted reference.
+
 ## Run a session against the demo
 
 ```bash
-uv run tilth ~/projects/tilth-demo
+uv run tilth run ~/projects/tilth-demo
 ```
 
 What happens, end-to-end:

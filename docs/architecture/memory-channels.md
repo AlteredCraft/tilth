@@ -4,12 +4,14 @@ Four memory channels live *outside* the agent. Some are project files the user o
 
 | Channel | Lives in | Written by | Read by |
 |---|---|---|---|
-| `AGENTS.md` | the workspace (user-owned) | the user | worker, judge (injected at task start / judge call) |
+| `AGENTS.md` | the workspace (user-owned) | the user | worker, judge (injected at task start / judge call, when present) |
 | Git history | the worktree | the harness (one commit per task) | humans, judge (via diff) |
-| `progress.txt` | the workspace | the harness (one line per task outcome) | worker (last ~30 lines injected) |
-| `prd.json` | the workspace | the harness (status flips) | the harness (task selection) |
+| `progress.txt` | `sessions/<id>/` (harness-owned) | the harness (one line per task outcome) | worker (last ~30 lines injected) |
+| `prd.json` | `sessions/<id>/` (harness-owned) | `tilth prep-feature` (seed) and the harness (status flips) | the harness (task selection) |
 
-The worker writes none of these. It writes code in the worktree, which the harness commits. The split is clean: **memory channels are inputs to the agents; session artifacts under `sessions/<id>/` (events.jsonl, summary.json, proposed-learnings.md) are outputs the harness produces during a run.**
+The worker writes none of these. It writes code in the worktree, which the harness commits. The split is clean: **memory channels are inputs to the agents; session artifacts under `sessions/<id>/` (events.jsonl, summary.json, proposed-learnings.md, seed-meta.json) are outputs the harness produces during a run.**
+
+`prd.json` and `progress.txt` used to live in the workspace itself, which leaked harness state into every PR. Phase 1 of the prep-feature work moved them under `sessions/<id>/`. Your workspace now only ships the things that genuinely belong in the PR — source changes and tests.
 
 > **Diagram suggestion** — *four labelled "channels" feeding into a worker bubble at the centre with arrows annotated with the cadence of each: AGENTS.md ("at task start, one-way from user"), progress.txt ("last 30 lines, at task start"), git history ("via judge diff"), prd.json ("not visible to worker — harness only"). Reinforces the asymmetry of what the agent sees and the one-way directionality of AGENTS.md.*
 
@@ -64,13 +66,13 @@ The branch is **never auto-merged**. Open a PR and review like any other branch.
 
 ## `progress.txt` — the chronological journal
 
-Start it empty. The harness appends one line per task outcome. The most recent ~30 lines are injected into each fresh task's prompt so the agent has rolling context — what was just done, what failed, what the cumulative shape of the run looks like.
+Lives at `sessions/<id>/progress.txt`. Starts empty when the session is created; the harness appends one line per task outcome. The most recent ~30 lines are injected into each fresh task's prompt so the agent has rolling context — what was just done, what failed, what the cumulative shape of the run looks like.
 
 The agent does *not* write to `progress.txt` directly; the harness writes after task done/fail.
 
 ## `prd.json` — the task list
 
-This is the work. The harness does not plan; **you plan**.
+This is the work. Lives at `sessions/<id>/prd.json`. The harness does not plan; the *seed* (interview output) plans, and `tilth prep-feature` runs that interview against your codebase to produce the file. See [Seeding a session](../deep-dives/seeding.md) for the full story.
 
 ```json
 [
@@ -87,7 +89,7 @@ This is the work. The harness does not plan; **you plan**.
 ]
 ```
 
-The agent **never sees this file or its structure**. The harness reads it to pick the next pending task and writes it to flip status (`pending` → `in_progress` → `done` / `failed`). The agent receives its current task as the user message at the start of a fresh context — it knows what it's working on, but it doesn't know the queue exists.
+The agent **never sees this file or its structure**. The harness reads it to pick the next pending task and writes it to flip status (`pending` → `done` / `failed`). The agent receives its current task as the user message at the start of a fresh context — it knows what it's working on, but it doesn't know the queue exists.
 
 Hiding `prd.json` from the agent prevents three real failure modes seen in earlier hand-built loops:
 

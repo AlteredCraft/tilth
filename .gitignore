@@ -18,10 +18,13 @@ venv/
 sessions/
 !sessions/.gitkeep
 
-# Safety net: if anything is cloned into examples/, don't track it.
-# Canonical demo path is {{your projects folder}}/tilth-demo (sibling of Tilth),
-# not inside this repo. Demo source: https://github.com/AlteredCraft/tilth-demo-todo-cli
-examples/
+# `examples/seed-reference/` is tracked — frozen seeds captured as teaching
+# artifacts (see examples/seed-reference/todo-cli/README.md). Anything else
+# under examples/ is treated as a safety net for stray clones, since the
+# canonical demo path is {{your projects folder}}/tilth-demo (sibling of
+# Tilth). Demo source: https://github.com/AlteredCraft/tilth-demo-todo-cli
+examples/*
+!examples/seed-reference/
 
 # Editor
 .vscode/

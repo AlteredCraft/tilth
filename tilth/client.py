@@ -5,9 +5,14 @@ Talks to any OpenAI-compatible endpoint via the `openai` SDK. `TILTH_BASE_URL`,
 if they aren't set rather than silently picking a provider/model that may not
 match your account.
 
-Optional dual-client routing: set `TILTH_JUDGE_BASE_URL` and
-`TILTH_JUDGE_API_KEY` to send judge calls to a different provider (e.g. a
-cheaper / faster model) while the worker stays on the main provider.
+Optional cross-purpose routing: each purpose (worker, judge, prep-feature
+interview) can be pinned to a different provider via per-purpose env vars —
+`TILTH_JUDGE_BASE_URL` / `TILTH_JUDGE_API_KEY` for the judge, and
+`TILTH_PREP_BASE_URL` / `TILTH_PREP_API_KEY` for the prep-feature interview.
+Each defaults to the worker's. Routing is by model name in `chat()`; the
+matching base URL is then used to decide whether to send the OpenRouter
+`reasoning.enabled` opt-in (so a worker on OpenRouter routing through a
+non-OpenRouter judge doesn't send OpenRouter-specific syntax there).
 """
 
 from __future__ import annotations
@@ -87,6 +92,9 @@ class TilthConfig:
     judge_base_url: str
     judge_api_key: str
     judge_model: str
+    prep_base_url: str
+    prep_api_key: str
+    prep_model: str
     max_iterations_per_task: int
     max_judge_calls_per_task: int
     max_wall_clock_minutes: int
@@ -116,6 +124,9 @@ class TilthConfig:
         judge_model = os.environ.get("TILTH_JUDGE_MODEL", "").strip() or worker_model
         judge_base_url = os.environ.get("TILTH_JUDGE_BASE_URL", "").strip() or base_url
         judge_api_key = os.environ.get("TILTH_JUDGE_API_KEY", "").strip() or api_key
+        prep_model = os.environ.get("TILTH_PREP_MODEL", "").strip() or worker_model
+        prep_base_url = os.environ.get("TILTH_PREP_BASE_URL", "").strip() or base_url
+        prep_api_key = os.environ.get("TILTH_PREP_API_KEY", "").strip() or api_key
         return cls(
             base_url=base_url,
             api_key=api_key,
@@ -123,6 +134,9 @@ class TilthConfig:
             judge_base_url=judge_base_url,
             judge_api_key=judge_api_key,
             judge_model=judge_model,
+            prep_base_url=prep_base_url,
+            prep_api_key=prep_api_key,
+            prep_model=prep_model,
             max_iterations_per_task=int(os.environ.get("TILTH_MAX_ITERATIONS_PER_TASK", "8")),
             max_judge_calls_per_task=int(
                 os.environ.get("TILTH_MAX_JUDGE_CALLS_PER_TASK", "0") or "0"
@@ -152,12 +166,27 @@ class LLMClient:
             self._judge = self._worker
         else:
             self._judge = OpenAI(base_url=config.judge_base_url, api_key=config.judge_api_key)
+        if (
+            config.prep_base_url == config.base_url
+            and config.prep_api_key == config.api_key
+        ):
+            self._prep = self._worker
+        else:
+            self._prep = OpenAI(base_url=config.prep_base_url, api_key=config.prep_api_key)
 
-    def _client_for(self, model: str) -> OpenAI:
-        # Route by model name: judge model -> judge client, anything else -> worker.
+    def _client_and_url_for(self, model: str) -> tuple[OpenAI, str]:
+        """Route by model name to (client, base_url).
+
+        The base_url is returned so OpenRouter-specific request shaping in
+        `chat()` is keyed on the actually-routed provider, not on the worker
+        config — important when a non-worker purpose lives on a different
+        gateway.
+        """
         if model == self.config.judge_model and self._judge is not self._worker:
-            return self._judge
-        return self._worker
+            return self._judge, self.config.judge_base_url
+        if model == self.config.prep_model and self._prep is not self._worker:
+            return self._prep, self.config.prep_base_url
+        return self._worker, self.config.base_url
 
     def chat(
         self,
@@ -166,19 +195,20 @@ class LLMClient:
         model: str | None = None,
     ) -> dict[str, Any]:
         target = model or self.config.worker_model
-        client = self._client_for(target)
+        client, base_url = self._client_and_url_for(target)
 
         kwargs: dict[str, Any] = {"model": target, "messages": messages}
         if tools:
             kwargs["tools"] = tools
-        if _is_openrouter(self.config.base_url):
+        if _is_openrouter(base_url):
             # OpenRouter-normalised opt-in for thinking-mode models. Without it,
             # parallel-tool-call turns sometimes return reasoning_details: null
             # — and the next request then 400s because the upstream protocol
             # expects reasoning to be echoed. With it, reasoning_details is
             # always populated and `assistant_history_message` echoes it back.
             # Only sent for OpenRouter base URLs since this is OpenRouter-
-            # specific syntax (other gateways use different shapes).
+            # specific syntax (other gateways use different shapes); routing
+            # uses the per-purpose base_url, not the worker's.
             kwargs["extra_body"] = {"reasoning": {"enabled": True}}
 
         resp = client.chat.completions.create(**kwargs)
