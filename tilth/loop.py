@@ -1134,7 +1134,7 @@ def _do_prep_feature(
     sink = FileSeedSink()
 
     try:
-        run_interview(
+        result = run_interview(
             session=session,
             source=source,
             worktree=worktree,
@@ -1160,6 +1160,22 @@ def _do_prep_feature(
         session.set_status("failed")
         _refresh_summary(session)
         raise
+
+    # Anchor the seed bundle in the session branch so subsequent task_diff()s
+    # don't carry every uncommitted seeded test as "scope creep" until each
+    # task's commit lands. Without this, the judge sees future-task tests in
+    # T-001's diff and rejects, and a confused worker may delete them.
+    try:
+        seed_sha = ws.commit_seed(worktree, len(result.prd_entries), len(result.test_files))
+    except ws.WorkspaceError as exc:
+        console.print(f"[red]seed commit failed:[/red] {exc}")
+        session.log("stop", {"reason": "error", "error": f"seed_commit: {exc}"})
+        session.set_status("failed")
+        _refresh_summary(session)
+        return 1
+    if seed_sha:
+        session.log("seed_committed", {"sha": seed_sha, "branch": branch})
+        console.print(f"[dim]seed commit {seed_sha}[/dim]")
 
     _refresh_summary(session)
     console.print()

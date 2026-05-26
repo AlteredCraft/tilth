@@ -30,7 +30,9 @@ sessions/<id>/
         └── ...
 ```
 
-The worktree is created **at prep time**, not at run time — `ws.ensure_worktree` runs immediately after the session is created, branches `session/<id>` off the source repo's HEAD, and the sink writes seed test files directly into it. `tilth run` then `ensure_worktree`s the same path idempotently (returning the existing worktree if it's still there, recreating it if you deleted it by hand between prep and run) and starts the worker. The source repo's working tree is **never touched** by prep — the only filesystem effect outside `sessions/<id>/` is the new `session/<id>` branch in the source repo's `.git` (where Tilth's branches always live; see [Session layout](session-layout.md)).
+The worktree is created **at prep time**, not at run time — `ws.ensure_worktree` runs immediately after the session is created, branches `session/<id>` off the source repo's HEAD, and the sink writes seed test files directly into it. Right after the sink writes, `ws.commit_seed` makes a single `seed: N task(s) + M acceptance test(s)` commit on the session branch so the seed bundle lives in HEAD before the worker starts — without it, every seeded test file (including ones for future tasks) shows up as "uncommitted scope creep" in T-001's `task_diff` and the judge correctly rejects them. `tilth run` then `ensure_worktree`s the same path idempotently (returning the existing worktree if it's still there, recreating it if you deleted it by hand between prep and run) and starts the worker.
+
+The source repo's working tree is **never touched** by prep — the only filesystem effect outside `sessions/<id>/` is the new `session/<id>` branch in the source repo's `.git` (where Tilth's branches always live; see [Session layout](session-layout.md)).
 
 The worker never sees `seed-meta.json` — it's the interview audit trail for the visualizer and the human reviewer. Contents:
 

@@ -46,8 +46,14 @@ Event types:
                          seed bundle. Payload carries `prd_entries` (count),
                          `test_files` (count), `interviewer_model`, and
                          `tokens_used` for the interview. Flips checkpoint
-                         status to `prepared`. No worktree exists yet — that's
-                         created on the subsequent `tilth run`.
+                         status to `prepared`. The worktree was created at the
+                         start of prep (ws.ensure_worktree); the seed lands in
+                         it via FileSeedSink.write_seed.
+    seed_committed     — prep anchored the seed bundle as a single commit on the
+                         session branch right after `session_prepared`. Payload
+                         carries `sha` (short) and `branch` (`session/<id>`).
+                         Without this, every seeded test file would appear as
+                         uncommitted "scope creep" in T-001's `task_diff`.
     session_resume     — --resume woke a session; payload carries the resume plan
                          (which failed tasks were retried, FAILED commit unwound, etc.)
     stop               — run terminated; payload.reason ∈
