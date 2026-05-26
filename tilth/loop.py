@@ -1181,7 +1181,7 @@ def _do_prep_feature(
     console.print()
     console.print(f"[green]prepared[/green] sessions/{session.session_id}/")
     console.print(
-        f"[green]→[/green] run [bold]uv run tilth run {source}[/bold] to start work"
+        f"[green]→[/green] run: [bold]tilth run {source}[/bold] to start work"
     )
     return 0
 
