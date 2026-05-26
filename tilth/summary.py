@@ -62,7 +62,9 @@ def _empty_task() -> dict[str, Any]:
     }
 
 
-def build_from_events(events_path: Path) -> dict[str, Any]:
+def build_from_events(
+    events_path: Path, session_id: str | None = None
+) -> dict[str, Any]:
     tokens = {"prompt": 0, "eval": 0, "total": 0}
     tasks: dict[str, dict[str, Any]] = {}
     tool_histogram: dict[str, int] = defaultdict(int)
@@ -71,7 +73,6 @@ def build_from_events(events_path: Path) -> dict[str, Any]:
     started_at: str | None = None
     last_event_at: str | None = None
     stop: dict[str, Any] | None = None
-    session_id: str | None = None
 
     def task_for(tid: str) -> dict[str, Any]:
         if tid not in tasks:
@@ -90,7 +91,8 @@ def build_from_events(events_path: Path) -> dict[str, Any]:
             started_at = ts
         elif typ == "session_resume" and started_at is None:
             started_at = ts
-            session_id = p.get("session_id") or session_id
+            if session_id is None:
+                session_id = p.get("session_id")
         elif typ == "stop":
             stop = {"reason": p.get("reason"), "ts": ts}
         elif typ == "model_call":
@@ -155,6 +157,8 @@ def build_from_events(events_path: Path) -> dict[str, Any]:
     return out
 
 
-def write_summary(events_path: Path, out_path: Path) -> None:
-    data = build_from_events(events_path)
+def write_summary(
+    events_path: Path, out_path: Path, session_id: str | None = None
+) -> None:
+    data = build_from_events(events_path, session_id=session_id)
     out_path.write_text(json.dumps(data, indent=2))

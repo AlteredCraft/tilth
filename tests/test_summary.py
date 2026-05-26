@@ -170,3 +170,52 @@ def test_write_summary_writes_json_file(tmp_path):
     assert out_path.is_file()
     loaded = json.loads(out_path.read_text())
     assert "tokens" in loaded
+
+
+def test_session_id_threads_through(events_path):
+    """build_from_events accepts an explicit session_id (live Session is the
+    source of truth; events on disk don't always carry the id)."""
+    _write(
+        events_path,
+        [{"ts": "T1", "type": "session_start", "payload": {"source": "/tmp/foo"}}],
+    )
+    s = summary.build_from_events(events_path, session_id="20260526-100000-abc")
+    assert s["session_id"] == "20260526-100000-abc"
+
+
+def test_session_id_none_when_not_passed_and_not_on_disk(events_path):
+    """Regression guard: if no session_id is passed and no session_resume event
+    surfaces one, the field is null rather than something invented."""
+    _write(
+        events_path,
+        [{"ts": "T1", "type": "session_start", "payload": {"source": "/tmp/foo"}}],
+    )
+    s = summary.build_from_events(events_path)
+    assert s["session_id"] is None
+
+
+def test_passed_session_id_wins_over_resume_event(events_path):
+    """If both a parameter and a resume-event session_id exist, the live
+    parameter wins — it comes from the in-memory Session, which is the
+    authoritative source."""
+    _write(
+        events_path,
+        [
+            {
+                "ts": "T1",
+                "type": "session_resume",
+                "payload": {"session_id": "from-event"},
+            }
+        ],
+    )
+    s = summary.build_from_events(events_path, session_id="from-param")
+    assert s["session_id"] == "from-param"
+
+
+def test_write_summary_passes_session_id_through(tmp_path):
+    events_path = tmp_path / "events.jsonl"
+    out_path = tmp_path / "summary.json"
+    events_path.write_text("")
+    summary.write_summary(events_path, out_path, session_id="20260526-100000-abc")
+    loaded = json.loads(out_path.read_text())
+    assert loaded["session_id"] == "20260526-100000-abc"

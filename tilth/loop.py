@@ -56,7 +56,11 @@ def _refresh_summary(session: Session) -> None:
     """Re-roll events.jsonl into summary.json. Cheap; called at task boundaries
     and at stop. Failures here must not break the run."""
     try:
-        summary.write_summary(session.events_path, session.root / "summary.json")
+        summary.write_summary(
+            session.events_path,
+            session.root / "summary.json",
+            session_id=session.session_id,
+        )
     except Exception as exc:
         console.print(f"[dim]summary refresh failed: {type(exc).__name__}: {exc}[/dim]")
 
