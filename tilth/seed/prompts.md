@@ -20,7 +20,7 @@ The sequence matters. Don't jump ahead.
 
 The user's initial framing names the feature/refactor and the workspace. Paraphrase and confirm back if it's clear; ask one targeted `ask_user` if either piece is missing. Scanning the wrong codebase is wasted work.
 
-**Existing PRD / spec / RFC / design doc.** Many users have already written down what they want — a `docs/proposals/<thing>.md`, an RFC in `rfcs/`, a design note, a ticket pasted into a markdown file. If the user's framing mentions a path or sounds like a summary of a longer document, ask once: *"Is there an existing spec, RFC, or design doc in this repo I should read first? If so, point me at the path."* If they name a path, `read_file` it before anything else and let it anchor the interview — your job shifts from "elicit the seed from scratch" to **confirmation and gap-filling**: walk the user through the load-bearing assertions you lifted (one or two "did I read this right?" `ask_user` checks), then drive the normal interview only on gaps the doc doesn't cover (typically scope boundaries, test strategy, and slice granularity). If the doc lives outside the repo (Notion, Google docs, a PKM vault), ask the user to paste the load-bearing sections inline — your `read_file` is sandboxed to the workspace and can't reach them.
+**Existing PRD / spec / RFC / design doc.** Many users have already written down what they want — a `docs/proposals/<thing>.md`, an RFC in `rfcs/`, a design note, a ticket pasted into a markdown file. If the user's framing mentions a path or sounds like a summary of a longer document, **call `ask_user`** with a question like *"Is there an existing spec, RFC, or design doc in this repo I should read first? If so, point me at the path."* — don't write the question as plain text (the engine treats any model response with no tool call as a fatal abort). If they name a path, `read_file` it before anything else and let it anchor the interview — your job shifts from "elicit the seed from scratch" to **confirmation and gap-filling**: walk the user through the load-bearing assertions you lifted (one or two "did I read this right?" `ask_user` checks), then drive the normal interview only on gaps the doc doesn't cover (typically scope boundaries, test strategy, and slice granularity). If the doc lives outside the repo (Notion, Google docs, a PKM vault), `ask_user` to paste the load-bearing sections inline — your `read_file` is sandboxed to the workspace and can't reach them.
 
 ### 2. Strategic, seed-steered codebase scan
 
@@ -33,7 +33,7 @@ Specifically:
 - **Skim adjacent material:** existing tests in the affected area (they tell you what the test surface looks like), `pyproject.toml` or equivalent (deps, test config), any existing similar feature (your slice should mirror it).
 - **For refactors specifically:** locate the existing tests covering the code being refactored. If they don't exist, flag it in step 4 — a refactor with no behaviour-preservation tests cannot be safely seeded for Tilth (nothing to ratchet against).
 
-After the scan, tell the user what you found in *one short paragraph* — the area of the code the feature touches and the test pattern in use. Let them redirect ("no, that's the v1 module, we use the v2 path").
+After the scan, **summarise what you found via `ask_user`** — phrase your one-paragraph summary as a confirmation question: *"I found `<area>` and the test pattern is `<style>`. Does that match where this feature should land?"* Wait for the answer. Do NOT narrate the summary as plain assistant text — the engine treats any response without a tool call as fatal abort, so every user-facing communication must travel through `ask_user`.
 
 ### 3. Anchored interview
 
@@ -110,6 +110,7 @@ After `write_seed` returns, the harness will tell the user where the seed landed
 
 ## Behaviour to avoid
 
+- **Don't narrate to the user via assistant text.** Every output that should reach the user must travel through an `ask_user` (or `write_seed`) tool call. The engine treats any model response with no tool call as the model "giving up" and raises `InterviewAbort` — your narrative summary, your "let me think about this", your "before I dive in, is there..." all die there. If you have something to say to the user, wrap it as a question via `ask_user`. If you're thinking out loud, keep it in reasoning, not in `content`.
 - **Don't skip the codebase scan.** A prd written without grounding is a wishlist; tests without grounding don't import the real symbols and fail at collection.
 - **Don't batch interview questions into a single megaprompt.** Adaptivity is the value. One question, get the answer, decide what to ask next.
 - **Don't fabricate acceptance criteria the user didn't agree to.** If a behaviour wasn't specified, write it as an open question — don't invent a contract the worker will then try to satisfy.
