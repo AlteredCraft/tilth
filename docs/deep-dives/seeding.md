@@ -85,6 +85,16 @@ The interview model is given exactly five tools:
 
 Conspicuously absent: `bash`, `write_file`, `edit_file`. The seeder is **read-only against your source repo** until the terminal write — there's no path for the model to mutate code outside of producing the `test_files` content in `write_seed`.
 
+## Interview shapes: cold start vs. existing-PRD anchor
+
+The interview adapts to what you bring it. Two common shapes:
+
+**Cold start.** You have a verbal brief — *"add a CSV exporter to the reports module"* — and the seeder drives a full conversation: confirm the framing, scan the code, ask 5–15 anchored questions covering motivation, observable contract, slicing, tests, scope, and risks. This is what the demo walkthrough shows.
+
+**Existing PRD anchor.** You already wrote down what you want — a spec under `docs/proposals/`, an RFC in `rfcs/`, a design note, a ticket pasted into a markdown file at the repo root. Point the seeder at the path in your initial brief (*"add a CSV exporter — full spec at `docs/proposals/csv-exporter.md`"*), or answer *"yes, read this:"* when the opening confirmation surfaces the option. The seeder `read_file`s the doc before asking anything else and shifts the interview into **confirmation and gap-filling**: it walks you through the load-bearing assertions it lifted (a couple of "did I read this right?" `ask_user` checks), then drives a normal interview only on gaps the doc doesn't cover — typically scope boundaries, test strategy, and slice granularity. Token spend on the interview drops; the seed is anchored on text you already vetted rather than on questions answered ad-hoc.
+
+The existing-PRD path needs no new tool surface — `read_file` is already there. The one constraint is that the doc must live **inside the source repo** (the seeder's file access is sandboxed to the workspace, same as the worker's). If your spec lives in Notion, a Google doc, or a PKM vault, paste the load-bearing sections inline into your initial brief and the seeder will treat them as an anchor the same way.
+
 ## How `tilth run` picks up a prepared session
 
 `tilth run <workspace>` looks at `sessions/*/checkpoint.json` and finds those whose `source` matches `<workspace>` and `status == "prepared"`. The cases:

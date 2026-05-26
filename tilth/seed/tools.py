@@ -26,9 +26,10 @@ SCHEMA_ASK_USER: dict[str, Any] = {
         "name": NAME_ASK_USER,
         "description": (
             "Pose a question to the user and wait for an answer. "
-            "Provide `options` (2-4 short strings) for menu-style multiple choice; "
-            "omit for free-form input. Always include an 'Other (I'll specify)' "
-            "option when offering choices so the user is never boxed in. "
+            "Provide `options` (2-4 short, substantive strings) for menu-style "
+            "multiple choice; omit for free-form input. Do NOT include an 'Other' "
+            "or escape-hatch option — the frontend always surfaces one (the TTY "
+            "renders `0) Other (I'll specify)` automatically). "
             "Returns the user's verbatim answer."
         ),
         "parameters": {

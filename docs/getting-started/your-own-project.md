@@ -19,6 +19,8 @@ You do **not** write `prd.json`, `progress.txt`, or the acceptance tests by hand
 
 `tilth prep-feature` interviews you against your codebase to produce the seed — `prd.json` (task list) and one matching acceptance test per task. The interview is anchored: the model reads your code as it asks questions, so the slices are grounded in what's actually there.
 
+If you've already written a spec / RFC / design doc / ticket for this feature, point at it in your initial brief (e.g. *"add a CSV exporter — full spec at `docs/proposals/csv-exporter.md`"*). The seeder reads the doc first and shifts the interview into confirmation + gap-filling mode rather than starting from scratch — usually fewer turns, fewer tokens, and the seed anchored on text you already vetted. The doc must live inside the repo (the seeder's file access is sandboxed); for external docs, paste the load-bearing sections inline into your brief. See [Interview shapes: cold start vs. existing-PRD anchor](../deep-dives/seeding.md#interview-shapes-cold-start-vs-existing-prd-anchor) for the engine-side story.
+
 ```bash
 cd <your-tilth-clone>
 uv run tilth prep-feature /absolute/path/to/your/repo
