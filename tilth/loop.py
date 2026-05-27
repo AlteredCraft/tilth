@@ -82,6 +82,84 @@ def _propose_learning_prompt() -> str:
 # --- judge ------------------------------------------------------------------
 
 JUDGE_DIFF_MAX_CHARS = 12_000
+JUDGE_TEST_FILE_MAX_CHARS = 8_000
+
+
+def _load_seed_test(worktree: Path, task_id: str) -> tuple[str, str]:
+    """Return (relative_path, content) for the seed acceptance test matching
+    `task_id`, or ("", "") if none. Mirrors the glob used by `run_pytest`
+    so the judge sees exactly the file the validator just ran."""
+    tests_dir = worktree / "tests"
+    if not tests_dir.is_dir():
+        return "", ""
+    matches = sorted(tests_dir.glob(validators._task_test_glob(task_id)))
+    if not matches:
+        return "", ""
+    path = matches[0]
+    try:
+        raw = path.read_text()
+    except OSError:
+        return "", ""
+    if len(raw) > JUDGE_TEST_FILE_MAX_CHARS:
+        raw = raw[:JUDGE_TEST_FILE_MAX_CHARS] + f"\n... [truncated, total {len(raw)} chars]"
+    return f"tests/{path.name}", raw
+
+
+def _build_judge_user_message(
+    task: dict[str, Any], worktree: Path, diff: str
+) -> str:
+    """Assemble the user-side judge prompt. Pure function on (task, worktree, diff)
+    so it can be tested without mocking the LLM client."""
+    parts = [
+        f"# Task to evaluate: {task['id']} — {task['title']}",
+        "",
+        task.get("description", "").strip(),
+    ]
+    criteria = task.get("acceptance_criteria") or []
+    if criteria:
+        parts += ["", "## Acceptance criteria"] + [f"- {c}" for c in criteria]
+
+    agents_md = memory.load_agents_md(worktree)
+    if agents_md.strip():
+        parts += [
+            "",
+            "## Project context (AGENTS.md)",
+            "",
+            agents_md.rstrip(),
+        ]
+
+    test_rel, test_content = _load_seed_test(worktree, task["id"])
+    if test_content:
+        parts += [
+            "",
+            "## Seed acceptance test (already on disk, not in this diff)",
+            "",
+            f"This file ({test_rel}) was committed at seed time and is what pytest "
+            "just ran. Any acceptance criterion referencing its existence is satisfied "
+            "by its presence in HEAD. Review the assertions as part of the contract — "
+            "if they fail to pin down a criterion, or pin down something other than "
+            "what the description asks for, reject the test rather than rationalise it.",
+            "",
+            "```python",
+            test_content.rstrip(),
+            "```",
+        ]
+
+    parts += [
+        "",
+        "## Validator status",
+        "",
+        "All objective validators (ruff, pytest) PASSED. Your job is the subjective check.",
+        "",
+        "## Diff (working tree vs HEAD on this task's branch)",
+        "",
+        "```diff",
+        diff if diff.strip() else "(empty diff)",
+        "```",
+        "",
+        "Respond with strict JSON only.",
+    ]
+    return "\n".join(parts)
 
 
 def _judge_task(
@@ -98,39 +176,9 @@ def _judge_task(
     if len(diff) > JUDGE_DIFF_MAX_CHARS:
         diff = diff[:JUDGE_DIFF_MAX_CHARS] + f"\n... [truncated, total {len(diff)} chars]"
 
-    parts = [
-        f"# Task to evaluate: {task['id']} — {task['title']}",
-        "",
-        task.get("description", "").strip(),
-    ]
-    criteria = task.get("acceptance_criteria") or []
-    if criteria:
-        parts += ["", "## Acceptance criteria"] + [f"- {c}" for c in criteria]
-    agents_md = memory.load_agents_md(worktree)
-    if agents_md.strip():
-        parts += [
-            "",
-            "## Project context (AGENTS.md)",
-            "",
-            agents_md.rstrip(),
-        ]
-    parts += [
-        "",
-        "## Validator status",
-        "",
-        "All objective validators (ruff, pytest) PASSED. Your job is the subjective check.",
-        "",
-        "## Diff (working tree vs HEAD on this task's branch)",
-        "",
-        "```diff",
-        diff if diff.strip() else "(empty diff)",
-        "```",
-        "",
-        "Respond with strict JSON only.",
-    ]
     judge_messages = [
         {"role": "system", "content": _judge_prompt()},
-        {"role": "user", "content": "\n".join(parts)},
+        {"role": "user", "content": _build_judge_user_message(task, worktree, diff)},
     ]
     resp = client.chat(judge_messages, model=client.config.judge_model)
     usage = resp.get("usage") or {}
