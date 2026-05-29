@@ -175,3 +175,21 @@ This codebase is the practical centerpiece of an article in the user's PKM vault
 ```
 
 That folder has `research-findings.md`, `research-links.md`, `mvp-spec.md`, and `draft.md`. When changes here are likely to be article-worthy (e.g. surprising findings from a demo run, new lessons from extending a slice), surface them so the user can update the draft. Don't edit those files unless asked.
+
+### Session-start sweep for article-worthy learnings
+
+A separate running notes file lives at:
+
+```
+~/_PRIMARY_VAULT/AlteredCraft/Altered Craft Publications/Notes/tilth-learnings.md/notes.md
+```
+
+It's a bulleted, themed corpus of transferable lessons from Tilth development (provider quirks, robustness patterns, multi-agent failure modes, observability wins) with commit-SHA links into [`AlteredCraft/tilth`](https://github.com/AlteredCraft/tilth). At the start of a new session, spawn a general-purpose subagent to:
+
+1. `git log --since="3 days ago"` — see what's landed.
+2. Read the notes file above.
+3. For any commit surfacing a non-obvious lesson that *isn't* already represented, append a bullet under the right themed section (or open a new section) with the commit SHA linked and the bullet's date tagged on the section's `*Observed:*` line.
+4. Skip docs-sync / lint / surface-polish commits — the file is for transferable lessons, not changelog.
+5. Report back a short summary of what was added (and what was already there).
+
+Match the existing voice: terse bullets, themed sections (not chronological), date range under each section header, lesson framed as a transferable principle plus a concrete commit anchor.
