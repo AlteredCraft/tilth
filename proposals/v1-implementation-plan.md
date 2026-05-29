@@ -1,6 +1,6 @@
 # Implementation plan: worker–evaluator dialogue (v1)
 
-**Status:** In progress — **Phases 1–2 landed (2026-05-29).** Phases 3–5 not started; Phase 6 deferred.
+**Status:** In progress — **Phases 1–3 landed (2026-05-29).** Phases 4–5 not started; Phase 6 deferred.
 **Author:** Sam (with Claude conversational pass)
 **Date:** 2026-05-27 (last updated 2026-05-29)
 **Related:** [`frictions-2026-05-26.md`](frictions-2026-05-26.md) (the inventory), [`v1-worker-evaluator-dialogue.md`](v1-worker-evaluator-dialogue.md) (the sketch this plan implements).
@@ -159,6 +159,16 @@ The fix shipped as part of Phase 1: **`tilth/prompts/judge.md` redraws the brigh
 
 ## Phase 3 — Worker `submit_case` and advocate framing
 
+**Status: ✅ Landed 2026-05-29.** What shipped (matches the scope below; deltas noted):
+
+- **`tilth/case.py`** — worker-side mirror of `verdict.py`: `SUBMIT_CASE_TOOL`, `CASE_SCHEMA_VERSION`, `parse_case` (defensive, first-valid-wins, value-local normalize), `_validate`/`_normalize`, `format_case_section`. `work_arounds` capped at 5 (OQ #2). `addressed_by` uses a *lenient* pointer check — rejects only clear prose (terse pointers like `main() in __main__` pass), per the soften-toward-judgement convention.
+- **`tilth/loop.py`** — `SUBMIT_CASE_TOOL` offered in the worker's `tools=` list and **intercepted** in `_run_task` (not a `REGISTRY`/`dispatch` tool). Done-signal flipped: "no tool calls" → valid `submit_case`. `_partition_worker_tool_calls` runs worktree tools first; `_answer_case_calls` answers every tool call before the next model call; validator-fail and reject feedback delivered as the `submit_case` tool_result; stop-without-case → `WORKER_NO_CASE_NUDGE`. Case threaded into `_judge_task` (injected as `## Worker's case`) and stored in the ledger via `_build_ledger_entry` (`case` no longer null). **Bonus:** guarded the worker's worktree tool-arg `json.loads` (was an unguarded latent crash).
+- **Prompts** — `system.md` rewritten to advocate framing; `judge.md` gained a "Worker's case" section (verify `ac_coverage` against the diff, engage `work_arounds` skeptically, case never overrides the floor).
+- **Events** — new `case_parse_error` (raw capture, parity with `evaluator_parse_error`); `submit_case` logged as a `tool_call`. `session.py` docstring updated. Stale "stops calling tools" termination text fixed in the loop docstrings + `docs/architecture/overview.md` + `docs/getting-started/running-the-demo.md`.
+- **Tests:** 292 green (`test_case_parsing`, `test_worker_case_loop`, `test_ledger_includes_case`). The two `test_loop_exits_on_submit_case`-style behaviours are covered via the factored helpers (`_partition_worker_tool_calls`, `WORKER_NO_CASE_NUDGE`), matching the suite's altitude (loop tests exercise factored decisions, not a live model).
+- **Demo validation** (`20260529-134013`, a *fresh* seed — not the literal #23 seed, but the same F4 shape arose organically): on T-001 the worker submitted a case naming a cross-task test edit as a `work_around` → evaluator **hard-rejected** `scope_creep` (named-but-illegitimate); the worker then found a `per-file-ignore` in its *own* `pyproject.toml`, named *that* as a work-around → evaluator **accepted**. The F4/#23 disambiguation became an explicit, logged negotiation — the headline win. Zero `case_parse_error`s; premature submits (iters 12, 20) caught by validators **without burning a judge call**.
+- **Cost finding (orthogonal, filed as [#25](https://github.com/AlteredCraft/tilth/issues/25)):** T-001 burned 27 iters / 226k tokens, ~15 on a ruff dance — `run_ruff` lints workspace-wide while `run_pytest` is task-filtered (F5), forcing the per-file-ignore. Phase 3 made the workaround *declared and adjudicated* rather than hidden, but the root cause is validator-side, not the dialogue. Inflates OQ #6.
+
 **Goal:** Replace "worker stops calling tools and responds with a summary" with "worker calls `submit_case` with structured fields." Worker's `system.md` reframes from tool-user-that-stops to advocate-presenting-a-case.
 
 **Why this phase third:** The case is what the evaluator wants to see; building the evaluator side first (Phases 1–2) means we can compare evaluator behavior with and without the case. It also means Phase 3 is the only phase that touches the worker.
@@ -229,12 +239,12 @@ The fix shipped as part of Phase 1: **`tilth/prompts/judge.md` redraws the brigh
 **Validation:**
 - Unit tests pass.
 - A demo run shows the worker's user message size growing as expected; spot-check that the new sections are present and well-formed.
-- F5/F9 (pre-empting future tasks) should noticeably decrease — worker now has reason to understand why it shouldn't.
+- **F9** (no cross-task awareness → pre-empting future tasks) should noticeably decrease — the worker now sees the full PRD and understands *why* not to touch future-task surfaces. **NB: this does not fix F5.** The Phase 3 demo showed the expensive friction is the *ruff* asymmetry ([#25](https://github.com/AlteredCraft/tilth/issues/25)) — the worker is forced to touch/work-around future-task seed files because workspace-wide ruff flags them, regardless of how well it *understands* the PRD. Visibility addresses comprehension (F9); #25 addresses the validator scoping (F5). Don't expect Phase 4 alone to cut the T-001-style token cost — that needs #25.
 
 **Demo expectation:**
 - Scope-creep accusations on side-effect files drop further (combined with Phase 3's `work_arounds`).
 - The "judge can't review seed test files" failure shape ([#16](https://github.com/AlteredCraft/tilth/issues/16)) should resolve — evaluator now has the seed test inline.
-- Worker iteration count overall trends down (hypothesis: 20–40% reduction on multi-rejection tasks).
+- Worker iteration count trends down *on F9-driven rejections* (reading-ahead, pre-emption). The F5 ruff dance is unaffected until #25 — so the 20–40% reduction hypothesis is only cleanly measurable once #25 lands or on seeds that don't trip workspace-wide lint.
 
 **Risks:**
 - Prompt size explodes. Mitigation: `seed-meta.json` and other-task ACs are short by construction; the ledger is capped from Phase 2; validator output may need truncation if a test dumps a lot — add a per-field cap with a "(truncated)" marker if needed.
@@ -299,10 +309,13 @@ Then inspect (the post-run review is itself the hyper-observability proof point 
 ```bash
 SID=$(ls -t sessions | head -1)
 jq -c 'select(.type=="evaluator_verdict")|.payload|{iter,verdict,rejection_category,next_step}' sessions/$SID/events.jsonl
+jq -c 'select(.type=="tool_call" and .payload.tool=="submit_case")|.payload.args' sessions/$SID/events.jsonl   # Phase 3+
 jq -c '{iter,diff_summary,case,v:.verdict.verdict}' sessions/$SID/ledger/*.jsonl     # Phase 2+
 jq '.evaluator' sessions/$SID/summary.json
 ```
 The phase isn't done until the *behavior shift* in *Demo expectation* is visible.
+
+> **`prep-feature` is interactive** (TTYFrontend `ask_user`) — it can't be driven from a headless/background shell, and re-running it every phase is the slow link in this loop. [#24](https://github.com/AlteredCraft/tilth/issues/24) (`tilth reset --to-seed`) tracks a destructive rewind-to-post-seed flag so the same committed seed can be re-`run` without re-interviewing. Until it lands, a human drives `prep-feature` and pastes the run summary back for review.
 
 **Caveat — the clean seed may not exercise the feature.** Phases 2–5 only light up on a task that **rejects** (ledger memory, case disagreement, rejection-category learnings). A zero-reject run proves wiring, not behaviour. If a clean run produces no rejections, deliberately exercise the path — a harder/contradictory seed, or inspect a prior run that did reject (e.g. `20260529-113158`). Don't mark a phase "demo-validated" off a run that never triggered its mechanism.
 
@@ -313,13 +326,13 @@ The sketch's open questions land here:
 | Open question | Phase | Note |
 |---|---|---|
 | OQ #1 — Ledger size cap | Phase 2 | ✅ **Resolved:** `LEDGER_INJECT_LIMIT=5`. No prompt-size issue seen in the Phase 2 demo; token-budgeted truncation deferred until one appears. |
-| OQ #2 — `work_arounds` discipline | Phase 3 | Cap at 5 entries; evaluator-prompt skepticism; revisit after demo |
-| OQ #3 — AC coverage gaps | Phase 3 | Open call: auto-reject if `ac_coverage` is incomplete vs. the PRD entry, *or* flag-and-judge. #23 makes this concrete — a missing/contradicted AC should surface, not pass silently. |
+| OQ #2 — `work_arounds` discipline | Phase 3 | ✅ **Shipped + observed:** cap at 5 + evaluator-prompt skepticism. In `20260529-134013` the worker did *not* abuse it as a permission slip — it named a real cross-task edit and the evaluator rejected it anyway (named ≠ excused). Holding; revisit if a later run shows relabel-creep. |
+| OQ #3 — AC coverage gaps | Phase 3 | **Not auto-enforced (deliberate).** `judge.md` instructs "a missing AC = `acceptance_gap`" but it's a judgement call, not a schema check — consistent with soften-toward-judgement. The mechanical auto-reject-on-incomplete-coverage option is deferred (would need the PRD's AC list threaded into the case validator); revisit if the evaluator misses a gap in practice. |
 | OQ #4 — Self-improver and ledger | Phase 5 | Direct implementation target; the rollup data it needs already ships (Phase 1). |
 | OQ #5 — Cross-task evaluator memory | Out of scope | v1.5 question; flagged in sketch |
-| OQ #6 — Token budget | Continuous | **Data point:** clean 3-task run ≈ 238k tokens (`20260528-074315`); a 3-task run with 2 rejections ≈ 562k (`20260529-113158`). Cost climbs steeply with rejection loops and rising worker iteration counts (T-002 hit 35). Watch this through Phases 3–4; the hypothesis that better feedback *nets* fewer tokens is not yet confirmed. |
-| OQ #7 — `submit_case` failure modes | Phase 3 | Parse-error-as-tool-result — reuse `verdict.parse_verdict`, not the interview's `_parse_args` |
-| OQ #8 — Seeder updates | Phase 3 evaluation | **Evidence in:** the demo seed *did* break the dialogue (#23 contradiction, #22 collateral). Phase 3's `work_arounds` lets the worker *name* the friction; the structural seeder fix (contract negotiation) stays v2. |
+| OQ #6 — Token budget | Continuous | **Data points:** clean 3-task run ≈ 238k (`20260528-074315`); 2 rejections ≈ 562k (`20260529-113158`); Phase 3 run ≈ 407k (`20260529-134013`). Cost is dominated by the **F5 ruff dance** ([#25](https://github.com/AlteredCraft/tilth/issues/25)) — T-001 alone was 226k/27 iters fighting workspace-wide lint, not the dialogue. The "better feedback nets fewer tokens" hypothesis is confounded by F5 until #25 lands; measure again after. |
+| OQ #7 — `submit_case` failure modes | Phase 3 | ✅ **Resolved:** reuses `verdict.parse_verdict`. In `20260529-134013` there were **zero** `case_parse_error`s across 6 submissions; premature submits were caught by the validator floor (fed back as the submit_case tool_result, no judge call burned), not by parse failures. |
+| OQ #8 — Seeder updates | Phase 3 evaluation | **Evidence in:** the demo seed *did* break the dialogue (#23 contradiction, #22 collateral). Phase 3's `work_arounds` lets the worker *name* the friction (confirmed in `20260529-134013`); the structural seeder fix (contract negotiation) stays v2. |
 | OQ #9 — Visualizer | Phase 6 | Deferred; file the follow-up issue when Phase 5 lands |
 
 ### Tilth self-tests
