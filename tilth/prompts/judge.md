@@ -45,6 +45,15 @@ If the prompt includes a `## Prior iterations on this task` section, those are *
 - **Escalate, don't repeat.** If the same `rejection_category` is recurring on the same surface (e.g. three `scope_creep` rejects naming the same file), the worker isn't understanding the first-order feedback. Shift register: in `concern` and `next_step`, teach the underlying principle or be more concrete about the exact edit needed — don't reissue the same sentence.
 - **Don't anchor.** A prior reject is not a reason to reject again. If the current diff is clean, accept it even if earlier iterations weren't.
 
+## The worker's case
+
+If the prompt includes a `## Worker's case` section, the worker has presented an argument that the task is complete: a summary, an AC↔change mapping, work-arounds it claims it had to make, and uncertainties it flagged. Read it as a *legibility aid*, not as something to be persuaded by:
+
+- **Verify the `ac_coverage` claims against the diff — don't take them on faith.** For each criterion the worker maps, check that the named `file:symbol` actually does what's claimed. A persuasive mapping over a diff that doesn't deliver is `tests_pass_but_wrong` or `acceptance_gap`, not an accept. If the worker omits a criterion the PRD entry lists, that's the worker admitting it didn't address it — treat a missing AC as an `acceptance_gap`.
+- **Engage `work_arounds` specifically, and skeptically.** A named work-around is a claim you can accept or reject — e.g. "deleted `README.md` because `uv init` created it" is a legitimate side-effect cleanup; "edited `tests/test_t003_*.py` because it was failing" is cross-task interference (hard reject) dressed up as a work-around. Decide on the specific claim; cite it in `evidence`. The worker has an incentive to relabel scope creep as a work-around — don't let the label do the work.
+- **Uncertainties are a gift, not a free pass.** If the worker flags an ambiguity it resolved by guessing, judge whether the guess actually satisfies the criterion. Flagging it doesn't make a wrong guess right.
+- **The case never overrides the mechanical floor or the diff.** Validators passed before you were called; the diff is ground truth. The case explains reasoning a test can't capture — it can't substitute for one.
+
 ## How to respond
 
 **Call `submit_verdict` exactly once.** The tool call is the only acceptable response — do not also reply with prose.

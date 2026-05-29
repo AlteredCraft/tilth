@@ -4,12 +4,15 @@ For each pending task in sessions/<id>/prd.json:
   1. Reset context — build a fresh message list from disk
      (workspace AGENTS.md + session progress tail + task).
   2. Tool-loop with the worker model.
-  3. When model stops calling tools, run validators (ruff + pytest).
-     - Pass: judge model evaluates the diff in a fresh context.
+  3. When the worker calls `submit_case` (its done-signal, Phase 3), run
+     validators (ruff + pytest).
+     - Pass: the evaluator reviews the case + diff + ledger in a fresh context.
        - Accept: collect a proposed learning (session-local, user-reviewed),
                  commit, mark done, next task.
-       - Reject: inject judge feedback into worker loop; another iteration.
-     - Fail: inject validator failure into worker loop; another iteration.
+       - Reject: feed the structured verdict back as the submit_case
+                 tool_result; another iteration.
+     - Fail: feed the validator report back as the submit_case tool_result;
+             another iteration.
 """
 
 from __future__ import annotations
@@ -27,6 +30,12 @@ from rich.console import Console
 
 from tilth import memory, summary, tools, validators, visualize
 from tilth import workspace as ws
+from tilth.case import (
+    NAME_SUBMIT_CASE,
+    SUBMIT_CASE_TOOL,
+    format_case_section,
+    parse_case,
+)
 from tilth.client import (
     LLMClient,
     TilthConfig,
@@ -92,6 +101,51 @@ JUDGE_DIFF_MAX_CHARS = 12_000
 PROMPT_ASSEMBLED_CHAR_CAP = 16_000
 MODEL_RAW_ARGS_CHAR_CAP = 16_000  # generous — faithful capture is the priority
 LEDGER_INJECT_LIMIT = 5  # OQ #1: last-N ledger entries injected into evaluator prompt
+
+WORKER_NO_CASE_NUDGE = (
+    "You stopped without calling `submit_case`. This harness no longer treats "
+    "'no more tool calls' as done — when the task is complete and verified, "
+    "present your case by calling `submit_case`. If you're not done, keep "
+    "working with the other tools."
+)
+
+
+def _partition_worker_tool_calls(
+    tool_calls: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split an assistant message's tool calls into (worktree, submit_case).
+
+    Worktree tools route through `tools.dispatch`; `submit_case` is the
+    control-flow done-signal, intercepted in `_run_task`. Returned as two
+    lists (preserving order) so the loop can run worktree tools first, then
+    handle the case.
+    """
+    worktree: list[dict[str, Any]] = []
+    cases: list[dict[str, Any]] = []
+    for tc in tool_calls:
+        name = (tc.get("function") or {}).get("name")
+        (cases if name == NAME_SUBMIT_CASE else worktree).append(tc)
+    return worktree, cases
+
+
+def _answer_case_calls(
+    messages: list[dict[str, Any]],
+    case_tcs: list[dict[str, Any]],
+    primary: str,
+) -> None:
+    """Append a `tool_result` for every `submit_case` tool call.
+
+    Every tool call in an assistant message must be answered before the next
+    model call, or the provider 400s. The first submit_case gets the real
+    outcome feedback (`primary`); rare duplicates get a stub.
+    """
+    for i, tc in enumerate(case_tcs):
+        body = primary if i == 0 else (
+            "Duplicate submit_case ignored; act on the response to the first."
+        )
+        messages.append(
+            {"role": "tool", "tool_call_id": tc.get("id") or "", "content": body}
+        )
 
 
 def _log_model_call(
@@ -191,6 +245,23 @@ def _log_prompt_assembled(
     )
 
 
+def _build_ledger_entry(
+    *,
+    iter_n: int,
+    diff_summary: str,
+    case: dict[str, Any] | None,
+    verdict: dict[str, Any],
+) -> dict[str, Any]:
+    """Construct one per-task ledger entry. `case` is the worker's submitted
+    case (Phase 3) or None (parse-failure fallback / no case)."""
+    return {
+        "iter": iter_n,
+        "diff_summary": diff_summary,
+        "case": case,
+        "verdict": verdict,
+    }
+
+
 def _judge_task(
     task: dict[str, Any],
     worktree: Path,
@@ -199,6 +270,7 @@ def _judge_task(
     iter_n: int,
     trace_id: str,
     span_id: str,
+    case: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Call the evaluator in a fresh context. Returns a structured verdict.
 
@@ -236,6 +308,8 @@ def _judge_task(
     )
     if ledger_section:
         parts += ["", ledger_section]
+    if case is not None:
+        parts += ["", format_case_section(case)]
     parts += [
         "",
         "## Validator status",
@@ -290,15 +364,15 @@ def _judge_task(
     )
 
     # Persist this iteration to the task ledger (the evaluator's read path on
-    # the next call). `case` is null until Phase 3 introduces submit_case.
+    # the next call). `case` is the worker's submitted case (Phase 3).
     session.append_ledger_entry(
         task["id"],
-        {
-            "iter": iter_n + 1,
-            "diff_summary": ws.task_diff_summary(worktree),
-            "case": None,
-            "verdict": verdict,
-        },
+        _build_ledger_entry(
+            iter_n=iter_n + 1,
+            diff_summary=ws.task_diff_summary(worktree),
+            case=case,
+            verdict=verdict,
+        ),
     )
     category = verdict.get("rejection_category")
     verdict_summary = (
@@ -870,9 +944,11 @@ def _run_task(
 ) -> str:
     """Run one task. Returns 'done', 'iter_cap', or 'judge_cap'.
 
-    A task is 'done' only when the model stops calling tools AND the validators
-    (ruff + pytest) pass. Validator failures are fed back into the loop as the next
-    user message; the model gets another iteration to fix things.
+    A task is 'done' only when the worker calls `submit_case` (its done-signal,
+    Phase 3), the validators (ruff + pytest) pass, AND the evaluator accepts.
+    Validator failures and rejects are fed back as the submit_case tool_result;
+    the worker gets another iteration. Stopping without a case nudges it to
+    submit one.
     """
     setup_span = _span_id()
     session.log(
@@ -905,7 +981,7 @@ def _run_task(
         {"role": "system", "content": _system_prompt()},
         {"role": "user", "content": user_prompt},
     ]
-    tool_schemas = tools.schemas()
+    tool_schemas = [*tools.schemas(), SUBMIT_CASE_TOOL]
     judge_calls = 0
 
     for iter_n in range(client.config.max_iterations_per_task):
@@ -941,64 +1017,122 @@ def _run_task(
         messages.append(assistant_history_message(msg))
 
         tool_calls = msg.get("tool_calls") or []
+        worktree_tcs, case_tcs = _partition_worker_tool_calls(tool_calls)
 
-        if tool_calls:
-            for tc in tool_calls:
-                tc_id = tc.get("id") or ""
-                fn = tc.get("function") or {}
-                tool_name = fn.get("name") or ""
-                raw_args = fn.get("arguments") or {}
+        # 1. Run worktree tools first (dispatch + tool_result), in order.
+        for tc in worktree_tcs:
+            tc_id = tc.get("id") or ""
+            fn = tc.get("function") or {}
+            tool_name = fn.get("name") or ""
+            raw_args = fn.get("arguments") or {}
+            try:
                 args = raw_args if isinstance(raw_args, dict) else json.loads(raw_args)
-
+            except json.JSONDecodeError as exc:
+                # Malformed tool-arg JSON (token-boundary corruption on long
+                # payloads). Feed the error back as a tool_result so the model
+                # retries — same recovery pattern as the seed interview.
+                err = f"ERROR: your `{tool_name}` arguments were not valid JSON: {exc}"
                 session.log(
                     "tool_call",
                     {
-                        "task_id": task["id"],
-                        "trace_id": trace_id,
-                        "span_id": iter_span,
-                        "iter": iter_n + 1,
-                        "tool": tool_name,
-                        "args": args,
+                        "task_id": task["id"], "trace_id": trace_id,
+                        "span_id": iter_span, "iter": iter_n + 1,
+                        "tool": tool_name, "args": "(unparseable JSON)",
                     },
                 )
-                console.print(f"[cyan]→ {tool_name}[/cyan] {json.dumps(args)[:200]}")
+                messages.append(
+                    {"role": "tool", "tool_call_id": tc_id, "content": err}
+                )
+                continue
 
-                outcome = tools.dispatch(tool_name, args, worktree)
-                for hr in outcome.hook_runs:
-                    session.log(
-                        "hook_run",
-                        {
-                            "task_id": task["id"],
-                            "trace_id": trace_id,
-                            "span_id": iter_span,
-                            "iter": iter_n + 1,
-                            "tool": tool_name,
-                            **hr,
-                        },
-                    )
-                event_type = "pre_tool_block" if outcome.blocked else "tool_result"
+            session.log(
+                "tool_call",
+                {
+                    "task_id": task["id"],
+                    "trace_id": trace_id,
+                    "span_id": iter_span,
+                    "iter": iter_n + 1,
+                    "tool": tool_name,
+                    "args": args,
+                },
+            )
+            console.print(f"[cyan]→ {tool_name}[/cyan] {json.dumps(args)[:200]}")
+
+            outcome = tools.dispatch(tool_name, args, worktree)
+            for hr in outcome.hook_runs:
                 session.log(
-                    event_type,
+                    "hook_run",
                     {
                         "task_id": task["id"],
                         "trace_id": trace_id,
                         "span_id": iter_span,
                         "iter": iter_n + 1,
                         "tool": tool_name,
-                        "result_preview": outcome.result[:500],
-                        "result_chars": len(outcome.result),
+                        **hr,
                     },
                 )
-                if outcome.blocked:
-                    console.print(f"[red]✗ blocked[/red] {outcome.result}")
-                messages.append(
-                    {"role": "tool", "tool_call_id": tc_id, "content": outcome.result}
-                )
+            event_type = "pre_tool_block" if outcome.blocked else "tool_result"
+            session.log(
+                event_type,
+                {
+                    "task_id": task["id"],
+                    "trace_id": trace_id,
+                    "span_id": iter_span,
+                    "iter": iter_n + 1,
+                    "tool": tool_name,
+                    "result_preview": outcome.result[:500],
+                    "result_chars": len(outcome.result),
+                },
+            )
+            if outcome.blocked:
+                console.print(f"[red]✗ blocked[/red] {outcome.result}")
+            messages.append(
+                {"role": "tool", "tool_call_id": tc_id, "content": outcome.result}
+            )
+
+        # 2. No submit_case → either still working, or stopped without a case.
+        if not case_tcs:
+            if worktree_tcs:
+                continue  # did work this turn; not claiming done yet
+            console.print(
+                f"[yellow]task {task['id']} stopped without submit_case; nudging[/yellow]"
+            )
+            messages.append({"role": "user", "content": WORKER_NO_CASE_NUDGE})
             continue
 
-        # Model declared done — verify with validators.
-        content = (msg.get("content") or "").strip()
-        console.print(f"[dim]task {task['id']} model summary:[/dim] {content[:200]}")
+        # 3. submit_case present — the done-signal. Parse it defensively.
+        case, case_err = parse_case(msg)
+        session.log(
+            "tool_call",
+            {
+                "task_id": task["id"],
+                "trace_id": trace_id,
+                "span_id": iter_span,
+                "iter": iter_n + 1,
+                "tool": NAME_SUBMIT_CASE,
+                "args": case if case is not None else "(unparseable case)",
+            },
+        )
+        console.print(f"[cyan]→ {NAME_SUBMIT_CASE}[/cyan]")
+
+        if case_err is not None:
+            session.log(
+                "case_parse_error",
+                {
+                    "task_id": task["id"],
+                    "trace_id": trace_id,
+                    "span_id": iter_span,
+                    "iter": iter_n + 1,
+                    "error": case_err,
+                    "raw_tool_calls": _raw_tool_calls(msg, MODEL_RAW_ARGS_CHAR_CAP),
+                },
+            )
+            _answer_case_calls(messages, case_tcs, case_err)
+            continue
+
+        # Valid case → verify with validators, then the evaluator.
+        content = (case.get("summary") or "").strip()
+        console.print(f"[dim]task {task['id']} case summary:[/dim] {content[:200]}")
 
         prd = _load_prd(session.root)
         done_ids = [t["id"] for t in prd if t.get("status") == "done"]
@@ -1016,58 +1150,58 @@ def _run_task(
             },
         )
 
-        if passed:
-            console.print(f"[green]task {task['id']} validators passed → evaluator[/green]")
-            verdict = _judge_task(
-                task, worktree, client, session, iter_n, trace_id, iter_span
+        if not passed:
+            report = validators.combined_report(results)
+            console.print(
+                f"[yellow]task {task['id']} validators failed; feeding back[/yellow]"
             )
-            judge_calls += 1
-            concern = (verdict.get("concern") or "").strip()
-            if verdict["verdict"] == "accept":
-                console.print(f"[green]evaluator accepts:[/green] {concern[:200]}")
-                session.log(
-                    "task_done",
-                    {
-                        "task_id": task["id"],
-                        "trace_id": trace_id,
-                        "span_id": iter_span,
-                        "summary": content,
-                    },
-                )
-                return "done"
-
-            console.print(f"[yellow]evaluator rejects:[/yellow] {concern[:200]}")
-            judge_cap = client.config.max_judge_calls_per_task
-            if judge_cap > 0 and judge_calls >= judge_cap:
-                console.print(
-                    f"[red]task {task['id']} hit judge cap[/red] "
-                    f"[dim][TILTH_MAX_JUDGE_CALLS_PER_TASK={judge_cap}][/dim]"
-                )
-                session.log(
-                    "task_failed",
-                    {
-                        "task_id": task["id"],
-                        "trace_id": trace_id,
-                        "span_id": iter_span,
-                        "reason": "judge_cap",
-                        "judge_calls": judge_calls,
-                    },
-                )
-                return "judge_cap"
-            messages.append(
-                {"role": "user", "content": format_reject_feedback(verdict)}
+            feedback = (
+                "The validators failed — the workspace does not pass yet, so the "
+                "case can't be reviewed.\nRead the report below, fix the issues, "
+                "and call `submit_case` again once validators will pass.\n\n"
+                f"{report}"
             )
+            _answer_case_calls(messages, case_tcs, feedback)
             continue
 
-        report = validators.combined_report(results)
-        console.print(f"[yellow]task {task['id']} validators failed; feeding back[/yellow]")
-        feedback = (
-            "The validators failed. You said you were done, but the workspace does not pass.\n"
-            "Read the report below, fix the issues, and continue working. "
-            "Stop calling tools and respond with a summary only when validators will pass.\n\n"
-            f"{report}"
+        console.print(f"[green]task {task['id']} validators passed → evaluator[/green]")
+        verdict = _judge_task(
+            task, worktree, client, session, iter_n, trace_id, iter_span, case=case
         )
-        messages.append({"role": "user", "content": feedback})
+        judge_calls += 1
+        concern = (verdict.get("concern") or "").strip()
+        if verdict["verdict"] == "accept":
+            console.print(f"[green]evaluator accepts:[/green] {concern[:200]}")
+            session.log(
+                "task_done",
+                {
+                    "task_id": task["id"],
+                    "trace_id": trace_id,
+                    "span_id": iter_span,
+                    "summary": content,
+                },
+            )
+            return "done"
+
+        console.print(f"[yellow]evaluator rejects:[/yellow] {concern[:200]}")
+        judge_cap = client.config.max_judge_calls_per_task
+        if judge_cap > 0 and judge_calls >= judge_cap:
+            console.print(
+                f"[red]task {task['id']} hit judge cap[/red] "
+                f"[dim][TILTH_MAX_JUDGE_CALLS_PER_TASK={judge_cap}][/dim]"
+            )
+            session.log(
+                "task_failed",
+                {
+                    "task_id": task["id"],
+                    "trace_id": trace_id,
+                    "span_id": iter_span,
+                    "reason": "judge_cap",
+                    "judge_calls": judge_calls,
+                },
+            )
+            return "judge_cap"
+        _answer_case_calls(messages, case_tcs, format_reject_feedback(verdict))
 
     cap = client.config.max_iterations_per_task
     console.print(

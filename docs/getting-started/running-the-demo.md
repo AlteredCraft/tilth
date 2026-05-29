@@ -34,7 +34,7 @@ What happens, end-to-end:
 2. Creates a worktree of the demo repo. The working tree lives at `<tilth-clone>/sessions/<id>/workspace/` (inside Tilth, gitignored); the new branch `session/<id>` is registered in the demo repo's `.git`. The two halves live in different places by design — see [Session layout](../deep-dives/session-layout.md) for the why.
 3. Loops through pending tasks in `prd.json`. For each task:
     - Reset context. Prompt = system + AGENTS.md + recent progress + this task.
-    - Tool-loop with the worker model (bash, file ops, search) until it stops calling tools.
+    - Tool-loop with the worker model (bash, file ops, search) until it calls `submit_case` to present its finished work.
     - Run `ruff` + `pytest` in the worktree. Failures get fed back into the loop.
     - Judge model reviews the diff in a fresh context. Rejections get fed back.
     - Self-improvement prompt — the worker considers whether the task surfaced a durable observation worth proposing. Any proposal lands in `sessions/<id>/proposed-learnings.md` (not in your repo) for end-of-run review.

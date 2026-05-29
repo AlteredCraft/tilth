@@ -28,7 +28,12 @@ Event types:
                          model-calling site emits this — evaluator calls also
                          carry `attempt` (1 or 2) to pair retries with their
                          `evaluator_parse_error`.
-    tool_call          — a tool invocation by the model
+    tool_call          — a tool invocation by the model. Worktree tools route
+                         through tools.dispatch; the worker's `submit_case`
+                         (Phase 3) is a control-flow done-signal intercepted in
+                         the loop, but is still logged as a tool_call (tool=
+                         "submit_case", args=the parsed case) so it shows in the
+                         histogram and visualizer.
     tool_result        — the harness's response to a tool call
     pre_tool_block     — pre_tool hook vetoed a tool call (also captured as a
                          hook_run with outcome=block; this event is kept for the
@@ -68,11 +73,20 @@ Event types:
                          for post-run review — never lost. On the second
                          failure, the loop synthesises a fallback reject
                          verdict (see `evaluator_verdict.parse_failed`).
+    case_parse_error   — the worker's `submit_case` (Phase 3) could not be
+                         parsed/validated. Payload: {iter, error, raw_tool_calls}.
+                         Parity with `evaluator_parse_error`: the raw payload is
+                         captured (capped) so a failing case is reconstructable.
+                         The loop feeds `error` back as the submit_case
+                         tool_result and lets the worker retry — it does not
+                         count as a judge call or terminate the task.
     ledger_appended    — an entry was appended to a task's evaluator ledger
                          (Phase 2). Lightweight pointer: {task_id, iter,
                          verdict_summary (e.g. "accept" or "reject:scope_creep")}.
                          The full entry (diff_summary, case, verdict) lives in
-                         ledger/<task_id>.jsonl, not in this event.
+                         ledger/<task_id>.jsonl, not in this event. The `case`
+                         field is the worker's submitted case (Phase 3), or null
+                         on the parse-failure fallback path.
     task_done          — task accepted (validators + evaluator passed)
     task_failed        — task could not be completed; payload.reason ∈ {iter_cap}
     proposed_learnings — self-improvement step's per-task verdict. Payload:

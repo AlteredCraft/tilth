@@ -11,7 +11,7 @@ Tilth is built around three independently-replaceable components — **Brain**, 
 - **Worker Brain** — runs in a tool-use loop with full message history accumulated across iterations on the current task, and Hands access. The Brain that *does the work*.
 - **Judge Brain** — invoked one-shot per finished task, in a fresh context, with no tool access. Receives the diff + acceptance criteria and returns accept/reject + reasoning. Stateless across tasks.
 
-The Ralph loop (`tilth/loop.py`) orchestrates both: it drives the Worker until it stops calling tools, runs validators, then calls the Judge once. A Judge invocation is itself one-shot — it is not in a loop, though the outer Ralph loop calls it repeatedly across tasks.
+The Ralph loop (`tilth/loop.py`) orchestrates both: it drives the Worker until it presents its case (`submit_case`), runs validators, then calls the Judge once. A Judge invocation is itself one-shot — it is not in a loop, though the outer Ralph loop calls it repeatedly across tasks.
 
 The Brain knows how to talk to a model. It does not know how to run code, manage state, or commit work. It hands tool calls off to Hands and writes the audit trail to Session.
 
