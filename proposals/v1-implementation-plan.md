@@ -1,6 +1,6 @@
 # Implementation plan: worker–evaluator dialogue (v1)
 
-**Status:** In progress — **Phases 1–2 landed (2026-05-29).** Phases 3–6 not started.
+**Status:** In progress — **Phases 1–2 landed (2026-05-29).** Phases 3–5 not started; Phase 6 deferred.
 **Author:** Sam (with Claude conversational pass)
 **Date:** 2026-05-27 (last updated 2026-05-29)
 **Related:** [`frictions-2026-05-26.md`](frictions-2026-05-26.md) (the inventory), [`v1-worker-evaluator-dialogue.md`](v1-worker-evaluator-dialogue.md) (the sketch this plan implements).
@@ -22,6 +22,15 @@ Ship the v1 dialogue in **five independently shippable phases**. After each phas
 - **Tests-for-Tilth-itself land with each phase.** Every phase that touches the loop, prompts, or session state ships with `tilth/tests/` coverage for the new behavior. Existing tests stay green.
 - **Prompts and schemas are versioned but not migrated.** When we change the verdict schema or `system.md`, we bump a constant (`VERDICT_SCHEMA_VERSION`, etc.) and document the break; we don't write migrations.
 - **Demo signals over synthetic tests.** Unit tests prove the wiring; the demo run proves the *behavior*. A phase isn't done until a fresh demo run shows the expected shift (e.g., richer rejection feedback, evaluator citing prior iterations). Synthetic tests are necessary but not sufficient.
+
+## Conventions established in Phases 1–2 (the remaining phases inherit these)
+
+Phases 1–2 set patterns the later phases should reuse rather than reinvent. These are load-bearing now, not aspirational:
+
+- **Structured model output is a tool call, parsed defensively.** The settled shape (Phase 1, `tilth/verdict.py`): a schema lives in code as an OpenAI tool definition with a `*_SCHEMA_VERSION` constant; a parser iterates `message.tool_calls`, takes the first that names the tool, parses JSON, value-local-normalizes (e.g. `""`→`null`, *never* a cross-field heuristic), validates with a single focused error, and on failure returns an error string the loop feeds back as a `tool_result` for one retry. **Phase 3's `submit_case` must mirror `parse_verdict`, not invent a new path.** Don't reach back to the interview's older `_parse_args` recovery as the template — `verdict.py` is the canonical one now.
+- **Observability parity is an invariant, not a phase.** Every model-calling site emits a `model_call` event (worker, evaluator, self_improve, interview — `phase` tags non-worker calls). Every structured artifact the loop *acts on* must be reconstructable from `events.jsonl` after the fact: failing payloads captured raw (capped) on the error event, assembled prompts captured via `prompt_assembled`. A new phase that adds a model call or a consumed artifact without this is a regression on the core goal. (When Phase 5 adds context to self-improve, also emit a `prompt_assembled` for it — today only worker + evaluator do.)
+- **Soften rules toward model judgement; keep only the gaming backstop hard.** Phase 1's judge-prompt lesson: a blanket constraint ("any file outside the AC → reject") false-positived; we narrowed the hard reject to *cross-task interference* and delegated the rest to judgement. Every constraint a prompt adds is judgement we're declining to delegate — when a later phase writes prompt rules (Phase 3's `system.md` rewrite, Phase 4's visibility guidance), prefer "here's the context, use judgement" over enumerated allow/deny lists, and keep hard rules only where gaming is the documented risk.
+- **`tilth/verdict.py` is the home for evaluator-side schemas; the worker-side `case` is a sibling.** Recommendation for Phase 3: a new `tilth/case.py` mirroring `verdict.py`'s shape (`SUBMIT_CASE_TOOL`, `CASE_SCHEMA_VERSION`, `parse_case`, `_validate`, `_normalize`, `format_*`), keeping the two actors' artifacts in separate modules.
 
 ## Prerequisites / out-of-scope
 
@@ -154,26 +163,27 @@ The fix shipped as part of Phase 1: **`tilth/prompts/judge.md` redraws the brigh
 
 **Why this phase third:** The case is what the evaluator wants to see; building the evaluator side first (Phases 1–2) means we can compare evaluator behavior with and without the case. It also means Phase 3 is the only phase that touches the worker.
 
+**`submit_case` is a control-flow tool, not a workspace tool.** This is the subtlety the original scope under-stated. The existing registry (`tilth/tools/__init__.py`) is for tools that *operate on the worktree* and return a string result via `dispatch`. `submit_case` is a *terminal signal* — calling it ends the worker's turn and hands off to validators+evaluator. It must be recognised in the loop *before* normal `dispatch`, validated as a structured payload, and either accepted (→ terminate) or fed back as a parse error (→ retry, same turn). So it does **not** go in the `REGISTRY`; its schema is offered to the worker via the `tools=` list but it's intercepted in `loop._run_task`, parallel to how the evaluator's `submit_verdict` is intercepted, not dispatched.
+
 **Scope:**
-- `tilth/tools/submit_case.py` — new tool. Schema:
+- `tilth/case.py` — **new module mirroring `verdict.py`** (per the conventions block above): `SUBMIT_CASE_TOOL` (OpenAI tool def), `CASE_SCHEMA_VERSION`, `parse_case(msg) -> (case|None, err|None)`, `_validate`, `_normalize`. Schema fields:
     ```
     summary: str (1–3 sentences)
-    ac_coverage: list[{ criterion, addressed_by, evidence }]
-    work_arounds: list[str]
+    ac_coverage: list[{ criterion, addressed_by, evidence }]   # addressed_by is a file:symbol pointer, not prose — validate the shape
+    work_arounds: list[str]                                     # cap at 5 (OQ #2)
     uncertainties: list[str]
     ```
-    Schema validation on call; malformed cases return a parse-error tool result (existing pattern).
-- `tilth/tools/__init__.py` — register `submit_case`.
-- `tilth/prompts/system.md` — rewrite. "Done" is "I submitted a case", not "no more tool calls". Tool list is still owned by the registry (per CLAUDE.md invariant) — system.md describes the *meaning* of `submit_case`, not the schema.
-- `tilth/loop.py` — the inner tool-use loop exits when `submit_case` is called (replaces the "no more tool calls" termination).
-- `tilth/loop.py` — pass the submitted case to the evaluator alongside the diff and ledger.
-- `tilth/loop.py` — ledger entries now include the full `case` (no longer `null`).
-- `tilth/prompts/judge.md` — expanded to read the case; the verdict's `evidence` field is expected to cite the case's claims where applicable.
+    Malformed cases return a parse-error string the loop feeds back as a `tool_result` — the **`parse_verdict` pattern**, not the interview's `_parse_args`.
+- `tilth/loop.py` — offer `SUBMIT_CASE_TOOL` in the worker's `tools=` list (alongside the registry schemas); intercept a `submit_case` tool call in `_run_task` and treat it as the done-signal. **Termination flips:** today "done" = the model emits *no* tool calls (`loop.py:~1000`); under Phase 3 "done" = `submit_case` parses cleanly. Handle the two new edge cases explicitly: (a) model stops calling tools *without* `submit_case` → nudge it to submit one (mirror the interview's "stopped before write_seed" abort, but as a recoverable feedback message, not a hard abort); (b) `submit_case` arrives *alongside* other tool calls in the same turn → run the others first, then treat the case as terminal.
+- `tilth/prompts/system.md` — rewrite to the advocate framing. "Done" is "I submitted a case", not "no more tool calls". Registry still owns the tool list (CLAUDE.md invariant 3) — system.md describes the *meaning* of `submit_case`, not its schema. Keep it short (see Demo expectation).
+- `tilth/loop.py` — pass the parsed case to `_judge_task` alongside the diff and ledger; inject it into the evaluator prompt under a `## Worker's case` section (it rides the existing `prompt_assembled` capture for free).
+- `tilth/loop.py` — the ledger entry's `case` field (null since Phase 2) now carries the parsed case.
+- `tilth/prompts/judge.md` — expanded to read the case; the verdict's `evidence` should cite the case's claims where applicable, and `ac_coverage` completeness is checkable against the PRD entry (see OQ #3).
 
 **Tests for Tilth:**
-- `tests/test_submit_case_schema.py` — happy path, missing field, wrong shape (e.g., `addressed_by` as free prose instead of `file:symbol`).
-- `tests/test_loop_exits_on_submit_case.py` — worker calling `submit_case` terminates the iteration cleanly.
-- `tests/test_ledger_includes_case.py` — Phase 2's ledger entries now have populated `case`.
+- `tests/test_case_parsing.py` — mirror `test_evaluator_verdict_parsing.py`: happy path, missing field, `addressed_by` as free prose instead of `file:symbol`, `work_arounds` over the cap, empty-string normalization, DSML-leakage sibling.
+- `tests/test_loop_exits_on_submit_case.py` — `submit_case` terminates the turn; stopping *without* it nudges rather than silently completing.
+- `tests/test_ledger_includes_case.py` — ledger entries now have a populated `case` (extends the Phase 2 ledger tests).
 
 **Validation:**
 - Unit tests pass.
@@ -181,7 +191,7 @@ The fix shipped as part of Phase 1: **`tilth/prompts/judge.md` redraws the brigh
 - The evaluator's verdict in the same iteration references at least one claim from `ac_coverage` or `work_arounds`.
 
 **Demo expectation:**
-- The F4 disambiguation case (uv-init side-effect files) gets a named `work_arounds` entry from the worker, and the evaluator's verdict accepts or pushes back on that specific claim rather than re-deriving "is this scope creep?" from the diff.
+- The F4 disambiguation gets a named `work_arounds` entry from the worker, and the evaluator's verdict accepts or pushes back on that specific claim rather than re-deriving "is this scope creep?" from the diff. **Two concrete fixtures we already have from Phase 1–2 demo runs:** [#22](https://github.com/AlteredCraft/tilth/issues/22) (uv-init collateral — `README.md`/`.python-version`) and [#23](https://github.com/AlteredCraft/tilth/issues/23) (the worker rewriting T-001's seed test because T-002 supersedes its `main([])` behaviour). #23 is the sharper test: under Phase 3 the worker should *name* "I edited `test_t001_scaffold.py` because T-002's AC changes `main([])` from the T-001 stub behaviour" as a `work_arounds`/`uncertainties` entry, and the evaluator should engage that specific claim — surfacing the seed contradiction as an explicit, logged disagreement instead of silently waving the edit through (which is what happened in `20260529-113158`).
 - Worker `system.md` is shorter or about the same length, not longer. Advocate framing is a *reframe*, not a *padding*.
 
 **Risks:**
@@ -196,15 +206,18 @@ The fix shipped as part of Phase 1: **`tilth/prompts/judge.md` redraws the brigh
 
 **Why this phase fourth:** Phases 1–3 build the *mechanism*; Phase 4 expands what *flows through* it. Doing visibility before the mechanism exists means adding context the loop has nowhere to use yet.
 
+**Ownership resolved (was a hedge in the original draft):** the worker's user message is assembled by `memory.build_user_prompt(task, worktree, session.root)` — Phase 4's worker-visibility additions go there. The evaluator's user message is assembled inline in `loop._judge_task` — its additions go there. Both already flow through `_log_prompt_assembled`, so the new context is captured for post-run review automatically.
+
 **Scope:**
-- `tilth/memory.py` (or `tilth/loop.py` — whichever owns prompt assembly today) — worker's user message now includes:
-    - Full PRD (collapsed format — task descriptions + ACs for each task, including completed and not-yet-started).
+- `tilth/memory.py` (`build_user_prompt`) — worker's user message now includes:
+    - Full PRD (collapsed format — task descriptions + ACs for each task, including completed and not-yet-started). Source: `_load_prd(session.root)` shape.
     - `seed-meta.json` content under a `## Seed context (authored for humans)` section.
-    - Own task's ledger (read from Phase 2's read path) under `## Prior iterations on this task (from the evaluator)`.
-- Evaluator's user message now includes:
-    - Full validator output content (stdout/stderr), not just pass/fail bool.
-    - Matching seed test file content (the `tests/test_t<NNN>_*.py` glob) inlined.
-- `tilth/prompts/system.md` and `tilth/prompts/judge.md` — small additions describing the new context sections and how to use them.
+    - Own task's ledger under `## Prior iterations on this task (from the evaluator)` — read via Phase 2's `session.read_ledger(task_id, limit)` (the read path already exists; reuse it, same cap as the evaluator). Note this widens the visibility wall: the worker now sees the evaluator's verdicts on its own task. That's "about the work," not "harness mechanics" — consistent with the sketch's F8 line — but call it out in the demo review.
+- Evaluator's user message (`loop._judge_task`) now includes:
+    - Full validator output content (stdout/stderr), not just pass/fail bool. (Today `validator_run` logs only `{name, passed}` — the content needs threading through from `validators.run_all`.)
+    - Matching seed test file content (the `tests/test_t<NNN>_*.py` glob) inlined — resolves [#16](https://github.com/AlteredCraft/tilth/issues/16).
+- `tilth/prompts/system.md` and `tilth/prompts/judge.md` — small additions describing the new context sections and how to use them. (Per the conventions block: "context + use judgement," not enumerated rules.)
+- **Respect the capture cap.** `PROMPT_ASSEMBLED_CHAR_CAP`/`MODEL_RAW_ARGS_CHAR_CAP` are 16k today; validator output and inlined test files can be large, so apply a per-field cap with a `(truncated)` marker before injection (the *prompt* cap is separate from the *log* cap — don't let a noisy pytest dump blow the worker's context).
 
 **Tests for Tilth:**
 - `tests/test_worker_prompt_contains_full_prd.py`.
@@ -233,16 +246,19 @@ The fix shipped as part of Phase 1: **`tilth/prompts/judge.md` redraws the brigh
 
 **Goal:** The existing self-improve step (`tilth/prompts/propose_learning.md` → `proposed-learnings.md`) reads the per-task ledger and the session-wide `rejection_category` counts to propose better-grounded learnings.
 
-**Why this phase last:** Self-improve is a leaf in the loop's flow. It benefits from everything Phases 1–4 produce. Doing it last means we know the signal it's working from is real.
+**Why this phase last:** Self-improve is a leaf in the loop's flow. It benefits from everything Phases 1–4 produce. Doing it last means we know the signal it's working from is real. Closes [#9](https://github.com/AlteredCraft/tilth/issues/9) (self-improver gets no signal from judge rejections).
+
+**Already in place (don't rebuild):** the `rejection_category` rollup already exists in `summary.json` as `evaluator.rejection_categories` (overall) and `tasks.<id>.evaluator.rejection_categories` (per-task) — shipped in Phase 1. The per-task ledger read path (`session.read_ledger`) shipped in Phase 2. Phase 5 is mostly *wiring existing data into the self-improve prompt*.
 
 **Scope:**
-- `tilth/loop.py` — when assembling the self-improve user message, include:
-    - All ledger files from the session (read-only).
-    - The `rejection_category` rollup from `summary.json`.
-- `tilth/prompts/propose_learning.md` — small update: "you now have access to per-task rejection ledgers. If a pattern shows up across tasks (e.g., repeated `scope_creep` rejections in the same kind of code), propose a learning grounded in that pattern."
+- `tilth/loop.py` (`_self_improve`) — when assembling the self-improve user message, include:
+    - All ledger files from the session. Phase 2 added `read_ledger(task_id)` but not an enumerate-all helper — add a small `session.ledger_task_ids()` (glob `ledger/*.jsonl`) or read the set from the PRD task ids, then `read_ledger` each.
+    - The `evaluator.rejection_categories` rollup from `summary.json` (already computed — just read it).
+    - **Emit a `prompt_assembled` event for self_improve** (today only worker + evaluator do — observability-parity invariant from the conventions block; `_self_improve` already emits `model_call` from Phase 1, so this closes the gap).
+- `tilth/prompts/propose_learning.md` — small update: "you now have access to per-task rejection ledgers and the session's rejection-category counts. If a pattern shows up across tasks (e.g., repeated `scope_creep` rejections in the same kind of code), propose a learning grounded in that pattern."
 
 **Tests for Tilth:**
-- `tests/test_self_improve_sees_ledger.py` — the self-improve prompt's user message contains the ledger summary.
+- `tests/test_self_improve_sees_ledger.py` — the self-improve prompt's user message contains the ledger summary and the rejection-category rollup; a `prompt_assembled` event with `role="self_improve"` is emitted.
 
 **Validation:**
 - Unit tests pass.
@@ -260,23 +276,35 @@ The fix shipped as part of Phase 1: **`tilth/prompts/judge.md` redraws the brigh
 
 Flagged in the sketch as out-of-scope-for-v1-implementation. Worth a follow-up issue once Phases 1–5 land — the ledger is rich data and the visualizer is the natural place to render it. Not on the v1 critical path.
 
+**Current renderer state (so Phase 6 knows what's left):** Phase 1 added `_render_evaluator_verdict` (renders the structured verdict — category, evidence, next_step). The other new event types — `prompt_assembled`, `ledger_appended`, `evaluator_parse_error` — currently fall through to `_render_unknown` (the generic dim JSON card), which is acceptable but unpolished. Phase 6's scope is therefore: (a) a per-task ledger panel showing the iteration arc (verdicts over time, diffs collapsible), and (b) dedicated renderers for the three fall-through events. File the follow-up issue (OQ #9) when Phase 5 lands so it isn't lost.
+
 ---
 
 ## Cross-cutting concerns
 
-### Capturing prompts in `events.jsonl` for validation
+### Capturing prompts in `events.jsonl` for validation ✅ shipped (Phase 1)
 
-Several of the validation criteria above require inspecting the *user message* the worker or evaluator received in a given iteration. Today `events.jsonl` logs tool calls and high-level loop transitions, not the full prompt payloads. Add a `prompt_assembled` event (worker and evaluator) with the assembled user message under a size cap — enough to see structure, not enough to bloat the log. This lands as part of Phase 1 (the first phase that needs it).
+Several validation criteria require inspecting the *user message* an actor received in a given iteration. **Done in Phase 1:** the `prompt_assembled` event (worker at task-start `iter=0`; evaluator per judge call) carries the assembled user message capped at `PROMPT_ASSEMBLED_CHAR_CAP` (16k) with `chars`/`truncated` metadata. Phase 5 should extend it to self_improve (noted in that phase). Inspect with: `jq -r 'select(.type=="prompt_assembled" and .payload.role=="evaluator") | .payload.content'`.
 
 ### Demo-run protocol per phase
 
-After completing each phase, run:
+After completing each phase, on a fresh seed:
 ```bash
-uv run tilth reset                          # clean slate
-uv run tilth prep-feature ~/projects/tilth-demo
+uv run tilth reset --yes && \
+uv run tilth prep-feature ~/projects/tilth-demo && \
 uv run tilth run          ~/projects/tilth-demo
+git restore pyproject.toml      # F10: uv init inside the worktree re-pollutes [tool.uv.workspace] members
 ```
-on a fresh seed. Capture `events.jsonl`, `summary.json`, and the ledger directory. Compare against the prior phase's capture. The phase isn't done until the *behavior shift* described in *Demo expectation* is visible in the capture.
+Then inspect (the post-run review is itself the hyper-observability proof point — point an agent at the session and ask "any anomalies?"):
+```bash
+SID=$(ls -t sessions | head -1)
+jq -c 'select(.type=="evaluator_verdict")|.payload|{iter,verdict,rejection_category,next_step}' sessions/$SID/events.jsonl
+jq -c '{iter,diff_summary,case,v:.verdict.verdict}' sessions/$SID/ledger/*.jsonl     # Phase 2+
+jq '.evaluator' sessions/$SID/summary.json
+```
+The phase isn't done until the *behavior shift* in *Demo expectation* is visible.
+
+**Caveat — the clean seed may not exercise the feature.** Phases 2–5 only light up on a task that **rejects** (ledger memory, case disagreement, rejection-category learnings). A zero-reject run proves wiring, not behaviour. If a clean run produces no rejections, deliberately exercise the path — a harder/contradictory seed, or inspect a prior run that did reject (e.g. `20260529-113158`). Don't mark a phase "demo-validated" off a run that never triggered its mechanism.
 
 ### Open questions, assigned to phases
 
@@ -284,15 +312,15 @@ The sketch's open questions land here:
 
 | Open question | Phase | Note |
 |---|---|---|
-| OQ #1 — Ledger size cap | Phase 2 | Start with last-N=5; revisit if prompt size grows uncomfortably |
+| OQ #1 — Ledger size cap | Phase 2 | ✅ **Resolved:** `LEDGER_INJECT_LIMIT=5`. No prompt-size issue seen in the Phase 2 demo; token-budgeted truncation deferred until one appears. |
 | OQ #2 — `work_arounds` discipline | Phase 3 | Cap at 5 entries; evaluator-prompt skepticism; revisit after demo |
-| OQ #3 — AC coverage gaps | Phase 3 | Auto-reject if `ac_coverage` is incomplete vs. the PRD entry |
-| OQ #4 — Self-improver and ledger | Phase 5 | Direct implementation target |
+| OQ #3 — AC coverage gaps | Phase 3 | Open call: auto-reject if `ac_coverage` is incomplete vs. the PRD entry, *or* flag-and-judge. #23 makes this concrete — a missing/contradicted AC should surface, not pass silently. |
+| OQ #4 — Self-improver and ledger | Phase 5 | Direct implementation target; the rollup data it needs already ships (Phase 1). |
 | OQ #5 — Cross-task evaluator memory | Out of scope | v1.5 question; flagged in sketch |
-| OQ #6 — Token budget | Continuous | Measure per phase; no hard target |
-| OQ #7 — `submit_case` failure modes | Phase 3 | Parse-error-as-tool-result, existing pattern |
-| OQ #8 — Seeder updates | Phase 3 evaluation | Run the demo; if AC phrasing breaks the dialogue, revisit |
-| OQ #9 — Visualizer | Phase 6 | Deferred |
+| OQ #6 — Token budget | Continuous | **Data point:** clean 3-task run ≈ 238k tokens (`20260528-074315`); a 3-task run with 2 rejections ≈ 562k (`20260529-113158`). Cost climbs steeply with rejection loops and rising worker iteration counts (T-002 hit 35). Watch this through Phases 3–4; the hypothesis that better feedback *nets* fewer tokens is not yet confirmed. |
+| OQ #7 — `submit_case` failure modes | Phase 3 | Parse-error-as-tool-result — reuse `verdict.parse_verdict`, not the interview's `_parse_args` |
+| OQ #8 — Seeder updates | Phase 3 evaluation | **Evidence in:** the demo seed *did* break the dialogue (#23 contradiction, #22 collateral). Phase 3's `work_arounds` lets the worker *name* the friction; the structural seeder fix (contract negotiation) stays v2. |
+| OQ #9 — Visualizer | Phase 6 | Deferred; file the follow-up issue when Phase 5 lands |
 
 ### Tilth self-tests
 
