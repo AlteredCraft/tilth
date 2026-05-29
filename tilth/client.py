@@ -193,6 +193,7 @@ class LLMClient:
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
         model: str | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         target = model or self.config.worker_model
         client, base_url = self._client_and_url_for(target)
@@ -200,6 +201,8 @@ class LLMClient:
         kwargs: dict[str, Any] = {"model": target, "messages": messages}
         if tools:
             kwargs["tools"] = tools
+        if tool_choice is not None:
+            kwargs["tool_choice"] = tool_choice
         if _is_openrouter(base_url):
             # OpenRouter-normalised opt-in for thinking-mode models. Without it,
             # parallel-tool-call turns sometimes return reasoning_details: null

@@ -6,12 +6,13 @@ stable, denormalised view.
 
 Stable shape — bump SUMMARY_VERSION if breaking.
 
-Schema (v1):
+Schema (v2 — Phase 1 of v1-implementation-plan.md):
 
     {
-        "version": 1,
+        "version": 2,
         "session_id": str | null,
-        "started_at":   "<ISO ts of session_start>" | null,
+        "started_at":   "<ISO ts of the run's session_start>" | null,
+        "prep_started_at": "<ISO ts of the prep-feature session_start>" | null,
         "last_event_at":"<ISO ts of most recent event>" | null,
         "tokens": {
             "prompt": int,            # sum across all model_call events
@@ -25,15 +26,28 @@ Schema (v1):
                 "tokens": int,                # prompt + eval, this task only
                 "tool_calls": {"<tool>": int, ...},
                 "hook_blocks": int,           # pre_tool blocks for this task
-                "judge": {"accepts": int, "rejects": int},
+                "evaluator": {
+                    "accepts": int,
+                    "rejects": int,
+                    "rejection_categories": {"<category>": int, ...},
+                },
                 "failure_reason": str,        # only when status == "failed"
             }
         },
         "tool_histogram":  {"<tool>":  int, ...},
         "hook_outcomes":   {"<hook>":  {"<outcome>": int, ...}, ...},
-        "judge":           {"accepts": int, "rejects": int},
+        "evaluator":       {
+            "accepts": int,
+            "rejects": int,
+            "rejection_categories": {"<category>": int, ...},
+        },
         "stop":            {"reason": str, "ts": str},   # absent if no stop yet
     }
+
+v2 break vs v1: `judge` → `evaluator` (overall and per-task), structured
+`rejection_categories` aggregation added. Driven by the `evaluator_verdict`
+event (successor to `judge_verdict`). No migration — per the v1 contract,
+v0 sessions are not resumed under v1.
 
 Refreshed at every task boundary and at every stop path (see loop.py:
 _refresh_summary). Refresh is best-effort — failures must not break the run.
@@ -48,7 +62,7 @@ from typing import Any
 
 from tilth.session import iter_events
 
-SUMMARY_VERSION = 1
+SUMMARY_VERSION = 2
 
 
 def _empty_task() -> dict[str, Any]:
@@ -58,7 +72,11 @@ def _empty_task() -> dict[str, Any]:
         "tokens": 0,
         "tool_calls": defaultdict(int),
         "hook_blocks": 0,
-        "judge": {"accepts": 0, "rejects": 0},
+        "evaluator": {
+            "accepts": 0,
+            "rejects": 0,
+            "rejection_categories": defaultdict(int),
+        },
     }
 
 
@@ -69,9 +87,14 @@ def build_from_events(
     tasks: dict[str, dict[str, Any]] = {}
     tool_histogram: dict[str, int] = defaultdict(int)
     hook_outcomes: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    judge = {"accepts": 0, "rejects": 0}
+    evaluator: dict[str, Any] = {
+        "accepts": 0,
+        "rejects": 0,
+        "rejection_categories": defaultdict(int),
+    }
     started_at: str | None = None
     last_event_at: str | None = None
+    prep_started_at: str | None = None
     stop: dict[str, Any] | None = None
 
     def task_for(tid: str) -> dict[str, Any]:
@@ -88,7 +111,13 @@ def build_from_events(
         tid = p.get("task_id")
 
         if typ == "session_start":
-            started_at = ts
+            # prep-feature and run each emit a session_start; tag separates
+            # them. `started_at` tracks the run; prep time is its own field.
+            # Unphased session_start (legacy) is treated as the run start.
+            if p.get("phase") == "prep-feature":
+                prep_started_at = ts
+            else:
+                started_at = ts
         elif typ == "session_resume" and started_at is None:
             started_at = ts
             if session_id is None:
@@ -120,15 +149,21 @@ def build_from_events(
                 hook_outcomes[hook][outcome] += 1
                 if hook == "pre_tool" and outcome == "block" and tid:
                     task_for(tid)["hook_blocks"] += 1
-        elif typ == "judge_verdict":
-            if p.get("accept"):
-                judge["accepts"] += 1
+        elif typ == "evaluator_verdict":
+            verdict = (p.get("verdict") or "").lower()
+            if verdict == "accept":
+                evaluator["accepts"] += 1
                 if tid:
-                    task_for(tid)["judge"]["accepts"] += 1
+                    task_for(tid)["evaluator"]["accepts"] += 1
             else:
-                judge["rejects"] += 1
+                evaluator["rejects"] += 1
                 if tid:
-                    task_for(tid)["judge"]["rejects"] += 1
+                    task_for(tid)["evaluator"]["rejects"] += 1
+                category = p.get("rejection_category")
+                if isinstance(category, str) and category:
+                    evaluator["rejection_categories"][category] += 1
+                    if tid:
+                        task_for(tid)["evaluator"]["rejection_categories"][category] += 1
         elif typ == "task_done" and tid:
             task_for(tid)["status"] = "done"
         elif typ == "task_failed" and tid:
@@ -140,17 +175,24 @@ def build_from_events(
 
     for t in tasks.values():
         t["tool_calls"] = dict(t["tool_calls"])
+        t["evaluator"]["rejection_categories"] = dict(
+            t["evaluator"]["rejection_categories"]
+        )
 
     out: dict[str, Any] = {
         "version": SUMMARY_VERSION,
         "session_id": session_id,
         "started_at": started_at,
+        "prep_started_at": prep_started_at,
         "last_event_at": last_event_at,
         "tokens": tokens,
         "tasks": tasks,
         "tool_histogram": dict(tool_histogram),
         "hook_outcomes": {k: dict(v) for k, v in hook_outcomes.items()},
-        "judge": judge,
+        "evaluator": {
+            **evaluator,
+            "rejection_categories": dict(evaluator["rejection_categories"]),
+        },
     }
     if stop is not None:
         out["stop"] = stop

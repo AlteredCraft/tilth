@@ -7,7 +7,7 @@ events.jsonl (built by tilth/summary.py) — consumers like the visualizer and a
 external tools should prefer reading that over re-streaming the JSONL.
 
 Event types:
-    model_call         — request/response metadata for a worker call. Carries
+    model_call         — request/response metadata for a model call. Carries
                          `reasoning_details` (the OpenRouter-normalised
                          structured form) when the model emitted any, falling
                          back to a flat `reasoning` string. Either is omitted
@@ -16,7 +16,12 @@ Event types:
                          one — watch for `"length"`, which means the response
                          (often a tool argument) was cut off by the provider's
                          max-tokens limit and the agent will be working from
-                         truncated output.
+                         truncated output. Carries a `phase` field for non-worker
+                         calls (`evaluator`, `self_improve`); the worker omits it
+                         by convention, the interview sets `interview`. Every
+                         model-calling site emits this — evaluator calls also
+                         carry `attempt` (1 or 2) to pair retries with their
+                         `evaluator_parse_error`.
     tool_call          — a tool invocation by the model
     tool_result        — the harness's response to a tool call
     pre_tool_block     — pre_tool hook vetoed a tool call (also captured as a
@@ -30,8 +35,34 @@ Event types:
                          carries `channels` (per-channel: present, chars,
                          truncated, sha256_8) and `user_prompt_chars`.
     validator_run      — pytest/ruff/mypy result
-    judge_verdict      — judge model verdict on a finished task
-    task_done          — task accepted (validators + judge passed)
+    prompt_assembled   — an assembled user message just before it's sent to a
+                         model. Payload: {role (worker|evaluator), iter,
+                         content (capped at PROMPT_ASSEMBLED_CHAR_CAP),
+                         chars (untruncated length), truncated (bool)}. Lets a
+                         post-run reviewer reconstruct what each actor saw on
+                         each turn without replaying the loop. Worker prompt
+                         fires once per task at iter=0; evaluator prompt fires
+                         once per judge call at the worker's current iter.
+    evaluator_verdict  — structured verdict from the evaluator (v1 of the
+                         dialogue, see proposals/v1-implementation-plan.md
+                         Phase 1). Payload: {verdict (accept|reject),
+                         rejection_category (enum|null — null on accept),
+                         concern, evidence, next_step (str|null — null on
+                         accept), schema_version}. Also carries `parse_failed:
+                         True` on the fallback path where the model never
+                         produced a valid `submit_verdict` call (rare; see
+                         evaluator_parse_error for the per-attempt detail).
+                         Successor to the v0 `judge_verdict` event.
+    evaluator_parse_error
+                       — the evaluator's response could not be parsed as a
+                         valid `submit_verdict` tool call. Logged per attempt
+                         (up to 2). Payload: {attempt, error, raw_tool_calls}.
+                         `raw_tool_calls` is the model's actual emitted args
+                         (capped) so a failing payload is faithfully preserved
+                         for post-run review — never lost. On the second
+                         failure, the loop synthesises a fallback reject
+                         verdict (see `evaluator_verdict.parse_failed`).
+    task_done          — task accepted (validators + evaluator passed)
     task_failed        — task could not be completed; payload.reason ∈ {iter_cap}
     proposed_learnings — self-improvement step's per-task verdict. Payload:
                          {task_id, trace_id, span_id, emitted, entry?, reason?}.
@@ -41,7 +72,11 @@ Event types:
                          or judge). When emitted=False, `reason` carries why
                          (no_proposal | unparseable | empty_learning).
     context_reset      — beginning of a new task; messages rebuilt from disk
-    session_start      — fresh session began (worktree created)
+    session_start      — fresh session began (worktree created). Payload `phase`
+                         distinguishes `prep-feature` (the interview) from `run`
+                         (the Ralph loop); both emit a session_start for the same
+                         session id. summary.py keys `prep_started_at` vs
+                         `started_at` off this. Unphased = treated as run.
     session_prepared   — `tilth prep-feature` finished an interview and wrote a
                          seed bundle. Payload carries `prd_entries` (count),
                          `test_files` (count), `interviewer_model`, and

@@ -36,6 +36,12 @@ from tilth.client import (
 from tilth.seed import FileSeedSink, TTYFrontend, run_interview
 from tilth.seed.interview import InterviewAbort
 from tilth.session import Session, iter_events, session_label
+from tilth.verdict import (
+    SUBMIT_VERDICT_TOOL,
+    VERDICT_SCHEMA_VERSION,
+    format_reject_feedback,
+    parse_verdict,
+)
 
 console = Console()
 
@@ -79,9 +85,108 @@ def _propose_learning_prompt() -> str:
     return (PROMPTS_DIR / "propose_learning.md").read_text()
 
 
-# --- judge ------------------------------------------------------------------
+# --- evaluator (formerly "judge") -------------------------------------------
 
 JUDGE_DIFF_MAX_CHARS = 12_000
+PROMPT_ASSEMBLED_CHAR_CAP = 16_000
+MODEL_RAW_ARGS_CHAR_CAP = 16_000  # generous — faithful capture is the priority
+
+
+def _log_model_call(
+    session: Session,
+    *,
+    phase: str,
+    msg: dict[str, Any],
+    resp: dict[str, Any],
+    base: dict[str, Any],
+) -> None:
+    """Emit a `model_call` event for a non-worker model call.
+
+    Mirrors the worker loop's inline model_call payload (tokens, finish_reason,
+    reasoning round-trip) so every model-calling site in the system is
+    observable the same way. `phase` tags which actor made the call
+    (`evaluator`, `self_improve`); the worker omits phase by convention.
+    Call AFTER `session.add_tokens` so `tokens_used_total` is post-increment,
+    matching the worker.
+    """
+    usage = resp.get("usage") or {}
+    payload: dict[str, Any] = {
+        **base,
+        "phase": phase,
+        "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+        "eval_tokens": int(usage.get("completion_tokens") or 0),
+        "tokens_used_total": session.tokens_used,
+    }
+    if finish_reason := resp.get("finish_reason"):
+        payload["finish_reason"] = finish_reason
+    if reasoning_details := msg.get("reasoning_details"):
+        payload["reasoning_details"] = reasoning_details
+    else:
+        reasoning = msg.get("reasoning")
+        if isinstance(reasoning, str) and reasoning.strip():
+            payload["reasoning"] = reasoning
+    session.log("model_call", payload)
+
+
+def _raw_tool_calls(msg: dict[str, Any], cap: int) -> list[dict[str, Any]]:
+    """Capture the raw tool-call arguments from an assistant message.
+
+    For faithful post-run reconstruction of a model response that didn't
+    parse — without this, a parse failure leaves no trace of what the model
+    actually emitted. Each entry: {name, arguments (capped)}.
+    """
+    out: list[dict[str, Any]] = []
+    for tc in msg.get("tool_calls") or []:
+        fn = tc.get("function") or {}
+        raw = fn.get("arguments")
+        if isinstance(raw, dict):
+            raw = json.dumps(raw)
+        if isinstance(raw, str):
+            out.append({"name": fn.get("name"), "arguments": raw[:cap]})
+    return out
+
+
+def _log_prompt_assembled(
+    session: Session,
+    *,
+    role: str,
+    task_id: str,
+    trace_id: str,
+    span_id: str,
+    iter_value: int,
+    content: str,
+) -> None:
+    """Capture an assembled user message in events.jsonl for post-run review.
+
+    Cross-cutting concern from v1-implementation-plan.md: a post-run agent
+    pointed at the session must be able to reconstruct *what each actor
+    saw* on each turn. Capped so a giant prompt doesn't blow up the log.
+
+    `iter_value` is the literal value to write to the payload's `iter`
+    field — 0 for task-start prompts (before any iteration), 1..N for
+    in-iteration prompts. Callers do the indexing themselves so the
+    intent (task-start vs mid-loop) is visible at the call site.
+    """
+    chars = len(content)
+    truncated = chars > PROMPT_ASSEMBLED_CHAR_CAP
+    body = (
+        content[:PROMPT_ASSEMBLED_CHAR_CAP] + "\n... [truncated]"
+        if truncated
+        else content
+    )
+    session.log(
+        "prompt_assembled",
+        {
+            "task_id": task_id,
+            "trace_id": trace_id,
+            "span_id": span_id,
+            "iter": iter_value,
+            "role": role,
+            "content": body,
+            "chars": chars,
+            "truncated": truncated,
+        },
+    )
 
 
 def _judge_task(
@@ -92,8 +197,15 @@ def _judge_task(
     iter_n: int,
     trace_id: str,
     span_id: str,
-) -> tuple[bool, str]:
-    """Call the judge in a fresh context. Returns (accept, reasoning)."""
+) -> dict[str, Any]:
+    """Call the evaluator in a fresh context. Returns a structured verdict.
+
+    Shape: `{verdict, rejection_category, concern, evidence, next_step}`
+    plus `parse_failed: True` on the fallback path where the model never
+    produced a parseable `submit_verdict` call. The fallback verdict is
+    `reject` so the loop keeps moving (and the operator sees the parse
+    failure via `evaluator_parse_error` events).
+    """
     diff = ws.task_diff(worktree)
     if len(diff) > JUDGE_DIFF_MAX_CHARS:
         diff = diff[:JUDGE_DIFF_MAX_CHARS] + f"\n... [truncated, total {len(diff)} chars]"
@@ -126,49 +238,144 @@ def _judge_task(
         diff if diff.strip() else "(empty diff)",
         "```",
         "",
-        "Respond with strict JSON only.",
+        "Submit your verdict by calling `submit_verdict` — that tool call",
+        "is the only acceptable response.",
     ]
-    judge_messages = [
+    user_content = "\n".join(parts)
+    _log_prompt_assembled(
+        session,
+        role="evaluator",
+        task_id=task["id"],
+        trace_id=trace_id,
+        span_id=span_id,
+        iter_value=iter_n + 1,
+        content=user_content,
+    )
+
+    judge_messages: list[dict[str, Any]] = [
         {"role": "system", "content": _judge_prompt()},
-        {"role": "user", "content": "\n".join(parts)},
+        {"role": "user", "content": user_content},
     ]
-    resp = client.chat(judge_messages, model=client.config.judge_model)
-    usage = resp.get("usage") or {}
-    prompt_tokens = int(usage.get("prompt_tokens") or 0)
-    eval_tokens = int(usage.get("completion_tokens") or 0)
-    session.add_tokens(prompt_tokens + eval_tokens)
 
-    content = ((resp.get("message") or {}).get("content") or "").strip()
-    parsed = parse_json_lenient(content)
-    if not parsed or "verdict" not in parsed:
-        session.log(
-            "judge_verdict",
-            {
-                "task_id": task["id"],
-                "trace_id": trace_id,
-                "span_id": span_id,
-                "iter": iter_n + 1,
-                "accept": False,
-                "reasoning": "judge returned unparseable response",
-                "raw": content[:1000],
-            },
-        )
-        return False, f"Judge response unparseable. Raw: {content[:300]}"
+    verdict = _call_evaluator_with_retry(
+        client,
+        judge_messages,
+        session=session,
+        task_id=task["id"],
+        trace_id=trace_id,
+        span_id=span_id,
+        iter_n=iter_n,
+    )
 
-    accept = str(parsed.get("verdict", "")).lower() == "accept"
-    reasoning = str(parsed.get("reasoning", "")).strip()
     session.log(
-        "judge_verdict",
+        "evaluator_verdict",
         {
             "task_id": task["id"],
             "trace_id": trace_id,
             "span_id": span_id,
             "iter": iter_n + 1,
-            "accept": accept,
-            "reasoning": reasoning,
+            "schema_version": VERDICT_SCHEMA_VERSION,
+            **verdict,
         },
     )
-    return accept, reasoning
+    return verdict
+
+
+def _call_evaluator_with_retry(
+    client: LLMClient,
+    messages: list[dict[str, Any]],
+    *,
+    session: Session,
+    task_id: str,
+    trace_id: str,
+    span_id: str,
+    iter_n: int,
+) -> dict[str, Any]:
+    """Two-attempt tool-call loop with parse-error feedback between attempts.
+
+    Attempt 1: send the assembled prompt. Parse the assistant message via
+    `parse_verdict`. If clean → return.
+
+    Attempt 2: only reached on parse failure. Echo the assistant message,
+    respond to each emitted tool_call with the parse error as `tool_result`
+    content, and retry the call. If still bad → synthesise a fallback
+    reject verdict so the loop survives; `parse_failed: True` makes the
+    failure visible to summary/visualizer consumers.
+    """
+    last_err = ""
+    for attempt in (1, 2):
+        resp = client.chat(
+            messages,
+            model=client.config.judge_model,
+            tools=[SUBMIT_VERDICT_TOOL],
+        )
+        usage = resp.get("usage") or {}
+        prompt_tokens = int(usage.get("prompt_tokens") or 0)
+        eval_tokens = int(usage.get("completion_tokens") or 0)
+        session.add_tokens(prompt_tokens + eval_tokens)
+
+        msg = resp.get("message") or {}
+        _log_model_call(
+            session,
+            phase="evaluator",
+            msg=msg,
+            resp=resp,
+            base={
+                "task_id": task_id,
+                "trace_id": trace_id,
+                "span_id": span_id,
+                "iter": iter_n + 1,
+                "attempt": attempt,
+            },
+        )
+
+        verdict, err = parse_verdict(msg)
+        if err is None:
+            assert verdict is not None
+            return verdict
+
+        last_err = err
+        session.log(
+            "evaluator_parse_error",
+            {
+                "task_id": task_id,
+                "trace_id": trace_id,
+                "span_id": span_id,
+                "iter": iter_n + 1,
+                "attempt": attempt,
+                "error": err,
+                "raw_tool_calls": _raw_tool_calls(msg, MODEL_RAW_ARGS_CHAR_CAP),
+            },
+        )
+
+        if attempt == 2:
+            break
+
+        messages.append(assistant_history_message(msg))
+        tool_calls = msg.get("tool_calls") or []
+        if tool_calls:
+            for tc in tool_calls:
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc.get("id") or "",
+                        "content": err,
+                    }
+                )
+        else:
+            messages.append({"role": "user", "content": err})
+
+    return {
+        "verdict": "reject",
+        "rejection_category": None,
+        "concern": (
+            "Evaluator response could not be parsed after one retry. "
+            f"Last error: {last_err}"
+        ),
+        "evidence": [],
+        "next_step": None,
+        "parse_failed": True,
+    }
 
 
 # --- self-improvement: propose a learning -----------------------------------
@@ -214,7 +421,10 @@ def _self_improve(
 
     base = {"task_id": task["id"], "trace_id": trace_id, "span_id": span_id}
 
-    content = ((resp.get("message") or {}).get("content") or "").strip()
+    msg = resp.get("message") or {}
+    _log_model_call(session, phase="self_improve", msg=msg, resp=resp, base=base)
+
+    content = (msg.get("content") or "").strip()
     parsed = parse_json_lenient(content)
     if not parsed:
         session.log(
@@ -643,6 +853,15 @@ def _run_task(
             **mem_manifest,
         },
     )
+    _log_prompt_assembled(
+        session,
+        role="worker",
+        task_id=task["id"],
+        trace_id=trace_id,
+        span_id=setup_span,
+        iter_value=0,  # task-start; in-loop worker prompts evolve via tool_results, not re-assembly
+        content=user_prompt,
+    )
 
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": _system_prompt()},
@@ -760,13 +979,14 @@ def _run_task(
         )
 
         if passed:
-            console.print(f"[green]task {task['id']} validators passed → judge[/green]")
-            accept, reasoning = _judge_task(
+            console.print(f"[green]task {task['id']} validators passed → evaluator[/green]")
+            verdict = _judge_task(
                 task, worktree, client, session, iter_n, trace_id, iter_span
             )
             judge_calls += 1
-            if accept:
-                console.print(f"[green]judge accepts:[/green] {reasoning[:200]}")
+            concern = (verdict.get("concern") or "").strip()
+            if verdict["verdict"] == "accept":
+                console.print(f"[green]evaluator accepts:[/green] {concern[:200]}")
                 session.log(
                     "task_done",
                     {
@@ -778,7 +998,7 @@ def _run_task(
                 )
                 return "done"
 
-            console.print(f"[yellow]judge rejects:[/yellow] {reasoning[:200]}")
+            console.print(f"[yellow]evaluator rejects:[/yellow] {concern[:200]}")
             judge_cap = client.config.max_judge_calls_per_task
             if judge_cap > 0 and judge_calls >= judge_cap:
                 console.print(
@@ -796,13 +1016,9 @@ def _run_task(
                     },
                 )
                 return "judge_cap"
-            judge_feedback = (
-                "An independent reviewer rejected the work. Their reasoning:\n\n"
-                f"{reasoning}\n\n"
-                "Read the rejection carefully, fix the issues it points at, and continue working. "
-                "Stop calling tools and respond with a summary only when the issue is resolved."
+            messages.append(
+                {"role": "user", "content": format_reject_feedback(verdict)}
             )
-            messages.append({"role": "user", "content": judge_feedback})
             continue
 
         report = validators.combined_report(results)
@@ -1294,7 +1510,7 @@ def do_run_cmd(workspace: Path) -> int:
         session.set_status("running")
         session.log(
             "session_start",
-            {"source": str(source), "worktree": str(worktree), "branch": branch},
+            {"source": str(source), "phase": "run", "worktree": str(worktree), "branch": branch},
         )
     else:
         # No prepared session for this workspace. Don't create state and crash
@@ -1554,7 +1770,12 @@ def _legacy_main() -> int:
             session.set_status("running")
             session.log(
                 "session_start",
-                {"source": str(source), "worktree": str(worktree), "branch": branch},
+                {
+                    "source": str(source),
+                    "phase": "run",
+                    "worktree": str(worktree),
+                    "branch": branch,
+                },
             )
         else:
             # No prepared session for this workspace — delegate to the verb-router

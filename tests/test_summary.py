@@ -51,6 +51,51 @@ def test_session_metadata_captured(events_path):
     assert s["stop"] == {"reason": "all_done", "ts": "2026-05-04T10:05:00Z"}
 
 
+def test_prep_and_run_starts_are_distinguished(events_path):
+    """prep-feature and run each emit a session_start; the summary must keep
+    them apart so prep wall-time isn't silently folded into the run's
+    started_at (the bug that motivated the phase tag)."""
+    _write(
+        events_path,
+        [
+            {
+                "ts": "2026-05-04T09:00:00Z",
+                "type": "session_start",
+                "payload": {"source": "/tmp/foo", "phase": "prep-feature",
+                            "worktree": "/tmp/wt", "branch": "session/x"},
+            },
+            {
+                "ts": "2026-05-04T10:00:00Z",
+                "type": "session_start",
+                "payload": {"source": "/tmp/foo", "phase": "run",
+                            "worktree": "/tmp/wt", "branch": "session/x"},
+            },
+            {"ts": "2026-05-04T10:05:00Z", "type": "stop", "payload": {"reason": "all_done"}},
+        ],
+    )
+    s = summary.build_from_events(events_path)
+    assert s["prep_started_at"] == "2026-05-04T09:00:00Z"
+    assert s["started_at"] == "2026-05-04T10:00:00Z"
+
+
+def test_unphased_session_start_is_treated_as_run(events_path):
+    """Legacy/edge session_start with no phase field → the run start, and
+    prep_started_at stays null."""
+    _write(
+        events_path,
+        [
+            {
+                "ts": "2026-05-04T10:00:00Z",
+                "type": "session_start",
+                "payload": {"source": "/tmp/foo", "worktree": "/tmp/wt", "branch": "session/x"},
+            },
+        ],
+    )
+    s = summary.build_from_events(events_path)
+    assert s["started_at"] == "2026-05-04T10:00:00Z"
+    assert s["prep_started_at"] is None
+
+
 def test_tokens_summed_across_model_calls(events_path):
     _write(
         events_path,
@@ -148,18 +193,30 @@ def test_hook_outcomes_aggregated(events_path):
     assert s["hook_outcomes"]["post_edit"] == {"silent": 1, "warned": 1}
 
 
-def test_judge_accept_reject_counted(events_path):
+def test_evaluator_accept_reject_counted(events_path):
+    """Phase 1 of v1: judge_verdict → evaluator_verdict (structured payload).
+    The accepts/rejects bool survives as an overall summary stat; the new
+    rejection_categories aggregation lives in test_summary_rejection_category_counts.py."""
     _write(
         events_path,
         [
-            {"ts": "T1", "type": "judge_verdict", "payload": {"task_id": "T-1", "accept": True}},
-            {"ts": "T2", "type": "judge_verdict", "payload": {"task_id": "T-1", "accept": False}},
-            {"ts": "T3", "type": "judge_verdict", "payload": {"task_id": "T-2", "accept": True}},
+            {"ts": "T1", "type": "evaluator_verdict",
+             "payload": {"task_id": "T-1", "verdict": "accept",
+                         "concern": "ok", "evidence": []}},
+            {"ts": "T2", "type": "evaluator_verdict",
+             "payload": {"task_id": "T-1", "verdict": "reject",
+                         "rejection_category": "scope_creep",
+                         "concern": "x", "evidence": [], "next_step": "y"}},
+            {"ts": "T3", "type": "evaluator_verdict",
+             "payload": {"task_id": "T-2", "verdict": "accept",
+                         "concern": "ok", "evidence": []}},
         ],
     )
     s = summary.build_from_events(events_path)
-    assert s["judge"] == {"accepts": 2, "rejects": 1}
-    assert s["tasks"]["T-1"]["judge"] == {"accepts": 1, "rejects": 1}
+    assert s["evaluator"]["accepts"] == 2
+    assert s["evaluator"]["rejects"] == 1
+    assert s["tasks"]["T-1"]["evaluator"]["accepts"] == 1
+    assert s["tasks"]["T-1"]["evaluator"]["rejects"] == 1
 
 
 def test_write_summary_writes_json_file(tmp_path):

@@ -202,15 +202,42 @@ def _render_validator_run(_typ: str, ts: str, p: dict[str, Any]) -> str:
     return _card(status, ts, body, kind="ok" if passed else "bad")
 
 
-def _render_judge_verdict(_typ: str, ts: str, p: dict[str, Any]) -> str:
-    accept = bool(p.get("accept", False))
-    reasoning = (p.get("reasoning") or "").strip()
+def _render_evaluator_verdict(_typ: str, ts: str, p: dict[str, Any]) -> str:
+    """Render Phase 1's structured `evaluator_verdict` event.
+
+    Surfaces the load-bearing fields — rejection_category, concern, evidence,
+    next_step — so the post-run visual review matches the post-run jq review.
+    """
+    verdict = (p.get("verdict") or "").lower()
+    accept = verdict == "accept"
+    concern = (p.get("concern") or "").strip()
+    category = (p.get("rejection_category") or "").strip()
+    next_step = (p.get("next_step") or "").strip()
+    evidence = p.get("evidence") or []
+
     label = "accepts" if accept else "rejects"
+    if not accept and category:
+        label = f"rejects · {category}"
+
+    body_parts: list[str] = []
+    if concern:
+        body_parts.append(f'<div class="prose">{html.escape(concern)}</div>')
+    if evidence:
+        items = "".join(
+            f'<li><code>{html.escape(str(e))}</code></li>' for e in evidence
+        )
+        body_parts.append(f'<ul class="evidence">{items}</ul>')
+    if not accept and next_step:
+        body_parts.append(
+            f'<div class="next-step"><strong>Next step:</strong> '
+            f'{html.escape(next_step)}</div>'
+        )
+
     return _bubble(
         side="judge",
-        title=f"judge {label}",
+        title=f"evaluator {label}",
         ts=ts,
-        body=f'<div class="prose">{html.escape(reasoning)}</div>' if reasoning else "",
+        body="".join(body_parts),
     )
 
 
@@ -286,7 +313,7 @@ _RENDERERS: dict[str, Callable[[str, str, dict[str, Any]], str]] = {
     "tool_result": _render_tool_result,
     "pre_tool_block": _render_pre_tool_block,
     "validator_run": _render_validator_run,
-    "judge_verdict": _render_judge_verdict,
+    "evaluator_verdict": _render_evaluator_verdict,
     "task_done": _render_task_done,
     "task_failed": _render_task_failed,
     "proposed_learnings": _render_proposed_learnings,
