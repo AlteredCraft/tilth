@@ -203,3 +203,27 @@ def task_diff(worktree: Path) -> str:
         return f"(failed to add intent-to-add: {proc.stderr})"
     proc = _git(["diff", "HEAD"], worktree)
     return proc.stdout
+
+
+def task_diff_summary(worktree: Path) -> str:
+    """Compact one-line summary of the current task diff: 'path (+a -d); ...'.
+
+    For ledger entries — enough for the evaluator to see *what* changed at a
+    prior iteration without re-reading the whole diff. Binary files render as
+    'path (binary)'.
+    """
+    proc = _git(["add", "-N", "."], worktree)
+    if proc.returncode != 0:
+        return f"(failed to add intent-to-add: {proc.stderr.strip()})"
+    proc = _git(["diff", "--numstat", "HEAD"], worktree)
+    parts: list[str] = []
+    for line in proc.stdout.splitlines():
+        cols = line.split("\t")
+        if len(cols) != 3:
+            continue
+        added, deleted, path = cols
+        if added == "-" or deleted == "-":
+            parts.append(f"{path} (binary)")
+        else:
+            parts.append(f"{path} (+{added} -{deleted})")
+    return "; ".join(parts) if parts else "(no changes)"

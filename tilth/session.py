@@ -6,6 +6,12 @@ A summary.json is also written at every task boundary as a denormalised view of
 events.jsonl (built by tilth/summary.py) — consumers like the visualizer and any
 external tools should prefer reading that over re-streaming the JSONL.
 
+A per-task evaluator ledger lives at ledger/<task_id>.jsonl (Phase 2). It is the
+evaluator's durable read path — its memory of a task's prior iterations, injected
+into its prompt on each call. Distinct from events.jsonl (the audit trail): each
+ledger append is mirrored by a `ledger_appended` event, but the ledger files are
+what the evaluator reads. See `append_ledger_entry` / `read_ledger`.
+
 Event types:
     model_call         — request/response metadata for a model call. Carries
                          `reasoning_details` (the OpenRouter-normalised
@@ -62,6 +68,11 @@ Event types:
                          for post-run review — never lost. On the second
                          failure, the loop synthesises a fallback reject
                          verdict (see `evaluator_verdict.parse_failed`).
+    ledger_appended    — an entry was appended to a task's evaluator ledger
+                         (Phase 2). Lightweight pointer: {task_id, iter,
+                         verdict_summary (e.g. "accept" or "reject:scope_creep")}.
+                         The full entry (diff_summary, case, verdict) lives in
+                         ledger/<task_id>.jsonl, not in this event.
     task_done          — task accepted (validators + evaluator passed)
     task_failed        — task could not be completed; payload.reason ∈ {iter_cap}
     proposed_learnings — self-improvement step's per-task verdict. Payload:
@@ -205,6 +216,50 @@ class Session:
         record = {"ts": _ts(), "type": event_type, "payload": payload}
         with self.events_path.open("a") as f:
             f.write(json.dumps(record) + "\n")
+
+    # --- per-task evaluator ledger (Phase 2) --------------------------------
+    # sessions/<id>/ledger/<task_id>.jsonl — append-only, one entry per
+    # evaluator call. The evaluator's durable memory of a task across
+    # iterations (and across resumes; it's plain files under root). Distinct
+    # from events.jsonl: the ledger is the evaluator's *read path*, events is
+    # the audit trail. A `ledger_appended` event mirrors each append.
+
+    def ledger_dir(self) -> Path:
+        d = self.root / "ledger"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def append_ledger_entry(self, task_id: str, entry: dict[str, Any]) -> None:
+        """Append one entry to this task's ledger. Stamps `ts` automatically."""
+        record = {"ts": _ts(), **entry}
+        path = self.ledger_dir() / f"{task_id}.jsonl"
+        with path.open("a") as f:
+            f.write(json.dumps(record) + "\n")
+
+    def read_ledger(
+        self, task_id: str, limit: int | None = None
+    ) -> list[dict[str, Any]]:
+        """Read a task's ledger entries, oldest first.
+
+        Missing ledger → []. `limit` returns the last N entries (still
+        oldest-first). Blank/corrupt lines are skipped, same as iter_events.
+        """
+        path = self.root / "ledger" / f"{task_id}.jsonl"
+        entries: list[dict[str, Any]] = []
+        if not path.is_file():
+            return entries
+        with path.open() as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entries.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+        if limit is not None and limit >= 0:
+            return entries[-limit:] if limit else []
+        return entries
 
     def save_checkpoint(self) -> None:
         cp = {

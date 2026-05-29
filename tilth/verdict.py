@@ -267,3 +267,40 @@ def format_reject_feedback(verdict: dict[str, Any]) -> str:
         evidence_section=evidence_section,
         next_step=next_step,
     )
+
+
+_LEDGER_HEADER = "## Prior iterations on this task"
+
+
+def format_ledger_section(entries: list[dict[str, Any]]) -> str:
+    """Render prior ledger entries for injection into the evaluator's prompt.
+
+    Oldest first. Each line carries the iteration, the verdict (+ category on
+    a reject), the concern, the next_step given, and the diff summary at that
+    point — enough for the evaluator to recognise repeats and escalate without
+    re-reading old diffs. Empty input → empty string (no section injected).
+
+    Data only — guidance on *how* to use this lives in judge.md.
+    """
+    if not entries:
+        return ""
+
+    lines = [_LEDGER_HEADER, ""]
+    for n, entry in enumerate(entries, start=1):
+        verdict = entry.get("verdict") or {}
+        v = verdict.get("verdict") or "?"
+        category = verdict.get("rejection_category")
+        head = f"{v} · {category}" if (v == "reject" and category) else v
+        iter_n = entry.get("iter", "?")
+        lines.append(f"{n}. [iter {iter_n}] {head}")
+
+        concern = (verdict.get("concern") or "").strip()
+        if concern:
+            lines.append(f"   concern: {concern}")
+        next_step = (verdict.get("next_step") or "").strip()
+        if next_step:
+            lines.append(f"   next step given: {next_step}")
+        diff_summary = (entry.get("diff_summary") or "").strip()
+        if diff_summary:
+            lines.append(f"   diff at that point: {diff_summary}")
+    return "\n".join(lines)

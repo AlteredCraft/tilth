@@ -39,6 +39,7 @@ from tilth.session import Session, iter_events, session_label
 from tilth.verdict import (
     SUBMIT_VERDICT_TOOL,
     VERDICT_SCHEMA_VERSION,
+    format_ledger_section,
     format_reject_feedback,
     parse_verdict,
 )
@@ -90,6 +91,7 @@ def _propose_learning_prompt() -> str:
 JUDGE_DIFF_MAX_CHARS = 12_000
 PROMPT_ASSEMBLED_CHAR_CAP = 16_000
 MODEL_RAW_ARGS_CHAR_CAP = 16_000  # generous — faithful capture is the priority
+LEDGER_INJECT_LIMIT = 5  # OQ #1: last-N ledger entries injected into evaluator prompt
 
 
 def _log_model_call(
@@ -226,6 +228,14 @@ def _judge_task(
             "",
             agents_md.rstrip(),
         ]
+    # Evaluator memory: prior verdicts on this same task (Phase 2). Read here
+    # — before this call's verdict is appended below — so the section shows
+    # only iterations that preceded the current one.
+    ledger_section = format_ledger_section(
+        session.read_ledger(task["id"], limit=LEDGER_INJECT_LIMIT)
+    )
+    if ledger_section:
+        parts += ["", ledger_section]
     parts += [
         "",
         "## Validator status",
@@ -276,6 +286,34 @@ def _judge_task(
             "iter": iter_n + 1,
             "schema_version": VERDICT_SCHEMA_VERSION,
             **verdict,
+        },
+    )
+
+    # Persist this iteration to the task ledger (the evaluator's read path on
+    # the next call). `case` is null until Phase 3 introduces submit_case.
+    session.append_ledger_entry(
+        task["id"],
+        {
+            "iter": iter_n + 1,
+            "diff_summary": ws.task_diff_summary(worktree),
+            "case": None,
+            "verdict": verdict,
+        },
+    )
+    category = verdict.get("rejection_category")
+    verdict_summary = (
+        f"reject:{category}"
+        if verdict["verdict"] == "reject" and category
+        else verdict["verdict"]
+    )
+    session.log(
+        "ledger_appended",
+        {
+            "task_id": task["id"],
+            "trace_id": trace_id,
+            "span_id": span_id,
+            "iter": iter_n + 1,
+            "verdict_summary": verdict_summary,
         },
     )
     return verdict
