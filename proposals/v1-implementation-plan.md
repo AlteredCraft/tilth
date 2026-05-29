@@ -1,6 +1,6 @@
 # Implementation plan: worker–evaluator dialogue (v1)
 
-**Status:** In progress — **Phase 1 landed (2026-05-29).** Phases 2–6 not started.
+**Status:** In progress — **Phases 1–2 landed (2026-05-29).** Phases 3–6 not started.
 **Author:** Sam (with Claude conversational pass)
 **Date:** 2026-05-27 (last updated 2026-05-29)
 **Related:** [`frictions-2026-05-26.md`](frictions-2026-05-26.md) (the inventory), [`v1-worker-evaluator-dialogue.md`](v1-worker-evaluator-dialogue.md) (the sketch this plan implements).
@@ -101,6 +101,17 @@ The fix shipped as part of Phase 1: **`tilth/prompts/judge.md` redraws the brigh
 ---
 
 ## Phase 2 — Per-task ledger
+
+**Status: ✅ Landed 2026-05-29.** What shipped:
+
+- **Ledger I/O on `Session`** — `ledger_dir`, `append_ledger_entry` (auto-stamps `ts`), `read_ledger(task_id, limit)`. Plain files at `sessions/<id>/ledger/<task_id>.jsonl`; a resumed session (`Session.wake`) reads the prior run's ledger transparently. Each append mirrored by a lightweight `ledger_appended` event (audit trail); the files are the evaluator's read path.
+- **`workspace.task_diff_summary`** — compact `path (+a -d); ...` from `git diff --numstat`, stored per entry so the evaluator sees what changed at a prior iteration without re-reading the diff.
+- **`verdict.format_ledger_section`** — pure renderer, oldest-first; empty input → `""` (no section on the first call).
+- **`loop._judge_task`** — reads last-`LEDGER_INJECT_LIMIT`(=5) entries *before* this call's verdict is appended, so a call only sees iterations that preceded it. `case` stays `null` until Phase 3.
+- **`judge.md`** — "Prior iterations on this task" guidance (focus on what's new, escalate don't repeat, don't anchor on a prior reject).
+- The injected section rides the existing `prompt_assembled` capture, so a post-run reviewer sees exactly what memory the evaluator had each call — observability for free.
+- **Tests:** 266 green (`test_ledger_io`, `test_evaluator_sees_ledger`, `test_ledger_resume`).
+- **Demo validation** (`20260529-113158`): two tasks rejected then recovered; the evaluator's accept verdict on the retry explicitly referenced the resolved prior reject (*"the prior scope_creep issue is resolved…"*) — the memory feature demonstrably used, not just written. The same run surfaced a **seed contradiction** (T-001 pins `main([])==0` as a permanent regression test; T-002 makes `main([])` non-zero → the validator ratchet forced the worker to rewrite T-001's seed test, which the evaluator accepted by improvising a completed-vs-future distinction over its own hard rule). Filed as [#23](https://github.com/AlteredCraft/tilth/issues/23); root cause is seeder-side (F1/F2/F9), deliberately *not* fixed by weakening the cross-task rule. Clean illustration of the sketch's prediction: v1 *surfaces* F1 via the ledger/verdicts but has no authority to halt it.
 
 **Goal:** Persist evaluator iterations to `sessions/<id>/ledger/<task_id>.jsonl` and inject the recent history into the evaluator's user message on every call. Evaluator gains memory; worker still doesn't see the ledger.
 
