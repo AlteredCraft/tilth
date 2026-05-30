@@ -42,8 +42,13 @@ def _run(cmd: list[str], cwd: Path) -> tuple[int, str]:
     return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
 
 
-def _task_test_glob(task_id: str) -> str:
-    """Translate a task ID like 'T-001' into a test-file glob: 'test_t001_*.py'."""
+def task_test_glob(task_id: str) -> str:
+    """Translate a task ID like 'T-001' into a test-file glob: 'test_t001_*.py'.
+
+    Public so the evaluator (loop._format_seed_test_section) inlines exactly the
+    file this filter selects — one source of truth for "which test is this
+    task's", shared between the pytest run and the evaluator's view of it.
+    """
     slug = re.sub(r"[^a-z0-9]", "", task_id.lower())
     return f"test_{slug}_*.py"
 
@@ -56,7 +61,7 @@ def run_pytest(
         return ValidatorResult("pytest", True, "(no tests/ dir; skipping)")
 
     if task_ids:
-        patterns = [_task_test_glob(tid) for tid in task_ids]
+        patterns = [task_test_glob(tid) for tid in task_ids]
         matches: set[str] = set()
         for pattern in patterns:
             matches.update(

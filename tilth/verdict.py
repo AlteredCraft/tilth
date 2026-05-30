@@ -272,20 +272,25 @@ def format_reject_feedback(verdict: dict[str, Any]) -> str:
 _LEDGER_HEADER = "## Prior iterations on this task"
 
 
-def format_ledger_section(entries: list[dict[str, Any]]) -> str:
-    """Render prior ledger entries for injection into the evaluator's prompt.
+def format_ledger_section(
+    entries: list[dict[str, Any]], header: str = _LEDGER_HEADER
+) -> str:
+    """Render prior ledger entries for injection into a prompt.
 
     Oldest first. Each line carries the iteration, the verdict (+ category on
     a reject), the concern, the next_step given, and the diff summary at that
     point — enough for the evaluator to recognise repeats and escalate without
     re-reading old diffs. Empty input → empty string (no section injected).
 
-    Data only — guidance on *how* to use this lives in judge.md.
+    The evaluator uses the default header; Phase 4 reuses this to show the
+    worker its *own* task ledger under a clarifying header (`from the
+    evaluator`). Data only — guidance on *how* to use this lives in the
+    respective prompt (judge.md / system.md).
     """
     if not entries:
         return ""
 
-    lines = [_LEDGER_HEADER, ""]
+    lines = [header, ""]
     for n, entry in enumerate(entries, start=1):
         verdict = entry.get("verdict") or {}
         v = verdict.get("verdict") or "?"

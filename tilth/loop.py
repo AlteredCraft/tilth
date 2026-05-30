@@ -101,6 +101,11 @@ JUDGE_DIFF_MAX_CHARS = 12_000
 PROMPT_ASSEMBLED_CHAR_CAP = 16_000
 MODEL_RAW_ARGS_CHAR_CAP = 16_000  # generous — faithful capture is the priority
 LEDGER_INJECT_LIMIT = 5  # OQ #1: last-N ledger entries injected into evaluator prompt
+# Phase 4 visibility: per-field injection caps for the evaluator prompt,
+# separate from the prompt_assembled *log* cap above. A noisy validator dump or
+# a long seed test must not blow the evaluator's context.
+VALIDATOR_OUTPUT_INJECT_CAP = 4_000
+SEED_TEST_INJECT_CAP = 6_000
 
 WORKER_NO_CASE_NUDGE = (
     "You stopped without calling `submit_case`. This harness no longer treats "
@@ -108,6 +113,35 @@ WORKER_NO_CASE_NUDGE = (
     "present your case by calling `submit_case`. If you're not done, keep "
     "working with the other tools."
 )
+
+# Robustness backstops for the worker loop. A provider that returns empty
+# responses (no content, no tool calls — observed: OpenRouter 200s with zero
+# usage) must not be mistaken for a worker that went quiet, or the loop nudges a
+# dead endpoint until the iteration cap. And a worker that genuinely keeps going
+# quiet shouldn't burn the whole iteration budget either.
+EMPTY_RESPONSE_RETRY_LIMIT = 3  # consecutive empty responses before aborting the task
+EMPTY_RESPONSE_BACKOFF_SECONDS = 2  # base backoff between empty-response retries (scaled by streak)
+MAX_CONSECUTIVE_NO_CASE_NUDGES = 3  # consecutive no-case turns before aborting the task
+
+
+def _is_empty_response(msg: dict[str, Any]) -> bool:
+    """A model turn that produced *nothing* — no tool calls, no content, no
+    reasoning. The signature of a provider hiccup, not a deliberate stop.
+
+    Distinct from a worker that goes quiet *with* a prose summary (content
+    present, no tool call) — that still routes to the no-case nudge. Echoing an
+    empty turn back into the history appends a role-less `{}` message that
+    poisons every subsequent request, so the caller skips the append and retries.
+    """
+    if msg.get("tool_calls"):
+        return False
+    if (msg.get("content") or "").strip():
+        return False
+    if msg.get("reasoning_details"):
+        return False
+    if isinstance(msg.get("reasoning"), str) and msg["reasoning"].strip():
+        return False
+    return True
 
 
 def _partition_worker_tool_calls(
@@ -262,6 +296,58 @@ def _build_ledger_entry(
     }
 
 
+def _format_validator_section(results: list[validators.ValidatorResult]) -> str:
+    """Render the actual validator output for the evaluator (Phase 4).
+
+    Replaces the old static "all passed" line. The evaluator is only called
+    *after* the validators pass, so this is passing output — its value is
+    letting the evaluator see which tests ran and what they cover when judging
+    `weak_test` / `acceptance_gap`, not surfacing failures (those go to the
+    worker via the submit_case tool_result). Capped per the injection budget.
+    """
+    blocks: list[str] = []
+    for r in results:
+        out = (r.output or "").strip() or "(no output)"
+        if len(out) > VALIDATOR_OUTPUT_INJECT_CAP:
+            out = (
+                out[:VALIDATOR_OUTPUT_INJECT_CAP]
+                + f"\n... [truncated, total {len(r.output)} chars]"
+            )
+        status = "PASS" if r.passed else "FAIL"
+        blocks.append(f"### {r.name} — {status}\n```\n{out}\n```")
+    return "\n\n".join(blocks)
+
+
+def _format_seed_test_section(worktree: Path, task_id: str) -> str:
+    """Inline this task's seed acceptance test(s) for the evaluator (#16).
+
+    Reads the worktree-current version — exactly what pytest validated. If the
+    worker tampered with a seed test, the diff already surfaces that as
+    cross-task interference; here the evaluator can read what the passing test
+    actually asserts, to judge `weak_test`. Absent/unreadable → "".
+    """
+    tests_dir = worktree / "tests"
+    if not tests_dir.is_dir():
+        return ""
+    matches = sorted(tests_dir.glob(validators.task_test_glob(task_id)))
+    if not matches:
+        return ""
+    blocks = ["## Seed acceptance test (the test the validator ran)", ""]
+    budget = SEED_TEST_INJECT_CAP
+    for p in matches:
+        try:
+            body = p.read_text()
+        except OSError:
+            continue
+        if len(body) > budget:
+            body = body[:budget] + "\n... [truncated]"
+        budget -= len(body)
+        blocks.append(f"`{p.relative_to(worktree)}`:\n```python\n{body}\n```")
+        if budget <= 0:
+            break
+    return "\n".join(blocks)
+
+
 def _judge_task(
     task: dict[str, Any],
     worktree: Path,
@@ -271,6 +357,7 @@ def _judge_task(
     trace_id: str,
     span_id: str,
     case: dict[str, Any] | None = None,
+    results: list[validators.ValidatorResult] | None = None,
 ) -> dict[str, Any]:
     """Call the evaluator in a fresh context. Returns a structured verdict.
 
@@ -310,11 +397,15 @@ def _judge_task(
         parts += ["", ledger_section]
     if case is not None:
         parts += ["", format_case_section(case)]
+    seed_test_section = _format_seed_test_section(worktree, task["id"])
+    if seed_test_section:
+        parts += ["", seed_test_section]
     parts += [
         "",
-        "## Validator status",
+        "## Validator output (all objective validators PASSED — this is the proof)",
         "",
-        "All objective validators (ruff, pytest) PASSED. Your job is the subjective check.",
+        _format_validator_section(results or [])
+        or "All objective validators (ruff, pytest) PASSED.",
         "",
         "## Diff (working tree vs HEAD on this task's branch)",
         "",
@@ -942,13 +1033,17 @@ def _run_task(
     session: Session,
     trace_id: str,
 ) -> str:
-    """Run one task. Returns 'done', 'iter_cap', or 'judge_cap'.
+    """Run one task. Returns 'done', 'iter_cap', 'judge_cap', 'empty_responses',
+    or 'no_case'.
 
     A task is 'done' only when the worker calls `submit_case` (its done-signal,
     Phase 3), the validators (ruff + pytest) pass, AND the evaluator accepts.
     Validator failures and rejects are fed back as the submit_case tool_result;
     the worker gets another iteration. Stopping without a case nudges it to
-    submit one.
+    submit one — but only up to `MAX_CONSECUTIVE_NO_CASE_NUDGES` in a row
+    (→ 'no_case'). An empty model response (provider hiccup) is retried with
+    backoff up to `EMPTY_RESPONSE_RETRY_LIMIT` (→ 'empty_responses'); it is not
+    mistaken for the worker going quiet.
     """
     setup_span = _span_id()
     session.log(
@@ -956,7 +1051,15 @@ def _run_task(
         {"task_id": task["id"], "trace_id": trace_id, "span_id": setup_span},
     )
 
-    user_prompt, mem_manifest = memory.build_user_prompt(task, worktree, session.root)
+    # Phase 4 visibility: the worker now sees the full feature plan and its own
+    # task ledger (the evaluator's prior verdicts on this task). The ledger is
+    # empty on a task's first run — its payoff is on resume, where prior-run
+    # verdicts survive on disk.
+    prd = _load_prd(session.root)
+    own_ledger = session.read_ledger(task["id"], limit=LEDGER_INJECT_LIMIT)
+    user_prompt, mem_manifest = memory.build_user_prompt(
+        task, worktree, session.root, prd=prd, own_ledger=own_ledger
+    )
     session.log(
         "memory_load",
         {
@@ -983,6 +1086,8 @@ def _run_task(
     ]
     tool_schemas = [*tools.schemas(), SUBMIT_CASE_TOOL]
     judge_calls = 0
+    empty_streak = 0
+    no_case_streak = 0
 
     for iter_n in range(client.config.max_iterations_per_task):
         iter_span = _span_id()
@@ -1013,6 +1118,50 @@ def _run_task(
             if isinstance(reasoning, str) and reasoning.strip():
                 model_call_payload["reasoning"] = reasoning
         session.log("model_call", model_call_payload)
+
+        # Empty model response (no content, no tool calls, no reasoning) — a
+        # provider hiccup, not the worker going quiet. Don't append it (a
+        # role-less `{}` message poisons every later request) and don't route it
+        # to the no-case nudge (which spins forever on a dead endpoint). Retry
+        # with backoff; abort the task with a clear reason if it persists.
+        if _is_empty_response(msg):
+            empty_streak += 1
+            session.log(
+                "empty_model_response",
+                {
+                    "task_id": task["id"],
+                    "trace_id": trace_id,
+                    "span_id": iter_span,
+                    "iter": iter_n + 1,
+                    "streak": empty_streak,
+                    "finish_reason": resp.get("finish_reason"),
+                    "prompt_tokens": prompt_tokens,
+                    "eval_tokens": eval_tokens,
+                },
+            )
+            if empty_streak >= EMPTY_RESPONSE_RETRY_LIMIT:
+                console.print(
+                    f"[red]task {task['id']} aborting: {empty_streak} consecutive "
+                    f"empty model responses (provider issue?)[/red]"
+                )
+                session.log(
+                    "task_failed",
+                    {
+                        "task_id": task["id"],
+                        "trace_id": trace_id,
+                        "span_id": iter_span,
+                        "reason": "empty_responses",
+                        "streak": empty_streak,
+                    },
+                )
+                return "empty_responses"
+            console.print(
+                f"[yellow]task {task['id']} empty model response "
+                f"({empty_streak}/{EMPTY_RESPONSE_RETRY_LIMIT}); retrying[/yellow]"
+            )
+            time.sleep(EMPTY_RESPONSE_BACKOFF_SECONDS * empty_streak)
+            continue
+        empty_streak = 0
 
         messages.append(assistant_history_message(msg))
 
@@ -1093,14 +1242,34 @@ def _run_task(
         # 2. No submit_case → either still working, or stopped without a case.
         if not case_tcs:
             if worktree_tcs:
+                no_case_streak = 0  # made progress this turn; not a quiet stop
                 continue  # did work this turn; not claiming done yet
+            no_case_streak += 1
+            if no_case_streak >= MAX_CONSECUTIVE_NO_CASE_NUDGES:
+                console.print(
+                    f"[red]task {task['id']} aborting: stopped without "
+                    f"submit_case {no_case_streak} times in a row[/red]"
+                )
+                session.log(
+                    "task_failed",
+                    {
+                        "task_id": task["id"],
+                        "trace_id": trace_id,
+                        "span_id": iter_span,
+                        "reason": "no_case",
+                        "nudges": no_case_streak,
+                    },
+                )
+                return "no_case"
             console.print(
-                f"[yellow]task {task['id']} stopped without submit_case; nudging[/yellow]"
+                f"[yellow]task {task['id']} stopped without submit_case; "
+                f"nudging ({no_case_streak}/{MAX_CONSECUTIVE_NO_CASE_NUDGES})[/yellow]"
             )
             messages.append({"role": "user", "content": WORKER_NO_CASE_NUDGE})
             continue
 
         # 3. submit_case present — the done-signal. Parse it defensively.
+        no_case_streak = 0  # a case was submitted; the quiet-stop streak is broken
         case, case_err = parse_case(msg)
         session.log(
             "tool_call",
@@ -1134,7 +1303,6 @@ def _run_task(
         content = (case.get("summary") or "").strip()
         console.print(f"[dim]task {task['id']} case summary:[/dim] {content[:200]}")
 
-        prd = _load_prd(session.root)
         done_ids = [t["id"] for t in prd if t.get("status") == "done"]
         results = validators.run_all(worktree, [*done_ids, task["id"]])
         passed = validators.all_passed(results)
@@ -1166,7 +1334,8 @@ def _run_task(
 
         console.print(f"[green]task {task['id']} validators passed → evaluator[/green]")
         verdict = _judge_task(
-            task, worktree, client, session, iter_n, trace_id, iter_span, case=case
+            task, worktree, client, session, iter_n, trace_id, iter_span,
+            case=case, results=results,
         )
         judge_calls += 1
         concern = (verdict.get("concern") or "").strip()
@@ -1223,7 +1392,9 @@ def _stop_reason(client: LLMClient, session: Session) -> str | None:
     return None
 
 
-_TERMINAL_FAILURE_STOPS = frozenset({"iter_cap", "judge_cap", "error"})
+_TERMINAL_FAILURE_STOPS = frozenset(
+    {"iter_cap", "judge_cap", "empty_responses", "no_case", "error"}
+)
 
 
 def _stop_to_status(reason: str) -> str:
@@ -1292,6 +1463,17 @@ def run(worktree: Path, session: Session, client: LLMClient) -> None:
             elif outcome == "judge_cap":
                 cap = client.config.max_judge_calls_per_task
                 detail = f" [TILTH_MAX_JUDGE_CALLS_PER_TASK={cap}]"
+            elif outcome == "empty_responses":
+                detail = (
+                    " — the model endpoint returned empty responses; this is "
+                    "usually a provider or rate-limit hiccup. Check your "
+                    "provider status and re-run."
+                )
+            elif outcome == "no_case":
+                detail = (
+                    " — the worker stopped repeatedly without presenting a case. "
+                    "Inspect the session log for what it was doing."
+                )
             console.print(
                 f"[red]✗ {task['id']} failed ({outcome}); halting run[/red]"
                 f"[dim]{detail}[/dim]"

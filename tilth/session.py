@@ -87,8 +87,16 @@ Event types:
                          ledger/<task_id>.jsonl, not in this event. The `case`
                          field is the worker's submitted case (Phase 3), or null
                          on the parse-failure fallback path.
+    empty_model_response
+                       — the model returned an empty turn (no content, no tool
+                         calls, no reasoning) — a provider hiccup, not the worker
+                         going quiet. Payload: {iter, streak, finish_reason,
+                         prompt_tokens, eval_tokens}. The loop retries with
+                         backoff; a sustained streak aborts the task with
+                         `task_failed` reason `empty_responses`.
     task_done          — task accepted (validators + evaluator passed)
-    task_failed        — task could not be completed; payload.reason ∈ {iter_cap}
+    task_failed        — task could not be completed; payload.reason ∈
+                         {iter_cap, judge_cap, empty_responses, no_case}
     proposed_learnings — self-improvement step's per-task verdict. Payload:
                          {task_id, trace_id, span_id, emitted, entry?, reason?}.
                          When emitted=True, `entry` carries the learning text
