@@ -1,8 +1,8 @@
 # Implementation plan: worker–evaluator dialogue (v1)
 
-**Status:** In progress — **Phases 1–3 landed (2026-05-29).** Phases 4–5 not started; Phase 6 deferred.
+**Status:** In progress — **Phases 1–4 landed (Phases 1–3 2026-05-29; Phase 4 2026-05-30).** Phase 5 not started; Phase 6 deferred.
 **Author:** Sam (with Claude conversational pass)
-**Date:** 2026-05-27 (last updated 2026-05-29)
+**Date:** 2026-05-27 (last updated 2026-05-30)
 **Related:** [`frictions-2026-05-26.md`](frictions-2026-05-26.md) (the inventory), [`v1-worker-evaluator-dialogue.md`](v1-worker-evaluator-dialogue.md) (the sketch this plan implements).
 
 ## Core-goal reminders
@@ -211,6 +211,20 @@ The fix shipped as part of Phase 1: **`tilth/prompts/judge.md` redraws the brigh
 ---
 
 ## Phase 4 — Visibility expansion
+
+**Status: ✅ Landed 2026-05-30** ([`29c6f40`](https://github.com/AlteredCraft/tilth/commit/29c6f40)). All five visibility surfaces shipped in one pass; the robustness fix below was folded in after the demo surfaced it. What shipped (and where it diverged from this plan):
+
+- **Worker visibility (`memory.build_user_prompt`)** — gained keyword params `prd=` and `own_ledger=` (defaults keep existing callers valid). Three new sections, all *about the work*, all riding the existing `prompt_assembled` capture:
+    - **Full feature plan**, collapsed, framed as *context not a worklist*. **Divergence:** the current task is rendered as a one-line placement marker pointing at the detailed `## Your task` block below, rather than repeating its full description + ACs — caught while eyeballing the assembled prompt (it duplicated ~1 KB).
+    - **Seed context** curated from `seed-meta.json` — only the feature-shaping fields (`tldr`, `scope_notes`, `blockers`, `open_questions`); interview bookkeeping (model, tokens, timestamps) is deliberately excluded as mechanics, not work.
+    - **Own-task ledger** via the *reused* `verdict.format_ledger_section` with a header that names the source (`from the evaluator`). Payoff is on resume — empty on a task's first run, as predicted.
+    - Manifest gained `full_prd` / `seed_meta` / `own_ledger` channels (observability parity). Per-field caps (`FULL_PRD_MAX_CHARS=6k`, `SEED_META_MAX_CHARS=4k`) are separate from the 16k `prompt_assembled` *log* cap.
+- **Evaluator visibility (`loop._judge_task`)** — gained `results=`; the static "All objective validators PASSED" string is replaced with the **real validator output** (`_format_validator_section`, capped 4k), and **this task's seed test is inlined** (`_format_seed_test_section`, capped 6k). **Decision (with the user):** the seed test is read **worktree-current** — the exact file pytest ran — not the pristine seed commit; tampering is already caught via the diff, and the worktree version is what makes the `weak_test` judgement meaningful. Reads via the now-public `validators.task_test_glob` — one source of truth shared with the pytest filter. Resolves [#16](https://github.com/AlteredCraft/tilth/issues/16).
+- **Prompts** — `system.md` gained a short "the full plan and seed context are *context*, not a worklist; address prior verdicts directly" paragraph; `judge.md` gained a "Reading the seed acceptance test" section (use it to ground `weak_test`) and an updated "you see only" list. Both kept judgement-framed, no enumerated rules.
+- **Fixed in passing:** a stale Phase-3 leftover — the per-task worker prompt tail still said *"Stop calling tools and respond with a brief summary when done"*, directly contradicting the `submit_case` advocate framing. Now aligned.
+- **Robustness fix folded in (the headline demo finding).** The first Phase 4 demo run (`20260530-073150-761226`) stalled on T-004: the worker model (deepseek-v4-flash via OpenRouter) began returning **empty 200s — no content, no tool calls, zero prompt+completion tokens** — at iter 7. The loop mistook each for "worker stopped without `submit_case`" and nudged a dead endpoint ~15× until manual interrupt (3/4 tasks done). This was a *latent Phase-3 robustness gap*, not a Phase-4 regression (iters 1–6 worked; the prompt was ~6k tokens). Empty calls cost 0 tokens, so the token cap never tripped; only the iteration cap (60) would have. Fix (same commit, mirroring how Phase 1 folded in judge-prompt softening discovered during *its* demo): `_is_empty_response` detection that **skips the history append** (an empty turn became a role-less `{}` message that poisoned every later request), retry-with-backoff then abort with a distinct `empty_responses` reason + an `empty_model_response` event, and a consecutive-nudge circuit breaker (`no_case`) for the genuinely-quiet-worker case. New terminal-failure reasons `empty_responses` / `no_case`.
+- **Tests:** 329 green (was 292). New: `test_worker_prompt_contains_full_prd`, `_seed_meta`, `_own_ledger`; `test_evaluator_prompt_contains_validator_output`, `_seed_test_file`; `test_loop_empty_response_abort` (the empty-response and no-case backstops, driving `_run_task` with a fake client).
+- **Demo validation:** the first run surfaced the empty-response stall (above); a re-run **after** the fix completed end-to-end. The wiring is proven on a real run — worker saw the full plan + seed context + (on resume) its own ledger; evaluator saw real validator output + the inlined seed test. The plan's F9-reduction and token-cost hypotheses were **not separately quantified** this session (F9 needs a pre-emption-prone seed; token cost stays confounded by the F5 ruff dance until [#25](https://github.com/AlteredCraft/tilth/issues/25)) — claim the wiring + #16, not the cost win, until measured on a controlled seed.
 
 **Goal:** Implement the visibility table from the sketch. Worker sees full PRD, `seed-meta.json`, own task's ledger. Evaluator sees full validator output content and matching seed test file content.
 
