@@ -1,6 +1,6 @@
 # Implementation plan: worker–evaluator dialogue (v1)
 
-**Status:** In progress — **Phases 1–4 landed (Phases 1–3 2026-05-29; Phase 4 2026-05-30).** Phase 5 not started; Phase 6 deferred.
+**Status:** **Phases 1–5 landed (Phases 1–3 2026-05-29; Phases 4–5 2026-05-30)** — the v1 worker–evaluator dialogue is implemented end-to-end. Phase 6 (visualizer ledger panel) is split out to [#26](https://github.com/AlteredCraft/tilth/issues/26); it was always off the v1 critical path.
 **Author:** Sam (with Claude conversational pass)
 **Date:** 2026-05-27 (last updated 2026-05-30)
 **Related:** [`frictions-2026-05-26.md`](frictions-2026-05-26.md) (the inventory), [`v1-worker-evaluator-dialogue.md`](v1-worker-evaluator-dialogue.md) (the sketch this plan implements).
@@ -268,6 +268,17 @@ The fix shipped as part of Phase 1: **`tilth/prompts/judge.md` redraws the brigh
 
 ## Phase 5 — Self-improver reads the ledger
 
+**Status: ✅ Landed 2026-05-30** ([`b17991e`](https://github.com/AlteredCraft/tilth/commit/b17991e)). Closes [#9](https://github.com/AlteredCraft/tilth/issues/9). What shipped:
+
+- **`loop._self_improve_session_context(session)`** (new) — assembles the cross-task signal: the session's rejection-category histogram and every task's evaluator ledger arc (reusing `verdict.format_ledger_section`). Returns `""` until there's something to show.
+- **`loop._self_improve`** — injects that context into the user message and **emits a `prompt_assembled` event with `role="self_improve"`** (the observability-parity gap this phase was meant to close — worker + evaluator already did, self_improve didn't). One `span_id` across the call's events.
+- **`session.ledger_task_ids()`** (new) — read-only `ledger/*.jsonl` enumerator that, unlike `ledger_dir()`, does *not* create the directory.
+- **`tilth/prompts/propose_learning.md`** — a short "Session signal" section: ground a proposal in a *recurring* pattern, not a one-off.
+- **Divergence from the scope below:** the histogram is rebuilt fresh via `summary.build_from_events(session.events_path)` rather than read from `summary.json`. `_self_improve` runs *before* the task-boundary `_refresh_summary`, so reading the file would lag by the just-finished task; rebuilding reuses the canonical rollup logic and stays current.
+- **Tests:** 335 green (was 329). New `tests/test_self_improve_sees_ledger.py` — the context helper (histogram + per-task arcs + empty case), `ledger_task_ids` (sorted; doesn't create the dir), and `_self_improve` end-to-end asserting the `self_improve` `prompt_assembled` fires with the signal in it.
+- **Demo validation:** the *wiring* is proven against a real session — rendering `_self_improve_session_context` over `20260530-073150-761226` produced `half_finished: 1, scope_creep: 2` plus the full per-task verdict arcs (the workspace-wide-ruff `scope_creep` recurrence, the committed-`todos.md` `half_finished`). The *behavior* (does the model turn that into a grounded learning rather than a platitude?) needs a live self-improve call on a session with ≥2 same-category rejections — **not separately quantified this session.** Claim the wiring + the signal quality, not the learning quality, until measured.
+- **Known follow-up (uncapped, deliberately):** self_improve runs per-task and injects *all* ledgers each call, so the context grows with the session. Fine at demo scale; add a char cap / last-N-per-task if a long session bloats it.
+
 **Goal:** The existing self-improve step (`tilth/prompts/propose_learning.md` → `proposed-learnings.md`) reads the per-task ledger and the session-wide `rejection_category` counts to propose better-grounded learnings.
 
 **Why this phase last:** Self-improve is a leaf in the loop's flow. It benefits from everything Phases 1–4 produce. Doing it last means we know the signal it's working from is real. Closes [#9](https://github.com/AlteredCraft/tilth/issues/9) (self-improver gets no signal from judge rejections).
@@ -296,11 +307,11 @@ The fix shipped as part of Phase 1: **`tilth/prompts/judge.md` redraws the brigh
 
 ---
 
-## Phase 6 — Visualizer ledger panel (deferred)
+## Phase 6 — Visualizer ledger panel → split out to [#26](https://github.com/AlteredCraft/tilth/issues/26)
 
-Flagged in the sketch as out-of-scope-for-v1-implementation. Worth a follow-up issue once Phases 1–5 land — the ledger is rich data and the visualizer is the natural place to render it. Not on the v1 critical path.
+Always flagged as out-of-scope-for-v1-implementation, and now tracked as its own issue rather than inline here. The ledger is the richest artifact v1 produces and the visualizer is the natural place to render it, but it's a read-side nicety, not loop mechanics — off the v1 critical path.
 
-**Current renderer state (so Phase 6 knows what's left):** Phase 1 added `_render_evaluator_verdict` (renders the structured verdict — category, evidence, next_step). The other new event types — `prompt_assembled`, `ledger_appended`, `evaluator_parse_error` — currently fall through to `_render_unknown` (the generic dim JSON card), which is acceptable but unpolished. Phase 6's scope is therefore: (a) a per-task ledger panel showing the iteration arc (verdicts over time, diffs collapsible), and (b) dedicated renderers for the three fall-through events. File the follow-up issue (OQ #9) when Phase 5 lands so it isn't lost.
+**Scope now lives in [#26](https://github.com/AlteredCraft/tilth/issues/26):** (a) a per-task ledger panel showing the iteration arc (verdicts over time, diffs collapsible), and (b) dedicated renderers for the v1 event types that still fall through to `_render_unknown` — `prompt_assembled`, `ledger_appended`, `evaluator_parse_error`, `case_parse_error`, `empty_model_response`. (Phase 1's `_render_evaluator_verdict` is the model to follow.)
 
 ---
 
@@ -342,12 +353,12 @@ The sketch's open questions land here:
 | OQ #1 — Ledger size cap | Phase 2 | ✅ **Resolved:** `LEDGER_INJECT_LIMIT=5`. No prompt-size issue seen in the Phase 2 demo; token-budgeted truncation deferred until one appears. |
 | OQ #2 — `work_arounds` discipline | Phase 3 | ✅ **Shipped + observed:** cap at 5 + evaluator-prompt skepticism. In `20260529-134013` the worker did *not* abuse it as a permission slip — it named a real cross-task edit and the evaluator rejected it anyway (named ≠ excused). Holding; revisit if a later run shows relabel-creep. |
 | OQ #3 — AC coverage gaps | Phase 3 | **Not auto-enforced (deliberate).** `judge.md` instructs "a missing AC = `acceptance_gap`" but it's a judgement call, not a schema check — consistent with soften-toward-judgement. The mechanical auto-reject-on-incomplete-coverage option is deferred (would need the PRD's AC list threaded into the case validator); revisit if the evaluator misses a gap in practice. |
-| OQ #4 — Self-improver and ledger | Phase 5 | Direct implementation target; the rollup data it needs already ships (Phase 1). |
+| OQ #4 — Self-improver and ledger | Phase 5 | ✅ **Resolved:** self_improve reads every task's ledger + the rejection histogram (rebuilt fresh from events, not the lagging `summary.json`). Closes [#9](https://github.com/AlteredCraft/tilth/issues/9). |
 | OQ #5 — Cross-task evaluator memory | Out of scope | v1.5 question; flagged in sketch |
 | OQ #6 — Token budget | Continuous | **Data points:** clean 3-task run ≈ 238k (`20260528-074315`); 2 rejections ≈ 562k (`20260529-113158`); Phase 3 run ≈ 407k (`20260529-134013`). Cost is dominated by the **F5 ruff dance** ([#25](https://github.com/AlteredCraft/tilth/issues/25)) — T-001 alone was 226k/27 iters fighting workspace-wide lint, not the dialogue. The "better feedback nets fewer tokens" hypothesis is confounded by F5 until #25 lands; measure again after. |
 | OQ #7 — `submit_case` failure modes | Phase 3 | ✅ **Resolved:** reuses `verdict.parse_verdict`. In `20260529-134013` there were **zero** `case_parse_error`s across 6 submissions; premature submits were caught by the validator floor (fed back as the submit_case tool_result, no judge call burned), not by parse failures. |
 | OQ #8 — Seeder updates | Phase 3 evaluation | **Evidence in:** the demo seed *did* break the dialogue (#23 contradiction, #22 collateral). Phase 3's `work_arounds` lets the worker *name* the friction (confirmed in `20260529-134013`); the structural seeder fix (contract negotiation) stays v2. |
-| OQ #9 — Visualizer | Phase 6 | Deferred; file the follow-up issue when Phase 5 lands |
+| OQ #9 — Visualizer | Phase 6 | ✅ **Split out:** filed as [#26](https://github.com/AlteredCraft/tilth/issues/26) (ledger panel + dedicated renderers). Off the v1 critical path. |
 
 ### Tilth self-tests
 
@@ -371,7 +382,7 @@ Today `tilth/tests/` is light. v1 doubles the surface area. Aim to land each pha
 - **Hook lifecycle.** Tracked in [#19](https://github.com/AlteredCraft/tilth/issues/19); revisit when v2 mechanical checks make the natural shape obvious.
 - **Cross-session evaluator memory.** OQ #5; needs more thought.
 - **Process isolation.** Tracked in [#13](https://github.com/AlteredCraft/tilth/issues/13).
-- **Visualizer panel for the ledger.** Phase 6 above.
+- **Visualizer panel for the ledger.** Tracked in [#26](https://github.com/AlteredCraft/tilth/issues/26).
 
 ## Rough sequencing note
 
