@@ -47,13 +47,14 @@ Event types:
                          truncated, sha256_8) and `user_prompt_chars`.
     validator_run      — pytest/ruff/mypy result
     prompt_assembled   — an assembled user message just before it's sent to a
-                         model. Payload: {role (worker|evaluator), iter,
-                         content (capped at PROMPT_ASSEMBLED_CHAR_CAP),
+                         model. Payload: {role (worker|evaluator|self_improve),
+                         iter, content (capped at PROMPT_ASSEMBLED_CHAR_CAP),
                          chars (untruncated length), truncated (bool)}. Lets a
                          post-run reviewer reconstruct what each actor saw on
                          each turn without replaying the loop. Worker prompt
                          fires once per task at iter=0; evaluator prompt fires
-                         once per judge call at the worker's current iter.
+                         once per judge call at the worker's current iter;
+                         self_improve fires once per completed task at iter=0.
     evaluator_verdict  — structured verdict from the evaluator (v1 of the
                          dialogue, see proposals/v1-implementation-plan.md
                          Phase 1). Payload: {verdict (accept|reject),
@@ -282,6 +283,18 @@ class Session:
         if limit is not None and limit >= 0:
             return entries[-limit:] if limit else []
         return entries
+
+    def ledger_task_ids(self) -> list[str]:
+        """Task ids that have a ledger file, sorted. [] if none yet.
+
+        Read-only enumerate-all over `ledger/*.jsonl` — does not create the
+        directory (unlike `ledger_dir`). Phase 5's self-improver uses this to
+        read every task's ledger for cross-task pattern signal.
+        """
+        d = self.root / "ledger"
+        if not d.is_dir():
+            return []
+        return sorted(p.stem for p in d.glob("*.jsonl"))
 
     def save_checkpoint(self) -> None:
         cp = {

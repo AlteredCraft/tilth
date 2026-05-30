@@ -19,6 +19,10 @@ Bad proposals:
 
 Most tasks will not produce a worthwhile proposal. That's fine — respond `{"propose": "no"}` and move on.
 
+## Session signal (when present)
+
+You may also see the session's **rejection patterns** (how often the reviewer rejected work, by category) and the **per-task evaluator ledgers** (its verdicts across iterations). Use them to ground a proposal in a *recurring* pattern, not a one-off: if the same rejection category keeps appearing across tasks (e.g. repeated `scope_creep` in the same kind of code, or `weak_test` on a recurring shape), that points at a durable convention this codebase needs — propose the underlying principle, not a restatement of the single symptom. A pattern that appears once is probably not durable enough to keep.
+
 ## How to respond
 
 Respond with **strict JSON only**, no prose around it:

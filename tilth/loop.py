@@ -583,6 +583,45 @@ def _call_evaluator_with_retry(
 
 # --- self-improvement: propose a learning -----------------------------------
 
+def _self_improve_session_context(session: Session) -> str:
+    """Phase 5: cross-task signal for the self-improver.
+
+    Two pieces, both grounding a proposal in a *pattern* rather than one task's
+    symptom: the session's rejection-category histogram, and every task's
+    evaluator ledger (its verdict arc across iterations).
+
+    The histogram is rebuilt fresh from events here (not read from summary.json)
+    because `_self_improve` runs *before* the task-boundary summary refresh —
+    reading the file would lag by the just-completed task. Reuses the canonical
+    `summary.build_from_events` rollup so the counts match summary.json once it
+    catches up. Returns "" when there's nothing yet (first task, no rejections).
+    """
+    parts: list[str] = []
+
+    rollup = summary.build_from_events(session.events_path)
+    categories = (rollup.get("evaluator") or {}).get("rejection_categories") or {}
+    if categories:
+        hist = ", ".join(f"{cat}: {n}" for cat, n in sorted(categories.items()))
+        parts += ["## Rejection patterns across this session (by category)", "", hist, ""]
+
+    ledger_blocks: list[str] = []
+    for tid in session.ledger_task_ids():
+        section = format_ledger_section(
+            session.read_ledger(tid),
+            header=f"### {tid} — the evaluator's iterations",
+        )
+        if section:
+            ledger_blocks.append(section)
+    if ledger_blocks:
+        parts += [
+            "## Per-task evaluator ledgers (this session)",
+            "",
+            *ledger_blocks,
+        ]
+
+    return "\n".join(parts).rstrip()
+
+
 def _self_improve(
     task: dict[str, Any],
     worktree: Path,
@@ -603,19 +642,43 @@ def _self_improve(
         diff = diff[:JUDGE_DIFF_MAX_CHARS] + "\n... [truncated]"
 
     agents_md = memory.load_agents_md(worktree).strip() or "(no AGENTS.md in this project)"
-    user = (
-        f"Task just completed: {task['id']} — {task['title']}\n\n"
-        f"Description:\n{task.get('description', '').strip()}\n\n"
-        f"## Current AGENTS.md\n\n"
-        f"{agents_md}\n\n"
-        f"## Diff produced\n\n```diff\n{diff or '(empty)'}\n```\n\n"
-        "Respond with strict JSON only."
+    session_context = _self_improve_session_context(session)  # Phase 5
+
+    parts = [
+        f"Task just completed: {task['id']} — {task['title']}",
+        "",
+        f"Description:\n{task.get('description', '').strip()}",
+        "",
+        "## Current AGENTS.md",
+        "",
+        agents_md,
+        "",
+        "## Diff produced",
+        "",
+        f"```diff\n{diff or '(empty)'}\n```",
+    ]
+    if session_context:
+        parts += ["", session_context]
+    parts += ["", "Respond with strict JSON only."]
+    user = "\n".join(parts)
+
+    span_id = _span_id()
+    # Observability parity (Phase 5): self_improve now emits prompt_assembled
+    # like the worker and evaluator — so a post-run reviewer sees the cross-task
+    # signal the self-improver actually had.
+    _log_prompt_assembled(
+        session,
+        role="self_improve",
+        task_id=task["id"],
+        trace_id=trace_id,
+        span_id=span_id,
+        iter_value=0,
+        content=user,
     )
     messages = [
         {"role": "system", "content": _propose_learning_prompt()},
         {"role": "user", "content": user},
     ]
-    span_id = _span_id()
     resp = client.chat(messages)
     usage = resp.get("usage") or {}
     prompt_tokens = int(usage.get("prompt_tokens") or 0)
