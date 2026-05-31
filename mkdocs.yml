@@ -25,7 +25,7 @@ nav:
       - Installation: getting-started/installation.md
       # End-to-end walkthrough of the two-step `tilth prep-feature` →
       # `tilth run` flow: the seeding interview, then the per-task lifecycle
-      # (prompt assembly → tool-use loop → validators → judge →
+      # (prompt assembly → tool-use loop → validators → evaluator verdict →
       # self-improvement → commit), what the console streams, and where to
       # look in `sessions/<id>/` after the run.
       - Running the demo: getting-started/running-the-demo.md
@@ -51,12 +51,14 @@ nav:
 
   - Architecture:
       # The Brain / Hands / Session split, generator/evaluator separation
-      # (the judge in a fresh context), repo layout, and the six load-bearing
-      # invariants. Read this before extending the harness.
+      # (the evaluator in a fresh context across tasks, with per-task ledger
+      # memory), repo layout, and the six load-bearing invariants. Read this
+      # before extending the harness.
       - Overview: architecture/overview.md
-      # The four memory channels that live *outside* the agent — `AGENTS.md`,
-      # git history, `progress.txt`, `prd.json` — with a who-reads/who-writes
-      # table and the rationale for keeping state out of the model's context.
+      # The memory channels that live *outside* the agent — `AGENTS.md`, git
+      # history, `progress.txt`, `prd.json`, and the per-task evaluator ledger
+      # — with a who-reads/who-writes table and the rationale for keeping state
+      # out of the model's context.
       - Memory channels: architecture/memory-channels.md
 
   - Deep dives:
@@ -65,18 +67,26 @@ nav:
       # not needed just to *use* the harness.
       - Overview: deep-dives/index.md
       # Ralph (outer) vs. tool-use (inner) loops; what does and doesn't count
-      # as an iteration; the inner-loop flowchart; why judge rejections eat
+      # as an iteration; the inner-loop flowchart; why evaluator rejections eat
       # iterations; worst-case tokens-per-task formula.
       - The two loops: deep-dives/two-loops.md
+      # The structured exchange the inner loop ends in: the worker presents a
+      # `case` (submit_case), the evaluator returns a typed `verdict`
+      # (submit_verdict + the six rejection categories), and a per-task ledger
+      # gives the evaluator memory across iterations. The canonical home for
+      # case / verdict / ledger; other pages link here.
+      - The worker↔evaluator dialogue: deep-dives/worker-evaluator-dialogue.md
       # Where the token cap is set (`client.py`), where the running counter
       # lives (`Session.tokens_used` + `checkpoint.json`), the three call
       # sites that record tokens, why enforcement is between-task only, and
       # the known gaps (no $-cost, no per-model split, no headroom warning).
       - Token recording: deep-dives/token-recording.md
-      # The visibility table: what the worker agent sees (current task,
-      # AGENTS.md, progress tail, tool schemas, its own reasoning) vs. what
-      # the harness hides from it (`prd.json`, `events.jsonl`, the judge,
-      # token counts, the worktree branch). Justifies *why* the wall exists.
+      # The visibility table: what the worker agent sees (its task, the whole
+      # feature plan as context, a curated seed-context slice, its own task's
+      # evaluator verdicts, AGENTS.md, progress tail, tool schemas) vs. what
+      # the harness still hides (the `prd.json` file + status machinery,
+      # `events.jsonl`, token counts, the worktree branch). The Phase 4
+      # expansion softened the wall — read this for where it now sits.
       - Agent visibility: deep-dives/agent-visibility.md
       # `tilth prep-feature`'s interview engine: the seed bundle (prd.json +
       # tests + seed-meta.json), the InterviewFrontend / SeedSink protocols,
@@ -91,30 +101,33 @@ nav:
       # think it was done", or understanding what `_load_prd` actually
       # returns.
       - The PRD format: deep-dives/prd-json.md
-      # The five stop conditions for a run and which layer each operates at
-      # (session-level vs. task-level). Cross-references the loops, token
-      # recording, and resume pages.
+      # The run-stopping outcomes (the four caps plus the empty-response /
+      # no-case backstops) and which layer each operates at (session-level vs.
+      # task-level). Cross-references the loops, token recording, and resume.
       - How the caps fit together: deep-dives/caps.md
-      # What `--resume` actually mutates on wake: `wake()` reads checkpoint,
+      # What `tilth resume` actually mutates on wake: `wake()` reads checkpoint,
       # `_prepare_resume()` flips trailing `failed` task back to `pending` and
-      # soft-unwinds the FAILED placeholder commit so the judge sees the full
-      # cumulative diff on retry. Also covers resumable-session detection.
+      # soft-unwinds the FAILED placeholder commit so the evaluator sees the
+      # full cumulative diff on retry; per-task ledgers survive on disk. Also
+      # covers resumable-session detection.
       - Resume mechanics: deep-dives/resume-mechanics.md
-      # Step-by-step of `--reset`: resolve session id → recover paths from
+      # Step-by-step of `tilth reset`: resolve session id → recover paths from
       # checkpoint + `session_start` event → confirm → tear down. Idempotency
       # contract (already-missing pieces are skipped, not errored).
       - Reset mechanics: deep-dives/reset-mechanics.md
       # Where a run lives on disk: working tree under Tilth's
-      # `sessions/<id>/workspace/`, branch + worktree admin entry in the
-      # source repo's `.git`. Why the working tree stays on the harness
-      # side and out of the target repo.
+      # `sessions/<id>/workspace/`, the session's durable state (`prd.json`,
+      # `progress.txt`, `seed-meta.json`, `ledger/`, `proposed-learnings.md`),
+      # branch + worktree admin entry in the source repo's `.git`, plus a
+      # reference table of every `events.jsonl` event type.
       - Session layout: deep-dives/session-layout.md
 
   - Reference:
-      # Compact summary of the safety story: hard stops (the caps), the
-      # `pre_tool` veto pattern list (force pushes, `sudo`, `curl ... | sh`,
-      # etc.), worktree isolation, and an honest list of what is *not*
-      # guarded (no dollar cap, no mid-task cutoff, no network allowlist).
+      # Compact summary of the safety story: hard stops (the caps plus the
+      # empty-response / no-case backstops), the `pre_tool` veto pattern list
+      # (force pushes, `sudo`, `curl|wget ... | sh`, etc.), worktree file-tool
+      # isolation, and an honest list of what is *not* guarded (no dollar cap,
+      # no mid-task cutoff, no network allowlist).
       - Safety guards: reference/safety-guards.md
 
 # Contributor-only references that live under docs/ for co-location but are

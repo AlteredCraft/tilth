@@ -25,7 +25,7 @@ class Session:
 
 Two relevant methods:
 
-- **`add_tokens(n)`** — increments the counter and **immediately persists `checkpoint.json`**. That second part matters: if the process dies, the next `--resume` reads the persisted total and continues from there. Token accounting survives crashes.
+- **`add_tokens(n)`** — increments the counter and **immediately persists `checkpoint.json`**. That second part matters: if the process dies, the next `tilth resume` reads the persisted total and continues from there. Token accounting survives crashes.
 - **`save_checkpoint()`** — serialises `tokens_used` into `checkpoint.json` along with the rest of the resume state.
 
 ```python
@@ -38,12 +38,12 @@ The counter has two homes: an in-memory `int` for the live process, and a JSON f
 
 ## Three call sites record tokens
 
-There's one model call per "spot" in the loop, and each records tokens the same way. All three live in `tilth/loop.py`:
+There's one model call per "spot" in the loop, and each records tokens the same way (the evaluator site records once per parse attempt, up to two). All three live in `tilth/loop.py`:
 
 | Site | Function | What it's calling |
 |---|---|---|
-| `_judge_task` | `_judge_task` | judge model on a finished task |
-| `_self_improve` | `_self_improve` | worker model asking "should AGENTS.md be updated?" |
+| `_judge_task` | `_judge_task` | evaluator model on a finished task (one call per attempt, up to 2) |
+| `_self_improve` | `_self_improve` | worker model asking "did this task surface a durable learning?" (collected into proposed-learnings.md) |
 | `_run_task` | `_run_task` | worker model — the main per-iteration call |
 
 The pattern is the same in all three:
@@ -74,7 +74,7 @@ session.log("model_call", {
 })
 ```
 
-That's the audit trail. After a run, grep `events.jsonl` for `model_call` and reconstruct exactly when tokens were spent. The judge and self-improve sites *don't* currently log a per-call event — they update the running total but skip the per-call detail. Symmetry would make the audit cleaner; small TODO.
+That's the audit trail. After a run, grep `events.jsonl` for `model_call` and reconstruct exactly when tokens were spent. The evaluator and self-improve sites log a `model_call` event too, via the shared `_log_model_call` helper — same payload shape as the worker, plus a `phase` field (`evaluator` / `self_improve`) and, on the evaluator, an `attempt` (1 or 2) to pair a retry with its parse error. Every model call in the system is now observable the same way.
 
 ## Enforcement is at the top of each task
 
@@ -124,7 +124,7 @@ If you wanted hard mid-task enforcement, you'd add the same check inside `_run_t
 {"ts": "...", "type": "stop", "payload": {"reason": "token_cap"}}
 ```
 
-`checkpoint.json` has the final `tokens_used` value. So a session that hit the cap is identifiable from either file alone, and `--resume` will see the same `tokens_used` total — meaning **resume of a cap-stopped session will immediately re-trip the cap and stop again**. To resume past a cap, bump `TILTH_MAX_TOKENS` in `.env` before running `--resume`. The harness reads env on each invocation, so the new cap takes effect.
+`checkpoint.json` has the final `tokens_used` value. So a session that hit the cap is identifiable from either file alone, and `tilth resume` will see the same `tokens_used` total — meaning **resume of a cap-stopped session will immediately re-trip the cap and stop again**. To resume past a cap, bump `TILTH_MAX_TOKENS` in `.env` before running `tilth resume`. The harness reads env on each invocation, so the new cap takes effect.
 
 The wall-clock baseline (`started_at`) is treated differently: `Session.wake()` resets it to "now" on every resume so the cap applies *per resume* rather than cumulatively. Without that reset, a resume the next day would trip wall-clock immediately. **Tokens are cumulative; wall-clock is per-resume.** Asymmetric on purpose.
 
@@ -133,6 +133,6 @@ The wall-clock baseline (`started_at`) is treated differently: `Session.wake()` 
 A few honest gaps worth knowing:
 
 1. **No dollar-cost tracking.** Tokens, not dollars. The cap is provider-agnostic — useful as a coarse safety net, useless for "stop when I've spent $50 on this run." Adding dollar tracking means a per-model price table and a cost lookup at each `add_tokens` site. Not in MVP.
-2. **No per-model breakdown.** If worker and judge are different models on different providers, the running total mashes them together. Splitting `tokens_used` into `worker_tokens_used` and `judge_tokens_used` is ~10 lines if it ever matters.
+2. **No per-model breakdown.** If worker and evaluator are different models on different providers, the running total mashes them together. Splitting `tokens_used` into `worker_tokens_used` and `judge_tokens_used` is ~10 lines if it ever matters.
 3. **No headroom warning.** The cap is binary — under it, run; at it, stop. No "you're at 80% of your token budget" alert. Easy to add in `_stop_reason` if you want it.
 4. **The cap is over the whole session, not per-task.** A 10-task run with a 2M cap means tasks 1–9 might gobble tokens and starve task 10. There's no per-task budget. The iteration cap (default 8 model calls per task) is the proxy; combined with average tokens/call, that approximates a per-task ceiling.

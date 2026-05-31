@@ -60,11 +60,10 @@ When the base URL points at OpenRouter, Tilth sends OpenRouter's normalised `rea
 
 ## Building these docs locally
 
-The docs site itself is built with [MkDocs](https://www.mkdocs.org/). Once the docs optional dependency group is installed:
+The docs site itself is built with [MkDocs](https://www.mkdocs.org/). The `--extra docs` flag resolves the docs dependency group on the fly:
 
 ```bash
-uv pip install -e ".[docs]"
-mkdocs serve
+uv run --extra docs mkdocs serve
 ```
 
 `mkdocs serve` opens a live-reload preview at `http://127.0.0.1:8000`.

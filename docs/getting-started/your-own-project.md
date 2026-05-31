@@ -10,14 +10,14 @@ This page is for a reader who has finished the [demo walkthrough](running-the-de
 
 Your project must be a **git repo with a clean `main` branch**. That's it for hard prerequisites. Two things are worth having but optional:
 
-- **`AGENTS.md`** at the repo root. User-owned, user-maintained — Tilth reads it as project context for the worker and judge but never writes to it. Even a short one helps both the seeding interview and the worker understand your conventions. A starting template lives at [Memory channels → `AGENTS.md`](../architecture/memory-channels.md#agentsmd-your-project-conventions); the same page covers what does and doesn't belong there.
+- **`AGENTS.md`** at the repo root. User-owned, user-maintained — Tilth reads it as project context for the worker and the evaluator but never writes to it. Even a short one helps both the seeding interview and the worker understand your conventions. A starting template lives at [Memory channels → `AGENTS.md`](../architecture/memory-channels.md#agentsmd-your-project-conventions); the same page covers what does and doesn't belong there.
 - **An existing `tests/` directory with at least one example file.** The seeder samples your test style during the interview and mirrors it in the new test files. With no examples, you'll be asked to confirm the convention.
 
 You do **not** write `prd.json`, `progress.txt`, or the acceptance tests by hand. `prd.json` and `progress.txt` are harness-owned and live under `sessions/<id>/` — they never enter your repo's working tree. The acceptance tests come out of `tilth prep-feature` and land in `sessions/<id>/workspace/tests/` (the session worktree, on branch `session/<id>`), not your source repo's `tests/`. Your working tree stays clean across both prep and run; the only artifact in your source repo is the `session/<id>` branch in `.git`.
 
 ## 2. Seed a task list
 
-`tilth prep-feature` interviews you against your codebase to produce the seed — `prd.json` (task list) and one matching acceptance test per task. The interview is anchored: the model reads your code as it asks questions, so the slices are grounded in what's actually there.
+`tilth prep-feature` interviews you against your codebase to produce the seed — `prd.json` (task list) and one matching acceptance test per task. Each test lands at `<worktree>/tests/test_t<NNN>_<slug>.py` (matching its `T-NNN` task id) — the convention pytest runs against and the evaluator reads to ground its review; the sink rejects a seed that doesn't follow it. The interview is anchored: the model reads your code as it asks questions, so the slices are grounded in what's actually there.
 
 If you've already written a spec / RFC / design doc / ticket for this feature, point at it in your initial brief (e.g. *"add a CSV exporter — full spec at `docs/proposals/csv-exporter.md`"*). The seeder reads the doc first and shifts the interview into confirmation + gap-filling mode rather than starting from scratch — usually fewer turns, fewer tokens, and the seed anchored on text you already vetted. The doc must live inside the repo (the seeder's file access is sandboxed); for external docs, paste the load-bearing sections inline into your brief. See [Interview shapes: cold start vs. existing-PRD anchor](../deep-dives/seeding.md#interview-shapes-cold-start-vs-existing-prd-anchor) for the engine-side story.
 
@@ -46,7 +46,7 @@ If no prepared session exists, `tilth run` shows a picker rather than crashing �
 - [Resetting a session](resetting.md) — `tilth reset` tears down a session's worktree, branch, and `sessions/<id>/`.
 - [Visualizing a session](visualizing.md) — `tilth visualize` renders `events.jsonl` (and `seed-meta.json` if present) as a chat-style HTML page with a seed-context panel above the timeline.
 
-## 3. Review
+## 4. Review
 
 ```bash
 cd /path/to/your/repo
@@ -64,27 +64,27 @@ git merge session/<id>
 
 If you don't like it: delete the branch. The harness never auto-merges.
 
-The session log lives at `{{tilth-clone-path}}/sessions/<id>/events.jsonl` — every model call, tool call, validator run, judge verdict, and AGENTS.md update is recorded. Alongside it, `sessions/<id>/summary.json` carries a rolled-up snapshot (token totals, per-task iteration counts, tool histogram, hook outcomes, judge accept/reject) refreshed at every task boundary — read that when you want a quick stat without `jq`-ing the full log. The schema is documented in `tilth/summary.py`'s module docstring.
+The session log lives at `{{tilth-clone-path}}/sessions/<id>/events.jsonl` — every model call, tool call, validator run, evaluator verdict, and self-improvement proposal is recorded. Alongside it, `sessions/<id>/summary.json` carries a rolled-up snapshot (token totals, per-task iteration counts, tool histogram, hook outcomes, evaluator accept/reject plus a rejection-category histogram) refreshed at every task boundary — read that when you want a quick stat without `jq`-ing the full log. The schema is documented in `tilth/summary.py`'s module docstring.
 
-## 4. Caveats worth being upfront about
+## 5. Caveats worth being upfront about
 
 - **It's Python-centric.** `post_edit` lints `.py` files. `validators` runs `pytest` and `ruff`. JavaScript / Rust / Go projects need `tilth/validators.py` and `tilth/hooks/post_edit.py` adapted to your toolchain — not deep work, but not zero.
 - **Ruff config matters.** If your project doesn't already use ruff, the validator will fire constantly and the agent will spend iterations fixing things that aren't really broken. Either add a permissive `[tool.ruff]` block to your `pyproject.toml`, or swap the ruff validator for whatever linter you already use.
 - **The interview drives the seed; you drive the interview.** `prep-feature` interviews against your code, but the answers come from you. Vague briefs and rushed answers produce vague seeds and weak acceptance criteria, which burn tokens and produce branches you'll rewrite. The interview is the high-leverage moment — slow down here, not in the run.
-- **Costs are real, in two places.** The interview itself is a real spend (a frontier-tier reasoning model across many turns); the prompt-line token strip surfaces it so you can abort if it drifts. Then the run itself spends hundreds of thousands of tokens across worker + judge + self-improvement. The `TILTH_MAX_TOKENS` cap exists for a reason — set it on first run. Cost per token varies wildly across providers; pick your worker accordingly. Be careful about reaching for a smaller judge model to cut costs — see [Picking a judge model](#5-picking-a-judge-model) below.
+- **Costs are real, in two places.** The interview itself is a real spend (a frontier-tier reasoning model across many turns); the prompt-line token strip surfaces it so you can abort if it drifts. Then the run itself spends hundreds of thousands of tokens across worker + evaluator + self-improvement. The `TILTH_MAX_TOKENS` cap exists for a reason — set it on first run. Cost per token varies wildly across providers; pick your worker accordingly. Be careful about reaching for a smaller judge model to cut costs — see [Picking a judge model](#6-picking-a-judge-model) below.
 - **AGENTS.md is yours.** Tilth reads it, never writes it. The self-improvement step's proposals land in `sessions/<id>/proposed-learnings.md` for you to review and (optionally) promote into AGENTS.md by hand. The file only grows when you decide it should.
 - **Tools are intentionally narrow.** No web fetch, no MCP, no curl-based downloads. If your tasks require external API access, you add a tool to `tilth/tools/` and register it. Keep tools focused — every tool description ships in the prompt every turn.
-- **The harness commits to your repo's git db.** Tilth keeps the working tree under `sessions/<id>/workspace/` on its own side, but the branch `session/<id>` lives in *your* repo's `.git`. So if you delete your Tilth clone without resetting first, those branches remain in your project. Clean up branches the same way you would for a normal feature branch — or run `--reset` before you blow Tilth away. See [Session layout](../deep-dives/session-layout.md) for the full split.
+- **The harness commits to your repo's git db.** Tilth keeps the working tree under `sessions/<id>/workspace/` on its own side, but the branch `session/<id>` lives in *your* repo's `.git`. So if you delete your Tilth clone without resetting first, those branches remain in your project. Clean up branches the same way you would for a normal feature branch — or run `tilth reset` before you blow Tilth away. See [Session layout](../deep-dives/session-layout.md) for the full split.
 
-## 5. Picking a judge model
+## 6. Picking a judge model
 
-The judge call is the single most consequential model decision in the harness. It's the only thing standing between "validators passed" and "this gets committed to a branch you'll merge."
+The evaluator call is the single most consequential model decision in the harness. It's the only thing standing between "validators passed" and "this gets committed to a branch you'll merge." (The role is the *evaluator*; the config knob you set here is still `TILTH_JUDGE_MODEL`.)
 
 ### Default: judge ≥ worker
 
 For correctness gating on code diffs, the judge should be **at least as capable as the worker, often more capable**. A weaker judge fails in the worst possible way: it accepts bad work because it didn't notice the problem.
 
-This is the opposite of the intuition many people start with ("the worker did the hard work, the judge just rubber-stamps"). The judge has *less* context — no chain-of-thought, no tool history, just diff and criteria — so it needs more capability to compensate, not less.
+This is the opposite of the intuition many people start with ("the worker did the hard work, the judge just rubber-stamps"). The judge sees the diff, the acceptance criteria, the full validator output, the inlined seed test, the worker's structured case, and its own prior verdicts on this task — but not the worker's chain-of-thought or tool history. It's reviewing an artifact, not retracing the work — so it needs more capability to compensate, not less.
 
 Academic LLM-as-a-judge research bears this out: evaluators are typically run with GPT-4-class models judging GPT-3.5-class outputs, not the other way around. The point of separation is **independence**, not capability reduction.
 
@@ -107,19 +107,19 @@ There's a narrow band where a cheap judge works:
 
 For a Ralph loop doing real code review, none of these usually apply. Default to a judge that's at least as good as the worker. Only swap to a smaller judge after you've measured judge accept-rate on known-bad tasks and confirmed it's still catching them.
 
-## 6. When this is the wrong tool
+## 7. When this is the wrong tool
 
 - **Closed-source-only tasks.** If you can't share code with OpenRouter, this isn't the right tool today. A self-hosted OpenAI-compatible endpoint (vLLM, LM Studio) might work via the OpenAI SDK but hasn't been validated.
 - **Models without tool-calling support.** Some OpenRouter routes, some smaller open models, and most "completion-only" endpoints will fail or hallucinate tool calls. Verify on the demo workspace first.
-- **Polyglot codebases.** Adapt the validators, or accept that only the judge model is gating quality.
+- **Polyglot codebases.** Adapt the validators, or accept that only the evaluator model is gating quality.
 - **One-shot prompts.** If your work fits in one Claude Code or Cursor session, just use that.
 - **Hours-long, mission-critical, or production-touching runs.** Use a managed runtime (Google Agent Platform, Claude Managed Agents) instead. This harness is for *learning the pattern* on small bounded work.
 
-## 7. What to do on first run
+## 8. What to do on first run
 
 1. Brief the interview **narrowly**. Two or three tasks' worth of work — a feature with a clear contract, not an open-ended refactor. "Add `--format json` to the export CLI" beats "improve the export system."
 2. Drive the interview honestly. When asked an out-of-scope question, push back rather than nod through it; when the model proposes a slice that looks wrong, redirect with words rather than `Other` defaults. The seed compounds — early shortcuts mean later iterations.
 3. Watch the console during `tilth run` — it streams every tool call. If the agent thrashes on one task, kill the run, reset, re-prep with a sharper brief.
-4. Inspect `sessions/<id>/events.jsonl` after the run. Look for unexpected patterns: tasks that took many iterations, judge rejections, validator failure loops. Each is a signal.
+4. Inspect `sessions/<id>/events.jsonl` after the run. Look for unexpected patterns: tasks that took many iterations, evaluator rejections, validator failure loops. Each is a signal.
 5. Read `sessions/<id>/proposed-learnings.md` and decide what (if anything) belongs in your `AGENTS.md`. The first few proposals are often noise — prune ruthlessly.
 6. Iterate the harness, not just the prompts. If a class of failure keeps recurring, add a hook (the ratchet pattern). Constraints are earned by failures.

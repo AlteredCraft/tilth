@@ -11,16 +11,16 @@ A minimal long-running agent harness against an **OpenAI-compatible** LLM endpoi
 
 **Audience:** This is an active research project for my work in [Altered Craft](https://alteredcraft.com). I do activly use it for real work, so I would advise it for single-dev / few-dev teams who want to *understand* what a long-running agent harness actually does. That is today (May-2026), in the future, we shall see.
 
-**Target run:** I test with 10-60 minutes of autonomous work against an open model (default `deepseek/deepseek-v4-pro` on OpenRouter). Completing a task list against a small project on a per-session git worktree.
+**Target run:** I test with 10-60 minutes of autonomous work against an open model (default `deepseek/deepseek-v4-flash` on OpenRouter for the worker; the evaluator and prep interview default to `deepseek/deepseek-v4-pro`). Completing a task list against a small project on a per-session git worktree.
 
-![The Ralph loop — PRD task to worker agent to validators to judge to commit, looping back, all inside a per-session git worktree](assets/ralph-loop.png)
+![The Ralph loop — PRD task to worker agent to validators to evaluator to commit, looping back, all inside a per-session git worktree](assets/ralph-loop.png)
 
 *Tilth's Ralph loop*
 {: .caption }
 
 ## What's in these docs
 
-- **[Getting started](getting-started/installation.md)** — install, run the demo, resume / reset / visualize a session.
-- **[Architecture](architecture/overview.md)** — the Brain / Hands / Session split, the four memory channels.
-- **[Deep dives](deep-dives/index.md)** — the two loops, token recording and enforcement, what the agent sees (and doesn't), the caps story, resume / reset mechanics. Honest, code-level walk-throughs for extending, debugging, or reasoning about the safety story.
+- **[Getting started](getting-started/installation.md)** — install, seed a task list with `prep-feature`, run the demo, resume / reset / visualize a session.
+- **[Architecture](architecture/overview.md)** — the Brain / Hands / Session split, the memory channels.
+- **[Deep dives](deep-dives/index.md)** — the two loops, the worker↔evaluator dialogue, token recording and enforcement, what the agent sees (and doesn't), the caps story, resume / reset mechanics. Honest, code-level walk-throughs for extending, debugging, or reasoning about the safety story.
 - **[Reference](reference/safety-guards.md)** — safety guards.

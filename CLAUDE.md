@@ -4,14 +4,14 @@ Guidance for Claude Code (claude.ai/code) when working in this repo.
 
 ## What this is
 
-A minimal long-running agent harness against any OpenAI-compatible LLM endpoint. It implements the Brain / Hands / Session split, the Ralph loop, and the four memory channels from Addy Osmani's posts on long-running agents. Built as both a working tool and the practical centerpiece of an Altered Craft article.
+A minimal long-running agent harness against any OpenAI-compatible LLM endpoint. It implements the Brain / Hands / Session split, the Ralph loop, and the four memory channels from Addy Osmani's posts on long-running agents (plus a fifth Tilth adds — the per-task evaluator ledger). Built as both a working tool and the practical centerpiece of an Altered Craft article.
 
 ## Where to look first
 
 - **`mkdocs.yml`** — **the canonical map of the documentation set**, and your primary entry point when looking for docs by topic. The `nav:` block has a one- to four-line comment above each leaf entry summarising what the linked `.md` covers and when you'd reach for it; skim those comments first, then open the page that fits. Everything that matters for users and contributors lives under `docs/`; `README.md` is the GitHub landing page and points into `docs/` for anything beyond the elevator pitch.
 - **`README.md`** — terse GitHub landing page: product elevator pitch (with the Brain/Hands/Session image), a minimal quickstart, and the working-with-the-codebase commands (lint, tests, docs). **Not a mirror** of `docs/index.md` — for any product detail beyond the pitch, README points readers into `docs/`. Edit the two files independently.
-- **`docs/getting-started/your-own-project.md`** — the "honest version" of using Tilth on a non-demo codebase: prepping the four seed files, test-filename convention, caveats, judge-model picking, when it's the wrong tool. (Successor to the old root-level `USAGE.md`.)
-- **`docs/deep-dives/`** — code-level walk-throughs of the two loops, iteration accounting, token recording/enforcement, and the agent-visibility boundary. Read this before changing any of those mechanics. (Successor to the old root-level `deep-dives.md`.)
+- **`docs/getting-started/your-own-project.md`** — the "honest version" of using Tilth on a non-demo codebase: what prep your repo actually needs (a clean git repo, optionally an `AGENTS.md`), seeding with `tilth prep-feature` (you no longer hand-write the seed), the test-filename convention, caveats, judge-model picking, when it's the wrong tool. (Successor to the old root-level `USAGE.md`.)
+- **`docs/deep-dives/`** — code-level walk-throughs of the two loops, the worker↔evaluator dialogue (case / verdict / ledger), iteration accounting, token recording/enforcement, and the agent-visibility boundary. Read this before changing any of those mechanics. (Successor to the old root-level `deep-dives.md`.)
 - **The demo workspace** — lives in its own repo at [`AlteredCraft/tilth-demo-todo-cli`](https://github.com/AlteredCraft/tilth-demo-todo-cli). The docs use `~/projects/tilth-demo` as an illustrative path, but Tilth treats the path as just an argument so any layout works.
 - **`docs/assets/IMAGE_STYLE.md`** — the prompt scaffold for generating new docs *images*, anchored to the canonical `brain-hands-session.png`. Use this whenever you generate a new diagram or illustration so the visual voice stays consistent across pages. Not in the published nav (excluded via `not_in_nav` in `mkdocs.yml`).
 - **`docs/assets/SITE_STYLE.md`** — the visual identity for the rendered docs *site* (Material for MkDocs + custom CSS). Documents the provenance of the theme (Hex, from [refero.design](https://refero.design)), the load-bearing tokens, and the do's-and-don'ts to follow when editing `docs/stylesheets/extra.css` or `mkdocs.yml`. Companion to `IMAGE_STYLE.md`; also excluded from the published nav.
@@ -40,11 +40,13 @@ tilth/
 │   ├── cli.py             # verb-routed entry: prep-feature / run / resume / reset / visualize
 │   ├── loop.py            # Ralph loop + inner tool-use loop + subcommand handlers
 │   ├── client.py          # OpenAI-compat wrapper, dual-client routing (worker / judge / prep)
-│   ├── session.py         # events.jsonl + checkpoint.json + wake()
+│   ├── session.py         # events.jsonl + checkpoint.json + per-task ledger + wake()
 │   ├── summary.py         # roll events.jsonl into summary.json (denormalised view)
-│   ├── memory.py          # AGENTS.md (workspace) + progress.txt (session) I/O + injection
+│   ├── memory.py          # AGENTS.md / progress.txt / full-plan / seed-context injection
 │   ├── workspace.py       # git worktree create / commit / diff
 │   ├── validators.py      # ruff + pytest runners
+│   ├── case.py            # worker submit_case schema / parse / render
+│   ├── verdict.py         # evaluator submit_verdict schema / parse / ledger format
 │   ├── tools/             # bash, files, search — registered in __init__.py (worker)
 │   ├── hooks/             # pre_tool, post_edit
 │   ├── prompts/           # system.md, judge.md, propose_learning.md
@@ -71,7 +73,7 @@ The demo workspace is a separate repo (`AlteredCraft/tilth-demo-todo-cli`) — n
 These are load-bearing. Read the relevant page under `docs/deep-dives/` before breaking any of them.
 
 1. **Brain / Hands / Session split.** Don't blur the three. New code goes in the module whose job it is — model calls in `client.py`, sandbox/tool ops in `workspace.py` and `tools/`, durable state in `session.py`.
-2. **The agent doesn't see harness mechanics.** No `prd.json` structure, no `events.jsonl`, no `summary.json`, no token counts, no judge, no checkpoints. Hiding these prevents gaming, shortcutting, and self-managed state. New features should preserve this boundary unless the user explicitly asks otherwise.
+2. **The agent doesn't see harness mechanics.** No `prd.json` *file* or status fields, no `events.jsonl`, no `summary.json`, no token counts, no checkpoints, no cross-task evaluator. Hiding these prevents gaming, shortcutting, and self-managed state. (Phase 4 deliberately softened this: the worker now sees the whole task list *as prose context*, a curated `seed-meta.json` slice, and the evaluator's prior verdicts on its *current* task — so it can act on review feedback. The mutable JSON state, the harness files, and the wider evaluation machinery stay hidden.) New features should preserve this boundary unless the user explicitly asks otherwise.
 
     **Honest scope.** This is a *design goal*, not an enforcement guarantee in default mode. The worker has `bash` and the worktree is mounted at `sessions/<id>/workspace/`, so a determined model can reach harness state via relative paths — `events.jsonl`, `summary.json`, `checkpoint.json`, `prd.json`, `progress.txt` all live one directory up (`../`). The invariant's near-term purpose is to keep new code from making harness state *more* obviously surfaced to the worker; real enforcement is opt-in process isolation, planned in [#13](https://github.com/AlteredCraft/tilth/issues/13). (Phase 1 of `proposals/prep-feature.md` moved `prd.json` and `progress.txt` out of the worktree and under `sessions/<id>/`, closing [#10](https://github.com/AlteredCraft/tilth/issues/10) — they're no longer inside the worktree, but they're still reachable via `../` from a determined worker.)
 3. **Tool registry is the canonical source for "what tools exist".** `tilth/tools/__init__.py` defines the registry; system.md should *not* enumerate tools (it gets stale).

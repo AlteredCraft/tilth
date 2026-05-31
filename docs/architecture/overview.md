@@ -1,6 +1,6 @@
 # Architecture overview
 
-Tilth is built around three independently-replaceable components — **Brain**, **Hands**, **Session** — and four memory channels that live outside the agent. The split is intentional: each component has one job and the boundaries are load-bearing for the safety story.
+Tilth is built around three independently-replaceable components — **Brain**, **Hands**, **Session** — and the [memory channels](memory-channels.md) that live outside the agent. The split is intentional: each component has one job and the boundaries are load-bearing for the safety story.
 
 ## The three components
 
@@ -9,9 +9,9 @@ Tilth is built around three independently-replaceable components — **Brain**, 
 `tilth/client.py` — the LLM-reasoning role: an OpenAI-compatible model call via the `openai` Python SDK. Tilth instantiates this role twice, in different shapes:
 
 - **Worker Brain** — runs in a tool-use loop with full message history accumulated across iterations on the current task, and Hands access. The Brain that *does the work*.
-- **Judge Brain** — invoked one-shot per finished task, in a fresh context, with no tool access. Receives the diff + acceptance criteria and returns accept/reject + reasoning. Stateless across tasks.
+- **Evaluator Brain** — invoked once per submitted case (a task may be rejected and re-submitted several times), in a context fresh except for a per-task ledger of its prior verdicts, with no tool access. Receives the diff against the task's acceptance criteria and returns a structured verdict (`submit_verdict`): accept, or reject with a typed `rejection_category` (one of six) plus a concrete `next_step`. The Brain that *reviews the work*. (The role is the *evaluator*; its config knobs keep the older `judge` name — `TILTH_JUDGE_*`, `judge.md`, `judge_cap`.)
 
-The Ralph loop (`tilth/loop.py`) orchestrates both: it drives the Worker until it presents its case (`submit_case`), runs validators, then calls the Judge once. A Judge invocation is itself one-shot — it is not in a loop, though the outer Ralph loop calls it repeatedly across tasks.
+The Ralph loop (`tilth/loop.py`) orchestrates both: it drives the Worker until it presents its case (`submit_case`), runs validators, then calls the Evaluator once. An Evaluator invocation is itself one-shot — it is not in a loop, though the worker↔evaluator exchange can repeat several times within a task. See [The worker↔evaluator dialogue](../deep-dives/worker-evaluator-dialogue.md).
 
 The Brain knows how to talk to a model. It does not know how to run code, manage state, or commit work. It hands tool calls off to Hands and writes the audit trail to Session.
 
@@ -21,23 +21,23 @@ The Brain knows how to talk to a model. It does not know how to run code, manage
 
 Hands knows how to *do things to a workspace*. Every tool call lands here. The pre-tool hook can veto dangerous commands; the post-edit hook can run a linter after a write. The workspace is a per-session git worktree, so Hands' blast radius is bounded to that branch.
 
-Today only the Worker Brain has Hands; the Judge runs without tools by design — its independence from the worker's tool history is the whole point. Nothing in the architecture prevents a future Judge from being given a constrained set of (likely read-only) Hands — e.g. running tests or fetching additional context — but the current implementation keeps it pure-evaluation.
+Today only the Worker Brain has Hands; the Evaluator runs without tools by design — its independence from the worker's tool history is the whole point. Nothing in the architecture prevents a future Evaluator from being given a constrained set of (likely read-only) Hands — e.g. running tests or fetching additional context — but the current implementation keeps it pure-evaluation.
 
 ### Session
 
-`tilth/session.py`. Append-only `events.jsonl` + `checkpoint.json`, enough to `wake(session_id)` on a fresh process. A `summary.json` is rebuilt at every task boundary (`tilth/summary.py`) as a denormalised view for the visualizer and any external consumers.
+`tilth/session.py`. Append-only `events.jsonl` + `checkpoint.json`, enough to `wake(session_id)` on a fresh process. A `summary.json` is rebuilt at every task boundary (`tilth/summary.py`) as a denormalised view for the visualizer and any external consumers. Per-task evaluator ledgers live alongside it under `sessions/<id>/ledger/` and are re-read on resume.
 
-Session is the durable record. Everything that happens — every model call, tool call, validator run, judge verdict — is logged here. The agent never sees this layer; it exists for the human reading the run afterwards (and for `--resume` to find its footing).
+Session is the durable record. Everything that happens — every model call, tool call, validator run, evaluator verdict — is logged here. The agent never sees this layer; it exists for the human reading the run afterwards (and for `tilth resume` to find its footing).
 
-> **Diagram suggestion** — *three labelled boxes (Brain, Hands, Session) with arrows showing the flow per iteration: Brain emits tool calls → Hands executes → Session logs. A separate dashed arrow shows Session feeding `--resume` on a fresh process.*
+> **Diagram suggestion** — *three labelled boxes (Brain, Hands, Session) with arrows showing the flow per iteration: Brain emits tool calls → Hands executes → Session logs. A separate dashed arrow shows Session feeding `tilth resume` on a fresh process.*
 
 ## Generator/evaluator separation
 
-The Worker/Judge split above is a deliberate generator/evaluator separation. The Judge Brain (`tilth/prompts/judge.md`) sees none of the worker's chain-of-thought, tool history, or accumulated context — only the committed diff against the task's acceptance criteria. That isolation is what makes the verdict useful; if the judge could see the worker's reasoning, it would tend to agree with it.
+The Worker/Evaluator split above is a deliberate generator/evaluator separation. The Evaluator Brain (`tilth/prompts/judge.md`) sees none of the worker's chain-of-thought or tool history — only what's *about the work*: the committed diff, the worker's structured case, the inlined seed acceptance test, the real validator output, and its own prior verdicts on this task (the ledger). That isolation from the worker's reasoning is what makes the verdict useful; if the evaluator could see the worker's chain-of-thought, it would tend to agree with it.
 
-You can route the judge to a *different* provider than the worker via `TILTH_JUDGE_BASE_URL` / `TILTH_JUDGE_API_KEY`. Cross-family judging (e.g. open worker model + frontier closed judge) catches failure modes that same-family judging shares as blind spots.
+You can route the evaluator to a *different* provider than the worker via `TILTH_JUDGE_BASE_URL` / `TILTH_JUDGE_API_KEY`. Cross-family evaluation (e.g. open worker model + frontier closed evaluator) catches failure modes that same-family evaluation shares as blind spots.
 
-> **Diagram suggestion** — *split-frame: top half shows the worker's tool-use loop with full history; bottom half shows the judge invocation with only "diff + acceptance criteria" coming in. Emphasises the context isolation between the two roles.*
+> **Diagram suggestion** — *split-frame: top half shows the worker's tool-use loop with full history; bottom half shows the evaluator invocation with only "diff + case + acceptance criteria + validator output" coming in. Emphasises the context isolation between the two roles.*
 
 ## Repo layout
 
@@ -47,17 +47,22 @@ tilth/
 ├── docs/                  # MkDocs source — annotated nav in mkdocs.yml is the topic index
 ├── pyproject.toml, .env.example, .gitignore
 ├── tilth/
-│   ├── loop.py            # Ralph loop CLI + the inner tool-use loop
-│   ├── client.py          # OpenAI-compat wrapper, dual-client routing
-│   ├── session.py         # events.jsonl + checkpoint.json + wake()
+│   ├── cli.py             # verb-routed entry: prep-feature / run / resume / reset / visualize
+│   ├── loop.py            # Ralph loop + inner tool-use loop + subcommand handlers
+│   ├── client.py          # OpenAI-compat wrapper, dual-client routing (worker / judge / prep)
+│   ├── session.py         # events.jsonl + checkpoint.json + ledger + wake()
 │   ├── summary.py         # roll events.jsonl into summary.json (denormalised view)
-│   ├── memory.py          # AGENTS.md / progress.txt I/O + injection
+│   ├── memory.py          # AGENTS.md / progress.txt / plan / seed-context injection
 │   ├── workspace.py       # git worktree create / commit / diff
 │   ├── validators.py      # ruff + pytest runners
+│   ├── case.py            # worker submit_case schema / parse / render
+│   ├── verdict.py         # evaluator submit_verdict schema / parse / ledger format
 │   ├── tools/             # bash, files, search — registered in __init__.py
 │   ├── hooks/             # pre_tool, post_edit
-│   ├── prompts/           # system.md, judge.md, agents_update.md
-│   └── visualize/         # --visualize: events.jsonl → chat.html
+│   ├── prompts/           # system.md, judge.md, propose_learning.md
+│   ├── seed/              # tilth prep-feature: interview engine + sink
+│   └── visualize/         # tilth visualize: events.jsonl + seed-meta.json → chat.html
+├── examples/seed-reference/  # frozen example seeds (teaching artifacts, not runtime)
 └── sessions/              # per-run state (gitignored)
 ```
 
@@ -68,7 +73,7 @@ The demo workspace is a separate repo (`AlteredCraft/tilth-demo-todo-cli`) — n
 These are load-bearing. Read [Deep dives](../deep-dives/index.md) before breaking any of them.
 
 1. **Brain / Hands / Session split.** Don't blur the three. New code goes in the module whose job it is — model calls in `client.py`, sandbox/tool ops in `workspace.py` and `tools/`, durable state in `session.py`.
-2. **The agent doesn't see harness mechanics.** No `prd.json` structure, no `events.jsonl`, no `summary.json`, no token counts, no judge, no checkpoints. Hiding these prevents gaming, shortcutting, and self-managed state. New features should preserve this boundary unless explicitly intended otherwise. **Honest scope:** this is a *design goal*, not an enforcement guarantee in default mode — the worker has `bash` and could reach harness state via relative paths from the worktree (`sessions/<id>/workspace/`). Real enforcement is opt-in process isolation, planned in [#13](https://github.com/AlteredCraft/tilth/issues/13). See [Agent visibility](../deep-dives/agent-visibility.md).
+2. **The agent doesn't see harness mechanics.** No `prd.json` *file* or status fields, no `events.jsonl`, no `summary.json`, no token counts, no checkpoints, no cross-task evaluator. Hiding these prevents gaming, shortcutting, and self-managed state. The Phase 4 expansion softened this deliberately: the worker now sees the whole task list *as prose context* (not the mutable `prd.json`), a curated slice of the seed interview, and the evaluator's prior verdicts on its current task — so it can act on review feedback. It still never sees the harness files, token counts, checkpoints, or the queue-management machinery. **Honest scope:** even the hidden part is a *design goal*, not an enforcement guarantee in default mode — the worker has `bash` and could reach harness state via relative paths from the worktree (`sessions/<id>/workspace/`). Real enforcement is opt-in process isolation, planned in [#13](https://github.com/AlteredCraft/tilth/issues/13). See [Agent visibility](../deep-dives/agent-visibility.md).
 3. **Tool registry is the canonical source for "what tools exist".** `tilth/tools/__init__.py` defines the registry; the system prompt should *not* enumerate tools (it gets stale).
 4. **Hook contract: "success silent, failures verbose" — to the *agent*.** Pass states inject nothing into the loop's message history; failures inject a feedback message that the next worker iteration sees. **Telemetry is separate.** Every hook invocation should emit a `hook_run` event regardless of outcome — observability is for the developer reading `events.jsonl`, not the agent.
 5. **The worktree branch is never auto-merged.** `commit_task` commits to the session branch; humans review and merge.

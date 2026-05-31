@@ -23,7 +23,7 @@ This is the codified version of the three-step manual cleanup (`rm -rf sessions/
 3. Runs `git branch -D session/<id>` in the source repo (force-delete is the right default for the `session/*` namespace, which is never auto-merged).
 4. Removes `sessions/<id>/`.
 
-Each step is idempotent — already-missing pieces are reported as skipped, not errored. You can run `--reset` against a half-cleaned-up state and it'll finish the job.
+Each step is idempotent — already-missing pieces are reported as skipped, not errored. You can run `tilth reset` against a half-cleaned-up state and it'll finish the job.
 
 > **Diagram suggestion** — *three-column "before / after" of the filesystem and the source-repo refs: left column shows `sessions/<id>/`, the worktree directory, and the `session/<id>` branch all present; right column shows all three gone. A small annotation in between names the three operations performed.*
 

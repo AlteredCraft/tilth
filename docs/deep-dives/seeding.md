@@ -2,7 +2,7 @@
 
 `tilth prep-feature` runs an anchored interview against your source repo and writes a **task seed** — the `prd.json` plus matching acceptance tests that the worker loop consumes. This page walks through the engine, the frontend protocol the engine talks to, and what you can swap.
 
-> A run's quality ceiling is set by its seed. The worker's job is to satisfy the contract; the seed *is* the contract. Vague tasks and weak acceptance criteria collapse Tilth's quality gate down to "ruff passed and the judge said it looked fine." The seeding interview is the high-leverage moment.
+> A run's quality ceiling is set by its seed. The worker's job is to satisfy the contract; the seed *is* the contract. Vague tasks and weak acceptance criteria collapse Tilth's quality gate down to "ruff passed and the evaluator said it looked fine." The seeding interview is the high-leverage moment.
 
 ## The architecture
 
@@ -30,7 +30,7 @@ sessions/<id>/
         └── ...
 ```
 
-The worktree is created **at prep time**, not at run time — `ws.ensure_worktree` runs immediately after the session is created, branches `session/<id>` off the source repo's HEAD, and the sink writes seed test files directly into it. Right after the sink writes, `ws.commit_seed` makes a single `seed: N task(s) + M acceptance test(s)` commit on the session branch so the seed bundle lives in HEAD before the worker starts — without it, every seeded test file (including ones for future tasks) shows up as "uncommitted scope creep" in T-001's `task_diff` and the judge correctly rejects them. `tilth run` then `ensure_worktree`s the same path idempotently (returning the existing worktree if it's still there, recreating it if you deleted it by hand between prep and run) and starts the worker.
+The worktree is created **at prep time**, not at run time — `ws.ensure_worktree` runs immediately after the session is created, branches `session/<id>` off the source repo's HEAD, and the sink writes seed test files directly into it. Right after the sink writes, `ws.commit_seed` makes a single `seed: N task(s) + M acceptance test(s)` commit on the session branch so the seed bundle lives in HEAD before the worker starts — without it, every seeded test file (including ones for future tasks) shows up as "uncommitted scope creep" in T-001's `task_diff` and the evaluator correctly rejects them. `tilth run` then `ensure_worktree`s the same path idempotently (returning the existing worktree if it's still there, recreating it if you deleted it by hand between prep and run) and starts the worker.
 
 The source repo's working tree is **never touched** by prep — the only filesystem effect outside `sessions/<id>/` is the new `session/<id>` branch in the source repo's `.git` (where Tilth's branches always live; see [Session layout](session-layout.md)).
 
@@ -72,7 +72,7 @@ class SeedSink(Protocol):
     ) -> None: ...
 ```
 
-The engine is called via `tilth.seed.run_interview(session, source, client, frontend, sink, feature_brief)`. Swapping the frontend is "write a class with those three methods and pass it in"; swapping the sink is the same for `write_seed`. The TTY implementation lives in ~80 lines; a stub frontend for tests lives in ~20.
+The engine is called via `tilth.seed.run_interview(session=, source=, worktree=, client=, frontend=, sink=, feature_brief=)` (keyword-only). Reads (`read_file` / `glob` / `grep`) route to `source` so the seeder sees uncommitted in-flight work; the terminal `write_seed` routes to `worktree`. Swapping the frontend is "write a class with those three methods and pass it in"; swapping the sink is the same for `write_seed`. The TTY implementation lives in ~80 lines; a stub frontend for tests lives in ~20.
 
 ## What the model can and can't do
 
@@ -106,13 +106,12 @@ The existing-PRD path needs no new tool surface — `read_file` is already there
 
 - **Zero prepared sessions.** Don't crash — surface the choice up front. On a TTY, the harness shows an interactive picker: *resume the prior session* (if one's resumable) / *discard it and prep a new one* / *prep one now* (if no prior exists) / *cancel*. On a non-TTY (CI, scripts), the picker is skipped and the harness exits 2 with a single-line pointer at the right next command. Either way, no orphan session or worktree is created when the user's intent isn't yet clear. See [Resumable-session detection](../getting-started/resuming.md#resumable-session-detection) for the picker mockup.
 - **Multiple prepared sessions.** Refuse and list them — you discard the ones you don't want with `tilth reset <id>` until one remains.
-- **Zero prepared sessions.** Falls back to the legacy "start fresh" path, which will fail at PRD-load with a clear pointer to `tilth prep-feature`.
 
-This rule is enforced on the prep side too: `tilth prep-feature` refuses to start a new session if any session for this workspace is in `prepared`, `running`, or `failed` state. Discard or resume first. This stops the "I forgot I'd already prepped this" footgun.
+This is surfaced on the prep side too: when `tilth prep-feature` finds a session for this workspace in `prepared`, `running`, or `failed` state, it opens an interactive picker on a TTY — run/resume it, discard it and prep fresh, start a new session alongside, or cancel — instead of hard-refusing. `--force` auto-discards blockers; `--keep-existing` starts alongside; a non-TTY exits 2 with a pointer. This stops the "I forgot I'd already prepped this" footgun without trapping you.
 
 ## Configuration
 
-The interview defaults to the same model the worker uses. Three optional env vars let you route the interview to a different provider, same pattern as the judge router:
+The interview defaults to the same model the worker uses. Three optional env vars let you route the interview to a different provider, same pattern as the evaluator router:
 
 | Var | Purpose | Default |
 |---|---|---|
@@ -129,7 +128,7 @@ The OpenRouter `reasoning.enabled` opt-in (sent for thinking-mode models) is key
 The interview loop has two normal exits:
 
 1. **`write_seed` succeeds.** Status flips to `prepared`, `session_prepared` event logged, summary shown, return.
-2. **Model stops calling tools.** `InterviewAbort` raised — the model "gave up" without writing a seed. Status stays `running` (so resume isn't tempting), the session is left for inspection or reset.
+2. **Model stops calling tools.** `InterviewAbort` raised — the model "gave up" without writing a seed. Status flips to `failed` (so it's left for inspection or reset, never silently resumed). A failed `commit_seed` sets the same `failed` status.
 
 Plus one safety cap:
 
