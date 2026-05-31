@@ -27,7 +27,7 @@ truncation and a content hash to spot drift between tasks.
 A separate write path — `append_proposed_learning` — collects the self-improvement
 step's per-task observations into `sessions/<id>/proposed-learnings.md`. That file
 is a session output for the user (and a future end-of-session hook) to review;
-it is never read by the worker or judge.
+it is never read by the worker or evaluator.
 """
 
 from __future__ import annotations
@@ -135,7 +135,7 @@ def append_proposed_learning(
 
     Creates the file with a header on first append. The entry is added as a
     bullet under a task-tagged section. The file is never read by the worker
-    or judge — it is a session output for the user (and the future hook).
+    or evaluator — it is a session output for the user (and the future hook).
     """
     p = session_dir / "proposed-learnings.md"
     if not p.is_file():

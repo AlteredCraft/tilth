@@ -9,7 +9,7 @@ Tilth is built around three independently-replaceable components — **Brain**, 
 `tilth/client.py` — the LLM-reasoning role: an OpenAI-compatible model call via the `openai` Python SDK. Tilth instantiates this role twice, in different shapes:
 
 - **Worker Brain** — runs in a tool-use loop with full message history accumulated across iterations on the current task, and Hands access. The Brain that *does the work*.
-- **Evaluator Brain** — invoked once per submitted case (a task may be rejected and re-submitted several times), in a context fresh except for a per-task ledger of its prior verdicts, with no tool access. Receives the diff against the task's acceptance criteria and returns a structured verdict (`submit_verdict`): accept, or reject with a typed `rejection_category` (one of six) plus a concrete `next_step`. The Brain that *reviews the work*. (The role is the *evaluator*; its config knobs keep the older `judge` name — `TILTH_JUDGE_*`, `judge.md`, `judge_cap`.)
+- **Evaluator Brain** — invoked once per submitted case (a task may be rejected and re-submitted several times), in a context fresh except for a per-task ledger of its prior verdicts, with no tool access. Receives the diff against the task's acceptance criteria and returns a structured verdict (`submit_verdict`): accept, or reject with a typed `rejection_category` (one of six) plus a concrete `next_step`. The Brain that *reviews the work*. (The role is the *evaluator*)
 
 The Ralph loop (`tilth/loop.py`) orchestrates both: it drives the Worker until it presents its case (`submit_case`), runs validators, then calls the Evaluator once. An Evaluator invocation is itself one-shot — it is not in a loop, though the worker↔evaluator exchange can repeat several times within a task. See [The worker↔evaluator dialogue](../deep-dives/worker-evaluator-dialogue.md).
 
@@ -33,9 +33,9 @@ Session is the durable record. Everything that happens — every model call, too
 
 ## Generator/evaluator separation
 
-The Worker/Evaluator split above is a deliberate generator/evaluator separation. The Evaluator Brain (`tilth/prompts/judge.md`) sees none of the worker's chain-of-thought or tool history — only what's *about the work*: the committed diff, the worker's structured case, the inlined seed acceptance test, the real validator output, and its own prior verdicts on this task (the ledger). That isolation from the worker's reasoning is what makes the verdict useful; if the evaluator could see the worker's chain-of-thought, it would tend to agree with it.
+The Worker/Evaluator split above is a deliberate generator/evaluator separation. The Evaluator Brain (`tilth/prompts/evaluator.md`) sees none of the worker's chain-of-thought or tool history — only what's *about the work*: the committed diff, the worker's structured case, the inlined seed acceptance test, the real validator output, and its own prior verdicts on this task (the ledger). That isolation from the worker's reasoning is what makes the verdict useful; if the evaluator could see the worker's chain-of-thought, it would tend to agree with it.
 
-You can route the evaluator to a *different* provider than the worker via `TILTH_JUDGE_BASE_URL` / `TILTH_JUDGE_API_KEY`. Cross-family evaluation (e.g. open worker model + frontier closed evaluator) catches failure modes that same-family evaluation shares as blind spots.
+You can route the evaluator to a *different* provider than the worker via `TILTH_EVALUATOR_BASE_URL` / `TILTH_EVALUATOR_API_KEY`. Cross-family evaluation (e.g. open worker model + frontier closed evaluator) catches failure modes that same-family evaluation shares as blind spots.
 
 > **Diagram suggestion** — *split-frame: top half shows the worker's tool-use loop with full history; bottom half shows the evaluator invocation with only "diff + case + acceptance criteria + validator output" coming in. Emphasises the context isolation between the two roles.*
 
@@ -49,7 +49,7 @@ tilth/
 ├── tilth/
 │   ├── cli.py             # verb-routed entry: prep-feature / run / resume / reset / visualize
 │   ├── loop.py            # Ralph loop + inner tool-use loop + subcommand handlers
-│   ├── client.py          # OpenAI-compat wrapper, dual-client routing (worker / judge / prep)
+│   ├── client.py          # OpenAI-compat wrapper, dual-client routing (worker / evaluator / prep)
 │   ├── session.py         # events.jsonl + checkpoint.json + ledger + wake()
 │   ├── summary.py         # roll events.jsonl into summary.json (denormalised view)
 │   ├── memory.py          # AGENTS.md / progress.txt / plan / seed-context injection
@@ -59,7 +59,7 @@ tilth/
 │   ├── verdict.py         # evaluator submit_verdict schema / parse / ledger format
 │   ├── tools/             # bash, files, search — registered in __init__.py
 │   ├── hooks/             # pre_tool, post_edit
-│   ├── prompts/           # system.md, judge.md, propose_learning.md
+│   ├── prompts/           # system.md, evaluator.md, propose_learning.md
 │   ├── seed/              # tilth prep-feature: interview engine + sink
 │   └── visualize/         # tilth visualize: events.jsonl + seed-meta.json → chat.html
 ├── examples/seed-reference/  # frozen example seeds (teaching artifacts, not runtime)

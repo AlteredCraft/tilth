@@ -27,7 +27,7 @@
 Tilth's quality-of-output is dominated by **seed quality** — the prd.json + matching tests the harness consumes. Today that seed is produced by a Claude Code skill (`tilth-prd-seeder`) and committed by hand into the target repo's `main` branch. Two consequences:
 
 1. **Pollution of the target repo.** `prd.json` is purely a harness artifact (mutated by tilth as tasks flip pending → done). `progress.txt` is a runtime journal. Both currently live in the workspace and ride the session branch into every PR. Tests are different — they're a legitimate repo artifact and *should* ship in the PR.
-2. **Seeding gap for non-Claude-Code users.** The interview that produces a good seed only exists as a skill bound to one assistant runtime. A reader following `docs/getting-started/your-own-project.md` gets the *structure* of a prd.json but no help producing one. Seed quality collapses to "what the user remembered to put in by hand," and a weak seed collapses tilth's quality gate to "ruff passed + judge said OK."
+2. **Seeding gap for non-Claude-Code users.** The interview that produces a good seed only exists as a skill bound to one assistant runtime. A reader following `docs/getting-started/your-own-project.md` gets the *structure* of a prd.json but no help producing one. Seed quality collapses to "what the user remembered to put in by hand," and a weak seed collapses tilth's quality gate to "ruff passed + evaluator said OK."
 
 These compound: the demo's `main` ships with a hand-crafted `prd.json` committed, so the demo path doesn't represent the path a real user would take on their own repo. That violates a goal we want to be honest about.
 
@@ -74,7 +74,7 @@ sessions/<id>/
 └── workspace/              # existing worktree mount; no harness state inside
 ```
 
-`seed-meta.json` is written once by the seeder and read only by the visualizer (worker never sees it). `proposed-learnings.md` is a session output for the user (and the future end-of-session findings hook); also never read by the worker or judge.
+`seed-meta.json` is written once by the seeder and read only by the visualizer (worker never sees it). `proposed-learnings.md` is a session output for the user (and the future end-of-session findings hook); also never read by the worker or evaluator.
 
 ### 5.2 Code touch points in tilth
 
@@ -99,7 +99,7 @@ The seeder writes, atomically per session:
 - **`<workspace>/tests/test_t0NN_<slug>.py`** — one per task, named to match tilth's pytest filter. Written to the user's repo because they are legitimate test files that ship in the PR. **(Superseded — see Landed:** they land in the session worktree `sessions/<id>/workspace/tests/` on branch `session/<id>`, not the source working tree; they reach the PR via the branch.)
 - **`session_prepared` event** appended to `sessions/<id>/events.jsonl` so the timeline is continuous from interview through execution.
 
-The seeder **never writes to `<workspace>/AGENTS.md`** — same posture as the rest of the harness (locked in by the agents-md-stance PR). If it exists, the seeder reads it for grounding context; project conventions there should inform task slicing and test style. If it doesn't exist, the seeder leaves it that way and **does not nag the user about it**. AGENTS.md is one signal among several — useful when present, not load-bearing. The worker and judge prompts reflect this posture (see the prompt-alignment sub-step in Phase 2, §6).
+The seeder **never writes to `<workspace>/AGENTS.md`** — same posture as the rest of the harness (locked in by the agents-md-stance PR). If it exists, the seeder reads it for grounding context; project conventions there should inform task slicing and test style. If it doesn't exist, the seeder leaves it that way and **does not nag the user about it**. AGENTS.md is one signal among several — useful when present, not load-bearing. The worker and evaluator prompts reflect this posture (see the prompt-alignment sub-step in Phase 2, §6).
 
 If the workspace has no `tests/` directory, the seeder confirms the location with the user via `ask_user` (in case the project's convention is `test/` or somewhere atypical) and creates it only if missing. No-op when present.
 
@@ -184,7 +184,7 @@ Back-compat for bare `uv run tilth <workspace>`: detect the positional-only form
 ### 5.6 Model configuration for the interview
 
 - Defaults to the same model the harness already uses (`TILTH_API_KEY` / `TILTH_BASE_URL` / `TILTH_MODEL`).
-- Optional overrides: `TILTH_PREP_MODEL`, `TILTH_PREP_BASE_URL`, `TILTH_PREP_API_KEY` — same pattern as the judge router.
+- Optional overrides: `TILTH_PREP_MODEL`, `TILTH_PREP_BASE_URL`, `TILTH_PREP_API_KEY` — same pattern as the evaluator router.
 - Interview model needs tool-calling; same constraint as the worker. Same model is the safe default.
 
 ### 5.7 Interview cost visibility
@@ -253,7 +253,7 @@ After phase 1, #10 is closed and PR pollution is gone.
 
 Build `tilth/seed/`. Port `tilth-prd-seeder/SKILL.md` → `tilth/seed/prompts.md`. Implement the TTY frontend (plain `input()` + numbered menus — see §7 resolution #1). Wire `tilth prep-feature` into the CLI with the refuse-on-existing-prepared-session rule from §5.5. Surface the running token total in the TTY per §5.7. Deprecate the standalone Claude Code skill in favor of the in-harness command.
 
-Sub-step: pass over `tilth/prompts/system.md` and `tilth/prompts/judge.md` and confirm AGENTS.md is framed as "additional signal, present when present" rather than as a required input. Both prompts are close to this today (worker: "*has loaded the task plus relevant project context (AGENTS.md, recent progress notes)*"; judge: "*AGENTS.md (provided as project context when present)*") — this is a small alignment pass, not a rewrite.
+Sub-step: pass over `tilth/prompts/system.md` and `tilth/prompts/evaluator.md` and confirm AGENTS.md is framed as "additional signal, present when present" rather than as a required input. Both prompts are close to this today (worker: "*has loaded the task plus relevant project context (AGENTS.md, recent progress notes)*"; evaluator: "*AGENTS.md (provided as project context when present)*") — this is a small alignment pass, not a rewrite.
 
 After phase 2, demo and own-project paths converge and the harness is runnable end-to-end again.
 
@@ -269,14 +269,14 @@ Phase 3 can land anytime after phase 2; it's a polish step, not load-bearing.
 2. **Re-prep on an existing prepared session.** Refuse by default; `tilth reset <id>` is the escape hatch. Resolution rule documented in §5.5 under *Resolution rules for `tilth prep-feature`*. **(Superseded — shipped as an interactive picker; see Landed.)**
 3. **Interview budget.** Count tokens via the existing `model_call` event accounting and surface a running prompt/completion/total in the TTY. No hard cap in v1. See §5.7; the deferred cap is listed in §9.
 4. **Empty `tests/` directory.** The seeder confirms the test-directory location with the user via `ask_user` and creates `tests/` only if missing. No-op when present. Folded into §5.3.
-5. **Surfacing a missing AGENTS.md.** The seeder does not call this out. AGENTS.md is additional signal, not load-bearing. The worker and judge prompts already lean this way; Phase 2 includes a small prompt-alignment pass (§6). Folded into §5.3.
+5. **Surfacing a missing AGENTS.md.** The seeder does not call this out. AGENTS.md is additional signal, not load-bearing. The worker and evaluator prompts already lean this way; Phase 2 includes a small prompt-alignment pass (§6). Folded into §5.3.
 
 ## 8. Risks
 
 - **Interview engine becomes a second hairball.** The harness already runs one tool-use loop (the worker). Adding a second one risks duplicating infrastructure. Mitigation: reuse `tilth.client.LLMClient` and the existing `tools/files.py` / `tools/search.py` registry — don't fork. The seed-specific surface is the frontend protocol and the prompt; everything else routes through existing code.
 - **`prepared` sessions accumulate.** Users will prep, get distracted, prep again. We need a `tilth list` verb eventually, but for v1 the existing `sessions/` directory is grep-able and that's fine.
 - **Interview cost surprises a user.** A user expecting "set up tilth" to be free runs an unbounded conversation against a frontier model. Mitigation: surface a running prompt/completion/total in the TTY (§5.7). A hard cap (`TILTH_PREP_MAX_TOKENS`) is deferred (§9); revisit if the TTY signal proves insufficient in practice.
-- **The seed-meta.json contract drifts.** It's read only by the visualizer today, but is tempting to lean on later. Document it as "interview audit trail, not load-bearing for the worker" and don't let the worker or judge read it.
+- **The seed-meta.json contract drifts.** It's read only by the visualizer today, but is tempting to lean on later. Document it as "interview audit trail, not load-bearing for the worker" and don't let the worker or evaluator read it.
 
 ## 9. Out of scope (later)
 

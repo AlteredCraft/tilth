@@ -1,8 +1,8 @@
 """client.parse_json_lenient salvages a JSON object from a model response.
 
 Models intermittently wrap JSON in ```json fences, add chatty intros, or
-return bare JSON. The judge and self-improve paths both feed model output
-through this — a parse failure there falls back to "judge unparseable"
+return bare JSON. The evaluator and self-improve paths both feed model output
+through this — a parse failure there falls back to "evaluator unparseable"
 or "no AGENTS.md update", neither of which is silent but both of which
 mean a wasted model call.
 """

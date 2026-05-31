@@ -10,7 +10,7 @@ A minimal long-running agent harness against any OpenAI-compatible LLM endpoint.
 
 - **`mkdocs.yml`** — **the canonical map of the documentation set**, and your primary entry point when looking for docs by topic. The `nav:` block has a one- to four-line comment above each leaf entry summarising what the linked `.md` covers and when you'd reach for it; skim those comments first, then open the page that fits. Everything that matters for users and contributors lives under `docs/`; `README.md` is the GitHub landing page and points into `docs/` for anything beyond the elevator pitch.
 - **`README.md`** — terse GitHub landing page: product elevator pitch (with the Brain/Hands/Session image), a minimal quickstart, and the working-with-the-codebase commands (lint, tests, docs). **Not a mirror** of `docs/index.md` — for any product detail beyond the pitch, README points readers into `docs/`. Edit the two files independently.
-- **`docs/getting-started/your-own-project.md`** — the "honest version" of using Tilth on a non-demo codebase: what prep your repo actually needs (a clean git repo, optionally an `AGENTS.md`), seeding with `tilth prep-feature` (you no longer hand-write the seed), the test-filename convention, caveats, judge-model picking, when it's the wrong tool. (Successor to the old root-level `USAGE.md`.)
+- **`docs/getting-started/your-own-project.md`** — the "honest version" of using Tilth on a non-demo codebase: what prep your repo actually needs (a clean git repo, optionally an `AGENTS.md`), seeding with `tilth prep-feature` (you no longer hand-write the seed), the test-filename convention, caveats, evaluator-model picking, when it's the wrong tool. (Successor to the old root-level `USAGE.md`.)
 - **`docs/deep-dives/`** — code-level walk-throughs of the two loops, the worker↔evaluator dialogue (case / verdict / ledger), iteration accounting, token recording/enforcement, and the agent-visibility boundary. Read this before changing any of those mechanics. (Successor to the old root-level `deep-dives.md`.)
 - **The demo workspace** — lives in its own repo at [`AlteredCraft/tilth-demo-todo-cli`](https://github.com/AlteredCraft/tilth-demo-todo-cli). The docs use `~/projects/tilth-demo` as an illustrative path, but Tilth treats the path as just an argument so any layout works.
 - **`docs/assets/IMAGE_STYLE.md`** — the prompt scaffold for generating new docs *images*, anchored to the canonical `brain-hands-session.png`. Use this whenever you generate a new diagram or illustration so the visual voice stays consistent across pages. Not in the published nav (excluded via `not_in_nav` in `mkdocs.yml`).
@@ -39,7 +39,7 @@ tilth/
 ├── tilth/
 │   ├── cli.py             # verb-routed entry: prep-feature / run / resume / reset / visualize
 │   ├── loop.py            # Ralph loop + inner tool-use loop + subcommand handlers
-│   ├── client.py          # OpenAI-compat wrapper, dual-client routing (worker / judge / prep)
+│   ├── client.py          # OpenAI-compat wrapper, dual-client routing (worker / evaluator / prep)
 │   ├── session.py         # events.jsonl + checkpoint.json + per-task ledger + wake()
 │   ├── summary.py         # roll events.jsonl into summary.json (denormalised view)
 │   ├── memory.py          # AGENTS.md / progress.txt / full-plan / seed-context injection
@@ -49,7 +49,7 @@ tilth/
 │   ├── verdict.py         # evaluator submit_verdict schema / parse / ledger format
 │   ├── tools/             # bash, files, search — registered in __init__.py (worker)
 │   ├── hooks/             # pre_tool, post_edit
-│   ├── prompts/           # system.md, judge.md, propose_learning.md
+│   ├── prompts/           # system.md, evaluator.md, propose_learning.md
 │   ├── seed/              # tilth prep-feature: interview engine + frontend / sink protocols
 │   └── visualize/         # tilth visualize: events.jsonl + seed-meta.json → chat.html
 ├── examples/seed-reference/  # frozen example seeds (teaching artifacts, not runtime)

@@ -195,7 +195,7 @@ def diff_since_main(worktree: Path) -> str:
 def task_diff(worktree: Path) -> str:
     """Diff of the current (uncommitted) task work, against HEAD.
 
-    Includes both staged and unstaged changes. Used by the judge to evaluate
+    Includes both staged and unstaged changes. Used by the evaluator to evaluate
     a task's diff before it's committed.
     """
     proc = _git(["add", "-N", "."], worktree)  # mark untracked so they appear in diff

@@ -1,6 +1,6 @@
 """Phase 3: ledger entries now carry the worker's case (was null in Phase 2).
 
-`_build_ledger_entry` is the pure constructor `_judge_task` uses, so the
+`_build_ledger_entry` is the pure constructor `_evaluator_task` uses, so the
 "case is in the ledger" contract is testable without driving a model.
 """
 

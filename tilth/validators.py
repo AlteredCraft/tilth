@@ -1,6 +1,6 @@
 """Objective validators: pytest + ruff. Pass/fail is mechanical.
 
-Subjective evaluation lives in the judge call (see prompts/judge.md, slice 5).
+Subjective evaluation lives in the evaluator call (see prompts/evaluator.md, slice 5).
 """
 
 from __future__ import annotations

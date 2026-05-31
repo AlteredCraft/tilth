@@ -7,7 +7,7 @@ Tilth runs autonomously for an hour or two at a time, against a real workspace, 
 - **Iteration cap per task** (default `8`, env: `TILTH_MAX_ITERATIONS_PER_TASK`).
 - **Wall-clock cap per run** (default `120` minutes, env: `TILTH_MAX_WALL_CLOCK_MINUTES`).
 - **Token cap per session** (default `2,000,000`, env: `TILTH_MAX_TOKENS`).
-- **Optional judge-call cap per task** (default `0` = off, env: `TILTH_MAX_JUDGE_CALLS_PER_TASK`).
+- **Optional evaluator-call cap per task** (default `0` = off, env: `MAX_EVALUATOR_CALLS_PER_TASK`).
 - **Empty-response abort.** Three consecutive empty model responses (provider hiccup — no content, tool calls, or reasoning) abort the task with reason `empty_responses` and halt the run. Retried with backoff first. Worth a guard because empty turns cost no tokens, so the token cap never catches the spin. Fixed at 3; no env knob.
 - **No-case circuit breaker.** A worker that keeps going quiet without calling `submit_case` is nudged up to 3 times, then the task aborts with reason `no_case` and the run halts. Fixed at 3; no env knob.
 

@@ -37,16 +37,16 @@ All three of `TILTH_BASE_URL`, `TILTH_API_KEY`, and `TILTH_WORKER_MODEL` are **r
 
 | Variable | Default | What it does |
 |---|---|---|
-| `TILTH_JUDGE_MODEL` | same as worker | Model that reviews finished tasks. |
-| `TILTH_JUDGE_BASE_URL` | inherits worker | Point the judge at a *different* provider for stronger independence. |
-| `TILTH_JUDGE_API_KEY` | inherits worker | Bearer token for the judge provider. |
+| `TILTH_EVALUATOR_MODEL` | same as worker | Model that reviews finished tasks. |
+| `TILTH_EVALUATOR_BASE_URL` | inherits worker | Point the evaluator at a *different* provider for stronger independence. |
+| `TILTH_EVALUATOR_API_KEY` | inherits worker | Bearer token for the evaluator provider. |
 | `TILTH_PREP_MODEL` | same as worker | Model that runs the `tilth prep-feature` interview. Set to a frontier reasoning model independently of the worker. |
 | `TILTH_PREP_BASE_URL` | inherits worker | Point the seeder at a *different* provider than the worker (e.g. worker on a budget provider, prep on a frontier one). |
 | `TILTH_PREP_API_KEY` | inherits worker | Bearer token for the prep provider. |
 | `TILTH_MAX_ITERATIONS_PER_TASK` | `8` | Tool-use iterations before a task is marked failed. |
 | `TILTH_MAX_WALL_CLOCK_MINUTES` | `120` | Outer-loop wall-clock cap. |
 | `TILTH_MAX_TOKENS` | `2000000` | Cumulative session token cap. |
-| `TILTH_MAX_JUDGE_CALLS_PER_TASK` | `0` (off) | Optional cap on worker↔judge ping-pong. |
+| `MAX_EVALUATOR_CALLS_PER_TASK` | `0` (off) | Optional cap on worker↔evaluator ping-pong. |
 
 See [How the caps fit together](../deep-dives/caps.md) for the safety story behind the caps.
 

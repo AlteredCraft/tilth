@@ -14,7 +14,7 @@ Bare `tilth resume` (no session ID) selects the most recent session in `sessions
 
 > **Diagram suggestion** — *sequence diagram: `tilth resume` invocation → `Session.wake()` reads checkpoint → `_prepare_resume()` reads trailing `stop` event → unwinds FAILED placeholder if any → flips failed task back to pending → logs `session_resume` event → outer loop starts. Lifeline lanes for `checkpoint.json`, `events.jsonl`, `prd.json`, and the worktree git database.*
 
-Resume does not loop endlessly. If a retried task hits a terminal-failure stop *again* — `iter_cap`, `judge_cap`, `empty_responses`, or `no_case` — the outer loop halts with that `stop {reason}` just like the original run; the next `tilth resume` would retry once more. The retries are recursive in invocation, not in mechanism — each one is just a fresh ride through the same loop.
+Resume does not loop endlessly. If a retried task hits a terminal-failure stop *again* — `iter_cap`, `evaluator_cap`, `empty_responses`, or `no_case` — the outer loop halts with that `stop {reason}` just like the original run; the next `tilth resume` would retry once more. The retries are recursive in invocation, not in mechanism — each one is just a fresh ride through the same loop.
 
 ## Resumable-session detection
 

@@ -42,7 +42,7 @@ There's one model call per "spot" in the loop, and each records tokens the same 
 
 | Site | Function | What it's calling |
 |---|---|---|
-| `_judge_task` | `_judge_task` | evaluator model on a finished task (one call per attempt, up to 2) |
+| `_evaluator_task` | `_evaluator_task` | evaluator model on a finished task (one call per attempt, up to 2) |
 | `_self_improve` | `_self_improve` | worker model asking "did this task surface a durable learning?" (collected into proposed-learnings.md) |
 | `_run_task` | `_run_task` | worker model — the main per-iteration call |
 
@@ -133,6 +133,6 @@ The wall-clock baseline (`started_at`) is treated differently: `Session.wake()` 
 A few honest gaps worth knowing:
 
 1. **No dollar-cost tracking.** Tokens, not dollars. The cap is provider-agnostic — useful as a coarse safety net, useless for "stop when I've spent $50 on this run." Adding dollar tracking means a per-model price table and a cost lookup at each `add_tokens` site. Not in MVP.
-2. **No per-model breakdown.** If worker and evaluator are different models on different providers, the running total mashes them together. Splitting `tokens_used` into `worker_tokens_used` and `judge_tokens_used` is ~10 lines if it ever matters.
+2. **No per-model breakdown.** If worker and evaluator are different models on different providers, the running total mashes them together. Splitting `tokens_used` into `worker_tokens_used` and `evaluator_tokens_used` is ~10 lines if it ever matters.
 3. **No headroom warning.** The cap is binary — under it, run; at it, stop. No "you're at 80% of your token budget" alert. Easy to add in `_stop_reason` if you want it.
 4. **The cap is over the whole session, not per-task.** A 10-task run with a 2M cap means tasks 1–9 might gobble tokens and starve task 10. There's no per-task budget. The iteration cap (default 8 model calls per task) is the proxy; combined with average tokens/call, that approximates a per-task ceiling.

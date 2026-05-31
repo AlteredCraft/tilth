@@ -11,9 +11,9 @@
   --tool: #f3f1ec;
   --tool-line: #d8d4c8;
   --tool-fg: #57534e;
-  --judge: #f7efe3;
-  --judge-line: #e1c79b;
-  --judge-fg: #92400e;
+  --evaluator: #f7efe3;
+  --evaluator-line: #e1c79b;
+  --evaluator-fg: #92400e;
   --ok: #15803d;
   --ok-bg: #e6f4ec;
   --bad: #b91c1c;
@@ -35,9 +35,9 @@
     --tool: #1d1e23;
     --tool-line: #34353c;
     --tool-fg: #b6b6ba;
-    --judge: #271f15;
-    --judge-line: #6b5429;
-    --judge-fg: #f0c987;
+    --evaluator: #271f15;
+    --evaluator-line: #6b5429;
+    --evaluator-fg: #f0c987;
     --ok: #4ade80;
     --ok-bg: #112318;
     --bad: #fb7185;
@@ -199,12 +199,12 @@ details.reasoning[open] summary::before {
 }
 .bubble-block .bubble-title { color: var(--bad); }
 
-.bubble-judge {
-  background: var(--judge);
-  border-color: var(--judge-line);
+.bubble-evaluator {
+  background: var(--evaluator);
+  border-color: var(--evaluator-line);
   margin-left: auto;
 }
-.bubble-judge .bubble-title { color: var(--judge-fg); }
+.bubble-evaluator .bubble-title { color: var(--evaluator-fg); }
 
 .bubble-head, .card-head {
   display: flex;
@@ -274,8 +274,8 @@ pre {
 
 .seed-panel {
   background: var(--card);
-  border: 1px solid var(--judge-line);
-  border-left: 4px solid var(--judge-line);
+  border: 1px solid var(--evaluator-line);
+  border-left: 4px solid var(--evaluator-line);
   border-radius: 10px;
   padding: 16px 18px;
   margin: 0 0 28px;
@@ -294,7 +294,7 @@ pre {
   font-size: 13px;
   letter-spacing: 0.02em;
   text-transform: uppercase;
-  color: var(--judge-fg);
+  color: var(--evaluator-fg);
 }
 .seed-panel-meta {
   font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;

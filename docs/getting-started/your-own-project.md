@@ -2,7 +2,7 @@
 
 The honest version, not the marketing version.
 
-This page is for a reader who has finished the [demo walkthrough](running-the-demo.md) and now wants to point Tilth at their own codebase. [Installation](installation.md) and [Running the demo](running-the-demo.md) cover the harness mechanics — this page covers what's specific to applying it to your *own* repo: seeding the task list with `tilth prep-feature`, picking a judge, and the caveats that aren't obvious from a demo run.
+This page is for a reader who has finished the [demo walkthrough](running-the-demo.md) and now wants to point Tilth at their own codebase. [Installation](installation.md) and [Running the demo](running-the-demo.md) cover the harness mechanics — this page covers what's specific to applying it to your *own* repo: seeding the task list with `tilth prep-feature`, picking an evaluator, and the caveats that aren't obvious from a demo run.
 
 > **TL;DR.** This works well on a small Python project with 5–15 well-specified tasks and existing test patterns. Anything bigger or polyglot, you fork the harness.
 
@@ -71,41 +71,41 @@ The session log lives at `{{tilth-clone-path}}/sessions/<id>/events.jsonl` — e
 - **It's Python-centric.** `post_edit` lints `.py` files. `validators` runs `pytest` and `ruff`. JavaScript / Rust / Go projects need `tilth/validators.py` and `tilth/hooks/post_edit.py` adapted to your toolchain — not deep work, but not zero.
 - **Ruff config matters.** If your project doesn't already use ruff, the validator will fire constantly and the agent will spend iterations fixing things that aren't really broken. Either add a permissive `[tool.ruff]` block to your `pyproject.toml`, or swap the ruff validator for whatever linter you already use.
 - **The interview drives the seed; you drive the interview.** `prep-feature` interviews against your code, but the answers come from you. Vague briefs and rushed answers produce vague seeds and weak acceptance criteria, which burn tokens and produce branches you'll rewrite. The interview is the high-leverage moment — slow down here, not in the run.
-- **Costs are real, in two places.** The interview itself is a real spend (a frontier-tier reasoning model across many turns); the prompt-line token strip surfaces it so you can abort if it drifts. Then the run itself spends hundreds of thousands of tokens across worker + evaluator + self-improvement. The `TILTH_MAX_TOKENS` cap exists for a reason — set it on first run. Cost per token varies wildly across providers; pick your worker accordingly. Be careful about reaching for a smaller judge model to cut costs — see [Picking a judge model](#6-picking-a-judge-model) below.
+- **Costs are real, in two places.** The interview itself is a real spend (a frontier-tier reasoning model across many turns); the prompt-line token strip surfaces it so you can abort if it drifts. Then the run itself spends hundreds of thousands of tokens across worker + evaluator + self-improvement. The `TILTH_MAX_TOKENS` cap exists for a reason — set it on first run. Cost per token varies wildly across providers; pick your worker accordingly. Be careful about reaching for a smaller evaluator model to cut costs — see [Picking a evaluator model](#6-picking-an-evaluator-model) below.
 - **AGENTS.md is yours.** Tilth reads it, never writes it. The self-improvement step's proposals land in `sessions/<id>/proposed-learnings.md` for you to review and (optionally) promote into AGENTS.md by hand. The file only grows when you decide it should.
 - **Tools are intentionally narrow.** No web fetch, no MCP, no curl-based downloads. If your tasks require external API access, you add a tool to `tilth/tools/` and register it. Keep tools focused — every tool description ships in the prompt every turn.
 - **The harness commits to your repo's git db.** Tilth keeps the working tree under `sessions/<id>/workspace/` on its own side, but the branch `session/<id>` lives in *your* repo's `.git`. So if you delete your Tilth clone without resetting first, those branches remain in your project. Clean up branches the same way you would for a normal feature branch — or run `tilth reset` before you blow Tilth away. See [Session layout](../deep-dives/session-layout.md) for the full split.
 
-## 6. Picking a judge model
+## 6. Picking an evaluator model
 
-The evaluator call is the single most consequential model decision in the harness. It's the only thing standing between "validators passed" and "this gets committed to a branch you'll merge." (The role is the *evaluator*; the config knob you set here is still `TILTH_JUDGE_MODEL`.)
+The evaluator call is the single most consequential model decision in the harness. It's the only thing standing between "validators passed" and "this gets committed to a branch you'll merge." (The role is the *evaluator*; the config knob you set here is still `TILTH_EVALUATOR_MODEL`.)
 
-### Default: judge ≥ worker
+### Default: evaluator ≥ worker
 
-For correctness gating on code diffs, the judge should be **at least as capable as the worker, often more capable**. A weaker judge fails in the worst possible way: it accepts bad work because it didn't notice the problem.
+For correctness gating on code diffs, the evaluator should be **at least as capable as the worker, often more capable**. A weaker evaluator fails in the worst possible way: it accepts bad work because it didn't notice the problem.
 
-This is the opposite of the intuition many people start with ("the worker did the hard work, the judge just rubber-stamps"). The judge sees the diff, the acceptance criteria, the full validator output, the inlined seed test, the worker's structured case, and its own prior verdicts on this task — but not the worker's chain-of-thought or tool history. It's reviewing an artifact, not retracing the work — so it needs more capability to compensate, not less.
+This is the opposite of the intuition many people start with ("the worker did the hard work, the evaluator just rubber-stamps"). The evaluator sees the diff, the acceptance criteria, the full validator output, the inlined seed test, the worker's structured case, and its own prior verdicts on this task — but not the worker's chain-of-thought or tool history. It's reviewing an artifact, not retracing the work — so it needs more capability to compensate, not less.
 
 Academic LLM-as-a-judge research bears this out: evaluators are typically run with GPT-4-class models judging GPT-3.5-class outputs, not the other way around. The point of separation is **independence**, not capability reduction.
 
 ### When dual-provider routing actually pays off
 
-The `TILTH_JUDGE_BASE_URL` / `TILTH_JUDGE_API_KEY` feature is genuinely useful, but mostly for **cross-family independence**, not cost:
+The `TILTH_EVALUATOR_BASE_URL` / `TILTH_EVALUATOR_API_KEY` feature is genuinely useful, but mostly for **cross-family independence**, not cost:
 
-- **Worker = open model, judge = Claude (both on OpenRouter).** Different model families catch different failure modes. Same-family judging shares the worker's blind spots.
-- **Worker = capable open model, judge = frontier closed model.** When you need the strongest possible gate, route the judge to whatever's at the top of the leaderboard for code review.
+- **Worker = open model, evaluator = Claude (both on OpenRouter).** Different model families catch different failure modes. Same-family judging shares the worker's blind spots.
+- **Worker = capable open model, evaluator = frontier closed model.** When you need the strongest possible gate, route the evaluator to whatever's at the top of the leaderboard for code review.
 
-Both of these are *upgrading* the judge, not downgrading it.
+Both of these are *upgrading* the evaluator, not downgrading it.
 
-### When a smaller / cheaper judge is OK
+### When a smaller / cheaper evaluator is OK
 
-There's a narrow band where a cheap judge works:
+There's a narrow band where a cheap evaluator works:
 
 - **Shallow checks.** Binary outcomes ("did this string change?", "is this JSON?"), regex matches, simple format validation.
 - **Policy gates.** "Did the response avoid the banned topics?", "Is this on-brand?" — small finetuned classifiers can do this for a fraction of the cost.
-- **Worker is already top-tier and tasks are tightly bounded.** If the worker is Sonnet 4.5 doing well-specified PRD tasks, a Haiku-class judge catches the obvious failures cheaply.
+- **Worker is already top-tier and tasks are tightly bounded.** If the worker is Sonnet 4.5 doing well-specified PRD tasks, a Haiku-class evaluator catches the obvious failures cheaply.
 
-For a Ralph loop doing real code review, none of these usually apply. Default to a judge that's at least as good as the worker. Only swap to a smaller judge after you've measured judge accept-rate on known-bad tasks and confirmed it's still catching them.
+For a Ralph loop doing real code review, none of these usually apply. Default to a evaluator that's at least as good as the worker. Only swap to a smaller evaluator after you've measured evaluator accept-rate on known-bad tasks and confirmed it's still catching them.
 
 ## 7. When this is the wrong tool
 

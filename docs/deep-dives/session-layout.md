@@ -44,12 +44,12 @@ The flip side: the target repo stays pristine. Tilth never asks you to add anyth
 | `hook_run` | A lifecycle hook ran | `hook`, `outcome`, `tool`, `reason?` | — |
 | `validator_run` | ruff / pytest / mypy ran | `validator`, pass/fail, output | card |
 | `case_parse_error` | A `submit_case` couldn't be parsed | `iter`, `error`, `raw_tool_calls` | — |
-| `evaluator_verdict` | The evaluator returned a verdict (successor to `judge_verdict`) | `verdict`, `rejection_category`, `concern`, `evidence`, `next_step`, `parse_failed?` | card |
+| `evaluator_verdict` | The evaluator returned a verdict (successor to `evaluator_verdict`) | `verdict`, `rejection_category`, `concern`, `evidence`, `next_step`, `parse_failed?` | card |
 | `evaluator_parse_error` | A `submit_verdict` couldn't be parsed (per attempt) | `attempt`, `error`, `raw_tool_calls` | — |
 | `ledger_appended` | An entry was appended to a task's ledger | `task_id`, `iter`, `verdict_summary` | — |
 | `commit` | A task's work was committed to the branch | `task_id`, `sha` | card |
 | `task_done` | A task was accepted (validators + evaluator) | `task_id` | card |
-| `task_failed` | A task could not be completed | `reason` ∈ {`iter_cap`, `judge_cap`, `empty_responses`, `no_case`} | card |
+| `task_failed` | A task could not be completed | `reason` ∈ {`iter_cap`, `evaluator_cap`, `empty_responses`, `no_case`} | card |
 | `proposed_learnings` | The self-improvement step ran | `emitted`, `entry?`, `reason?` | card |
 | `stop` | The run terminated | `reason` ∈ {`all_done`, `wall_clock`, `token_cap`, `iter_cap`, `interrupted`, `error`} | card |
 

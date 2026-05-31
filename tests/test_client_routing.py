@@ -1,7 +1,7 @@
 """LLMClient routes by model name and shapes per-provider request kwargs.
 
 Two behaviours under test:
-  - Each purpose (worker / judge / prep) is dispatched to its own OpenAI
+  - Each purpose (worker / evaluator / prep) is dispatched to its own OpenAI
     instance when its base_url+api_key differ from the worker's.
   - The OpenRouter `reasoning.enabled` opt-in is sent based on the
     *routed* purpose's base_url, not the worker's — so a worker on
@@ -75,7 +75,7 @@ def patch_openai(monkeypatch):
 
 def _cfg(**over) -> TilthConfig:
     """Build a TilthConfig that mirrors `from_env`'s default-derivation: unset
-    judge/prep base_url and api_key inherit from the worker's. Override only
+    evaluator/prep base_url and api_key inherit from the worker's. Override only
     the fields you actually care about — the rest inherit so the test setup
     matches what a real user environment would produce."""
     base_url = over.pop("base_url", "https://worker.invalid/v1")
@@ -85,14 +85,14 @@ def _cfg(**over) -> TilthConfig:
         base_url=base_url,
         api_key=api_key,
         worker_model=worker_model,
-        judge_base_url=base_url,
-        judge_api_key=api_key,
-        judge_model=worker_model,
+        evaluator_base_url=base_url,
+        evaluator_api_key=api_key,
+        evaluator_model=worker_model,
         prep_base_url=base_url,
         prep_api_key=api_key,
         prep_model=worker_model,
         max_iterations_per_task=8,
-        max_judge_calls_per_task=0,
+        max_evaluator_calls_per_task=0,
         max_wall_clock_minutes=120,
         max_tokens=2_000_000,
     )
@@ -103,18 +103,18 @@ def _cfg(**over) -> TilthConfig:
 def test_no_overrides_shares_one_underlying_client():
     cfg = _cfg()
     client = LLMClient(cfg)
-    # Same OpenAI instance reused for worker, judge, prep.
-    assert client._worker is client._judge is client._prep
+    # Same OpenAI instance reused for worker, evaluator, prep.
+    assert client._worker is client._evaluator is client._prep
 
 
-def test_judge_override_creates_distinct_client():
+def test_evaluator_override_creates_distinct_client():
     cfg = _cfg(
-        judge_base_url="https://judge.invalid/v1",
-        judge_api_key="jkey",
-        judge_model="judge-m",
+        evaluator_base_url="https://evaluator.invalid/v1",
+        evaluator_api_key="jkey",
+        evaluator_model="evaluator-m",
     )
     client = LLMClient(cfg)
-    assert client._judge is not client._worker
+    assert client._evaluator is not client._worker
     assert client._prep is client._worker
 
 
@@ -126,18 +126,18 @@ def test_prep_override_creates_distinct_client():
     )
     client = LLMClient(cfg)
     assert client._prep is not client._worker
-    assert client._judge is client._worker
+    assert client._evaluator is client._worker
 
 
-def test_chat_routes_judge_calls_to_judge_client():
+def test_chat_routes_evaluator_calls_to_evaluator_client():
     cfg = _cfg(
-        judge_base_url="https://judge.invalid/v1",
-        judge_api_key="jkey",
-        judge_model="judge-m",
+        evaluator_base_url="https://evaluator.invalid/v1",
+        evaluator_api_key="jkey",
+        evaluator_model="evaluator-m",
     )
     client = LLMClient(cfg)
-    client.chat([{"role": "user", "content": "x"}], model="judge-m")
-    assert client._judge.calls and not client._worker.calls
+    client.chat([{"role": "user", "content": "x"}], model="evaluator-m")
+    assert client._evaluator.calls and not client._worker.calls
 
 
 def test_chat_routes_prep_calls_to_prep_client():

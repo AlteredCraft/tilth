@@ -2,7 +2,7 @@
 
 This module owns three things:
 
-1. The `submit_verdict` **tool definition** the judge model is given (OpenAI
+1. The `submit_verdict` **tool definition** the evaluator model is given (OpenAI
    tool-call shape). Schema lives here, not in the prompt — that's the
    point of Phase 1's "verdict as a tool call" decision in
    `proposals/completed/v1-implementation-plan.md`.
@@ -285,7 +285,7 @@ def format_ledger_section(
     The evaluator uses the default header; Phase 4 reuses this to show the
     worker its *own* task ledger under a clarifying header (`from the
     evaluator`). Data only — guidance on *how* to use this lives in the
-    respective prompt (judge.md / system.md).
+    respective prompt (evaluator.md / system.md).
     """
     if not entries:
         return ""

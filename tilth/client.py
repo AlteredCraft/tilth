@@ -5,14 +5,14 @@ Talks to any OpenAI-compatible endpoint via the `openai` SDK. `TILTH_BASE_URL`,
 if they aren't set rather than silently picking a provider/model that may not
 match your account.
 
-Optional cross-purpose routing: each purpose (worker, judge, prep-feature
+Optional cross-purpose routing: each purpose (worker, evaluator, prep-feature
 interview) can be pinned to a different provider via per-purpose env vars —
-`TILTH_JUDGE_BASE_URL` / `TILTH_JUDGE_API_KEY` for the judge, and
+`TILTH_EVALUATOR_BASE_URL` / `TILTH_EVALUATOR_API_KEY` for the evaluator, and
 `TILTH_PREP_BASE_URL` / `TILTH_PREP_API_KEY` for the prep-feature interview.
 Each defaults to the worker's. Routing is by model name in `chat()`; the
 matching base URL is then used to decide whether to send the OpenRouter
 `reasoning.enabled` opt-in (so a worker on OpenRouter routing through a
-non-OpenRouter judge doesn't send OpenRouter-specific syntax there).
+non-OpenRouter evaluator doesn't send OpenRouter-specific syntax there).
 """
 
 from __future__ import annotations
@@ -89,14 +89,14 @@ class TilthConfig:
     base_url: str
     api_key: str
     worker_model: str
-    judge_base_url: str
-    judge_api_key: str
-    judge_model: str
+    evaluator_base_url: str
+    evaluator_api_key: str
+    evaluator_model: str
     prep_base_url: str
     prep_api_key: str
     prep_model: str
     max_iterations_per_task: int
-    max_judge_calls_per_task: int
+    max_evaluator_calls_per_task: int
     max_wall_clock_minutes: int
     max_tokens: int
 
@@ -121,9 +121,9 @@ class TilthConfig:
                 "docs/getting-started/installation.md for known-good "
                 "provider/model combinations)."
             )
-        judge_model = os.environ.get("TILTH_JUDGE_MODEL", "").strip() or worker_model
-        judge_base_url = os.environ.get("TILTH_JUDGE_BASE_URL", "").strip() or base_url
-        judge_api_key = os.environ.get("TILTH_JUDGE_API_KEY", "").strip() or api_key
+        evaluator_model = os.environ.get("TILTH_EVALUATOR_MODEL", "").strip() or worker_model
+        evaluator_base_url = os.environ.get("TILTH_EVALUATOR_BASE_URL", "").strip() or base_url
+        evaluator_api_key = os.environ.get("TILTH_EVALUATOR_API_KEY", "").strip() or api_key
         prep_model = os.environ.get("TILTH_PREP_MODEL", "").strip() or worker_model
         prep_base_url = os.environ.get("TILTH_PREP_BASE_URL", "").strip() or base_url
         prep_api_key = os.environ.get("TILTH_PREP_API_KEY", "").strip() or api_key
@@ -131,15 +131,15 @@ class TilthConfig:
             base_url=base_url,
             api_key=api_key,
             worker_model=worker_model,
-            judge_base_url=judge_base_url,
-            judge_api_key=judge_api_key,
-            judge_model=judge_model,
+            evaluator_base_url=evaluator_base_url,
+            evaluator_api_key=evaluator_api_key,
+            evaluator_model=evaluator_model,
             prep_base_url=prep_base_url,
             prep_api_key=prep_api_key,
             prep_model=prep_model,
             max_iterations_per_task=int(os.environ.get("TILTH_MAX_ITERATIONS_PER_TASK", "8")),
-            max_judge_calls_per_task=int(
-                os.environ.get("TILTH_MAX_JUDGE_CALLS_PER_TASK", "0") or "0"
+            max_evaluator_calls_per_task=int(
+                os.environ.get("MAX_EVALUATOR_CALLS_PER_TASK", "0") or "0"
             ),
             max_wall_clock_minutes=int(os.environ.get("TILTH_MAX_WALL_CLOCK_MINUTES", "120")),
             max_tokens=int(os.environ.get("TILTH_MAX_TOKENS", "2000000")),
@@ -160,12 +160,12 @@ class LLMClient:
         self.config = config
         self._worker = OpenAI(base_url=config.base_url, api_key=config.api_key)
         if (
-            config.judge_base_url == config.base_url
-            and config.judge_api_key == config.api_key
+            config.evaluator_base_url == config.base_url
+            and config.evaluator_api_key == config.api_key
         ):
-            self._judge = self._worker
+            self._evaluator = self._worker
         else:
-            self._judge = OpenAI(base_url=config.judge_base_url, api_key=config.judge_api_key)
+            self._evaluator = OpenAI(base_url=config.evaluator_base_url, api_key=config.evaluator_api_key)
         if (
             config.prep_base_url == config.base_url
             and config.prep_api_key == config.api_key
@@ -182,8 +182,8 @@ class LLMClient:
         config — important when a non-worker purpose lives on a different
         gateway.
         """
-        if model == self.config.judge_model and self._judge is not self._worker:
-            return self._judge, self.config.judge_base_url
+        if model == self.config.evaluator_model and self._evaluator is not self._worker:
+            return self._evaluator, self.config.evaluator_base_url
         if model == self.config.prep_model and self._prep is not self._worker:
             return self._prep, self.config.prep_base_url
         return self._worker, self.config.base_url

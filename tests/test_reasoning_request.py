@@ -24,9 +24,9 @@ def _make_client(monkeypatch, base_url: str) -> tuple[LLMClient, MagicMock]:
     monkeypatch.setenv("TILTH_API_KEY", "test-key")
     monkeypatch.setenv("TILTH_BASE_URL", base_url)
     monkeypatch.setenv("TILTH_WORKER_MODEL", "test-model")
-    monkeypatch.delenv("TILTH_JUDGE_MODEL", raising=False)
-    monkeypatch.delenv("TILTH_JUDGE_BASE_URL", raising=False)
-    monkeypatch.delenv("TILTH_JUDGE_API_KEY", raising=False)
+    monkeypatch.delenv("TILTH_EVALUATOR_MODEL", raising=False)
+    monkeypatch.delenv("TILTH_EVALUATOR_BASE_URL", raising=False)
+    monkeypatch.delenv("TILTH_EVALUATOR_API_KEY", raising=False)
 
     config = TilthConfig.from_env()
     client = LLMClient(config)

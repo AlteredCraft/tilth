@@ -1,7 +1,7 @@
 """The interview engine — drives the tool-use loop end-to-end.
 
 Mirrors the worker loop's shape (see tilth/loop.py:_run_task), but with a
-narrower tool surface, no validators, no judge, and a terminal `write_seed`
+narrower tool surface, no validators, no evaluator, and a terminal `write_seed`
 call that ends the session. Everything observable on the worker side
 (model_call events, token accounting, reasoning round-trip) is preserved here
 so the visualizer renders interviews the same as runs.

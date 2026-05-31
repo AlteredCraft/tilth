@@ -45,7 +45,7 @@ nav:
       # The "honest version" of using Tilth on your own (non-demo) codebase:
       # what prep your repo actually needs (a clean git repo, optionally an
       # AGENTS.md), seeding with `tilth prep-feature`, the test-filename
-      # convention, the caveats list, picking a judge model, when this is
+      # convention, the caveats list, picking an evaluator model, when this is
       # the wrong tool, and what to do on a first run.
       - Using on your own project: getting-started/your-own-project.md
 

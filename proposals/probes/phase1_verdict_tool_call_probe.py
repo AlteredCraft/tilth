@@ -1,14 +1,14 @@
-"""Probe: can we make the judge's verdict a forced tool call?
+"""Probe: can we make the evaluator's verdict a forced tool call?
 
 Question this answers, per v1-implementation-plan.md Phase 1:
   Option 3 of the malformed-JSON discussion (verdict-as-tool-call) depends
-  on the judge provider reliably:
+  on the evaluator provider reliably:
     (a) emitting a tool call when `tool_choice` forces a named function,
     (b) honouring schema enums on `rejection_category`,
     (c) returning a response shape the existing loop.py tool-result code
         path (`tc.get("function").get("arguments")`) can read.
 
-  This script runs the same Tilth judge config (from .env) against a tiny
+  This script runs the same Tilth evaluator config (from .env) against a tiny
   fabricated task and reports what the wire actually returns. CLAUDE.md's
   "verify, don't guess" rule — don't design Phase 1 around a tool-choice
   contract we haven't seen the provider honour.
@@ -19,7 +19,7 @@ Run:
 Notes:
 - Calls the OpenAI SDK directly (not Tilth's LLMClient.chat) so we can pass
   `tool_choice`, which `chat()` doesn't currently expose. The transport and
-  base_url/api_key/model selection matches Tilth's judge path.
+  base_url/api_key/model selection matches Tilth's evaluator path.
 - Sends `extra_body={"reasoning": {"enabled": True}}` because that's what
   Tilth sends on OpenRouter today; we want the probe wire shape to match
   production wire shape.
@@ -278,21 +278,21 @@ def run_scenario(
 def main() -> int:
     load_dotenv()
     base_url = (
-        os.environ.get("TILTH_JUDGE_BASE_URL", "").strip()
+        os.environ.get("TILTH_EVALUATOR_BASE_URL", "").strip()
         or os.environ.get("TILTH_BASE_URL", "").strip()
     )
     api_key = (
-        os.environ.get("TILTH_JUDGE_API_KEY", "").strip()
+        os.environ.get("TILTH_EVALUATOR_API_KEY", "").strip()
         or os.environ.get("TILTH_API_KEY", "").strip()
     )
     model = (
-        os.environ.get("TILTH_JUDGE_MODEL", "").strip()
+        os.environ.get("TILTH_EVALUATOR_MODEL", "").strip()
         or os.environ.get("TILTH_WORKER_MODEL", "").strip()
     )
     if not (base_url and api_key and model):
-        print("Missing env: TILTH_JUDGE_BASE_URL/TILTH_BASE_URL, "
-              "TILTH_JUDGE_API_KEY/TILTH_API_KEY, "
-              "TILTH_JUDGE_MODEL/TILTH_WORKER_MODEL. Source .env or export them.")
+        print("Missing env: TILTH_EVALUATOR_BASE_URL/TILTH_BASE_URL, "
+              "TILTH_EVALUATOR_API_KEY/TILTH_API_KEY, "
+              "TILTH_EVALUATOR_MODEL/TILTH_WORKER_MODEL. Source .env or export them.")
         return 2
 
     print(f"Probe target: {model}  via  {base_url}")

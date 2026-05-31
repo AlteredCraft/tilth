@@ -4,7 +4,7 @@ The agent is deliberately walled off from most of the harness's machinery. It se
 
 The [Phase 4 visibility expansion](worker-evaluator-dialogue.md) softened where that wall sits: the worker now sees the whole feature plan *as context*, a curated slice of the seeding interview, and — when it has worked this task before — the evaluator's prior verdicts on it. It still never sees the harness files, the queue it's part of, or the cost accounting. This is a load-bearing design choice, not a convenience. Worth understanding before extending the harness.
 
-> The reviewing role is the **evaluator**; the config knobs still say `judge` (see [the dialogue page](worker-evaluator-dialogue.md#a-note-on-the-name)).
+> The reviewing role is the **evaluator**.
 
 ## Visibility table
 
@@ -32,7 +32,7 @@ The [Phase 4 visibility expansion](worker-evaluator-dialogue.md) softened where 
 
 Three failure modes prevented by hiding mechanics from the agent:
 
-1. **Gaming the evaluator.** The worker sees the evaluator's verdicts on *its own task* — by design, so it can fix what was flagged — but not that a generic reviewer judges every task, nor the rejection categories aggregated across the session. Keeping the wider evaluation machinery hidden stops the worker padding commits *for the reviewer* instead of writing working code.
+1. **Gaming the evaluator.** The worker sees the evaluator's verdicts on *its own task* — by design, so it can fix what was flagged — but not that a generic reviewer evaluates every task, nor the rejection categories aggregated across the session. Keeping the wider evaluation machinery hidden stops the worker padding commits *for the reviewer* instead of writing working code.
 2. **Token shortcuts.** If the agent knew the token cap, it would cut corners ("I'll skip writing the test to save tokens"). The only objective the worker is given is "do the task." Cost accounting is the harness's problem, not the agent's.
 3. **Trying to manage state itself.** If the agent saw the mutable `prd.json` *state* — status fields, the queue machinery — it would try to mark its own task done, skip ahead, or rewrite the queue. Both real failure modes seen in earlier hand-built loops. The plan it sees is read-only prose; the state management belongs in code, and the agent works on one task at a time and stops.
 

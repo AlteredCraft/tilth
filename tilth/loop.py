@@ -87,15 +87,15 @@ def _system_prompt() -> str:
     return (PROMPTS_DIR / "system.md").read_text()
 
 
-def _judge_prompt() -> str:
-    return (PROMPTS_DIR / "judge.md").read_text()
+def _evaluator_prompt() -> str:
+    return (PROMPTS_DIR / "evaluator.md").read_text()
 
 
 def _propose_learning_prompt() -> str:
     return (PROMPTS_DIR / "propose_learning.md").read_text()
 
 
-# --- evaluator (formerly "judge") -------------------------------------------
+# --- evaluator -------------------------------------------
 
 JUDGE_DIFF_MAX_CHARS = 12_000
 PROMPT_ASSEMBLED_CHAR_CAP = 16_000
@@ -324,7 +324,7 @@ def _format_seed_test_section(worktree: Path, task_id: str) -> str:
     Reads the worktree-current version — exactly what pytest validated. If the
     worker tampered with a seed test, the diff already surfaces that as
     cross-task interference; here the evaluator can read what the passing test
-    actually asserts, to judge `weak_test`. Absent/unreadable → "".
+    actually asserts, to evaluator `weak_test`. Absent/unreadable → "".
     """
     tests_dir = worktree / "tests"
     if not tests_dir.is_dir():
@@ -348,7 +348,7 @@ def _format_seed_test_section(worktree: Path, task_id: str) -> str:
     return "\n".join(blocks)
 
 
-def _judge_task(
+def _evaluator_task(
     task: dict[str, Any],
     worktree: Path,
     client: LLMClient,
@@ -427,14 +427,14 @@ def _judge_task(
         content=user_content,
     )
 
-    judge_messages: list[dict[str, Any]] = [
-        {"role": "system", "content": _judge_prompt()},
+    evaluator_messages: list[dict[str, Any]] = [
+        {"role": "system", "content": _evaluator_prompt()},
         {"role": "user", "content": user_content},
     ]
 
     verdict = _call_evaluator_with_retry(
         client,
-        judge_messages,
+        evaluator_messages,
         session=session,
         task_id=task["id"],
         trace_id=trace_id,
@@ -509,7 +509,7 @@ def _call_evaluator_with_retry(
     for attempt in (1, 2):
         resp = client.chat(
             messages,
-            model=client.config.judge_model,
+            model=client.config.evaluator_model,
             tools=[SUBMIT_VERDICT_TOOL],
         )
         usage = resp.get("usage") or {}
@@ -1096,7 +1096,7 @@ def _run_task(
     session: Session,
     trace_id: str,
 ) -> str:
-    """Run one task. Returns 'done', 'iter_cap', 'judge_cap', 'empty_responses',
+    """Run one task. Returns 'done', 'iter_cap', 'evaluator_cap', 'empty_responses',
     or 'no_case'.
 
     A task is 'done' only when the worker calls `submit_case` (its done-signal,
@@ -1148,7 +1148,7 @@ def _run_task(
         {"role": "user", "content": user_prompt},
     ]
     tool_schemas = [*tools.schemas(), SUBMIT_CASE_TOOL]
-    judge_calls = 0
+    evaluator_calls = 0
     empty_streak = 0
     no_case_streak = 0
 
@@ -1396,11 +1396,11 @@ def _run_task(
             continue
 
         console.print(f"[green]task {task['id']} validators passed → evaluator[/green]")
-        verdict = _judge_task(
+        verdict = _evaluator_task(
             task, worktree, client, session, iter_n, trace_id, iter_span,
             case=case, results=results,
         )
-        judge_calls += 1
+        evaluator_calls += 1
         concern = (verdict.get("concern") or "").strip()
         if verdict["verdict"] == "accept":
             console.print(f"[green]evaluator accepts:[/green] {concern[:200]}")
@@ -1416,11 +1416,11 @@ def _run_task(
             return "done"
 
         console.print(f"[yellow]evaluator rejects:[/yellow] {concern[:200]}")
-        judge_cap = client.config.max_judge_calls_per_task
-        if judge_cap > 0 and judge_calls >= judge_cap:
+        evaluator_cap = client.config.max_evaluator_calls_per_task
+        if evaluator_cap > 0 and evaluator_calls >= evaluator_cap:
             console.print(
-                f"[red]task {task['id']} hit judge cap[/red] "
-                f"[dim][TILTH_MAX_JUDGE_CALLS_PER_TASK={judge_cap}][/dim]"
+                f"[red]task {task['id']} hit evaluator cap[/red] "
+                f"[dim][MAX_EVALUATOR_CALLS_PER_TASK={evaluator_cap}][/dim]"
             )
             session.log(
                 "task_failed",
@@ -1428,11 +1428,11 @@ def _run_task(
                     "task_id": task["id"],
                     "trace_id": trace_id,
                     "span_id": iter_span,
-                    "reason": "judge_cap",
-                    "judge_calls": judge_calls,
+                    "reason": "evaluator_cap",
+                    "evaluator_calls": evaluator_calls,
                 },
             )
-            return "judge_cap"
+            return "evaluator_cap"
         _answer_case_calls(messages, case_tcs, format_reject_feedback(verdict))
 
     cap = client.config.max_iterations_per_task
@@ -1456,14 +1456,14 @@ def _stop_reason(client: LLMClient, session: Session) -> str | None:
 
 
 _TERMINAL_FAILURE_STOPS = frozenset(
-    {"iter_cap", "judge_cap", "empty_responses", "no_case", "error"}
+    {"iter_cap", "evaluator_cap", "empty_responses", "no_case", "error"}
 )
 
 
 def _stop_to_status(reason: str) -> str:
     """Map a `stop` reason to the resulting session status.
 
-    `all_done` is terminal-success; iter_cap/judge_cap/error are terminal-failure;
+    `all_done` is terminal-success; iter_cap/evaluator_cap/error are terminal-failure;
     everything else (wall_clock, token_cap, interrupted) leaves the session
     `running` — those are stops the user can resume from.
     """
@@ -1523,9 +1523,9 @@ def run(worktree: Path, session: Session, client: LLMClient) -> None:
             if outcome == "iter_cap":
                 cap = client.config.max_iterations_per_task
                 detail = f" [TILTH_MAX_ITERATIONS_PER_TASK={cap}]"
-            elif outcome == "judge_cap":
-                cap = client.config.max_judge_calls_per_task
-                detail = f" [TILTH_MAX_JUDGE_CALLS_PER_TASK={cap}]"
+            elif outcome == "evaluator_cap":
+                cap = client.config.max_evaluator_calls_per_task
+                detail = f" [MAX_EVALUATOR_CALLS_PER_TASK={cap}]"
             elif outcome == "empty_responses":
                 detail = (
                     " — the model endpoint returned empty responses; this is "
@@ -1800,7 +1800,7 @@ def _do_prep_feature(
 
     # Anchor the seed bundle in the session branch so subsequent task_diff()s
     # don't carry every uncommitted seeded test as "scope creep" until each
-    # task's commit lands. Without this, the judge sees future-task tests in
+    # task's commit lands. Without this, the evaluator sees future-task tests in
     # T-001's diff and rejects, and a confused worker may delete them.
     try:
         seed_sha = ws.commit_seed(worktree, len(result.prd_entries), len(result.test_files))

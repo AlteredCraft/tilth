@@ -53,7 +53,7 @@ Event types:
                          post-run reviewer reconstruct what each actor saw on
                          each turn without replaying the loop. Worker prompt
                          fires once per task at iter=0; evaluator prompt fires
-                         once per judge call at the worker's current iter;
+                         once per evaluator call at the worker's current iter;
                          self_improve fires once per completed task at iter=0.
     evaluator_verdict  — structured verdict from the evaluator (v1 of the
                          dialogue, see proposals/completed/v1-implementation-plan.md
@@ -64,7 +64,7 @@ Event types:
                          True` on the fallback path where the model never
                          produced a valid `submit_verdict` call (rare; see
                          evaluator_parse_error for the per-attempt detail).
-                         Successor to the v0 `judge_verdict` event.
+                         Successor to the v0 `evaluator_verdict` event.
     evaluator_parse_error
                        — the evaluator's response could not be parsed as a
                          valid `submit_verdict` tool call. Logged per attempt
@@ -80,7 +80,7 @@ Event types:
                          captured (capped) so a failing case is reconstructable.
                          The loop feeds `error` back as the submit_case
                          tool_result and lets the worker retry — it does not
-                         count as a judge call or terminate the task.
+                         count as a evaluator call or terminate the task.
     ledger_appended    — an entry was appended to a task's evaluator ledger
                          (Phase 2). Lightweight pointer: {task_id, iter,
                          verdict_summary (e.g. "accept" or "reject:scope_creep")}.
@@ -97,13 +97,13 @@ Event types:
                          `task_failed` reason `empty_responses`.
     task_done          — task accepted (validators + evaluator passed)
     task_failed        — task could not be completed; payload.reason ∈
-                         {iter_cap, judge_cap, empty_responses, no_case}
+                         {iter_cap, evaluator_cap, empty_responses, no_case}
     proposed_learnings — self-improvement step's per-task verdict. Payload:
                          {task_id, trace_id, span_id, emitted, entry?, reason?}.
                          When emitted=True, `entry` carries the learning text
                          appended to sessions/<id>/proposed-learnings.md (a
                          session output for the user; never read by the worker
-                         or judge). When emitted=False, `reason` carries why
+                         or evaluator). When emitted=False, `reason` carries why
                          (no_proposal | unparseable | empty_learning).
     context_reset      — beginning of a new task; messages rebuilt from disk
     session_start      — fresh session began (worktree created). Payload `phase`

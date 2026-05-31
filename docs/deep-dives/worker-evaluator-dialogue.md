@@ -10,12 +10,7 @@ see.
 ## A note on the name
 
 The reviewing role is the **evaluator** — in prose, in events (`evaluator_verdict`),
-in the summary rollup, and on the visualizer card. The *config surface* deliberately
-keeps the older `judge` name: the env vars `TILTH_JUDGE_MODEL` / `TILTH_JUDGE_BASE_URL`
-/ `TILTH_JUDGE_API_KEY` / `TILTH_MAX_JUDGE_CALLS_PER_TASK`, the prompt file
-`tilth/prompts/judge.md`, the `judge_cap` stop reason, and the `_judge_task` symbol.
-Read "judge" as the knob name, "evaluator" as the role. A global find-replace would
-break the config docs.
+in the summary rollup, and on the visualizer card.
 
 ## The worker's case — `submit_case`
 
@@ -39,7 +34,7 @@ evaluator call or end the task.
 
 ## The evaluator's verdict — `submit_verdict`
 
-When a case passes validators, `_judge_task` calls the evaluator, which must respond
+When a case passes validators, `_evaluator_task` calls the evaluator, which must respond
 with exactly one **`submit_verdict`** tool call (`tilth/verdict.py`):
 
 | Field | On accept | On reject |
@@ -68,10 +63,10 @@ the task fails closed rather than silently passing.
 
 ## What the evaluator sees
 
-The verdict is no longer gated on the diff alone. `_judge_task` assembles, into a
+The verdict is no longer gated on the diff alone. `_evaluator_task` assembles, into a
 context fresh-across-tasks: the task description + AC, the cumulative diff, the
 worker's structured case, this task's **seed acceptance test inlined** (the exact
-file the validator ran — grounding the `weak_test` judgement), the **full** per-validator
+file the validator ran — grounding the `weak_test` evaluation), the **full** per-validator
 output (ruff + pytest), `AGENTS.md` when present, and the task **ledger** (below). It
 still sees none of the worker's chain-of-thought or tool history — that isolation is
 the point; an evaluator that could read the worker's reasoning would tend to agree
@@ -111,7 +106,7 @@ history from the run before — even though the conversation is gone. `tilth res
 1. Worker calls `submit_case` (its done-signal).
 2. Harness runs validators (ruff + pytest, filtered to this task's tests plus every `done` task's tests).
    - **Validators fail** → the failure report is returned as the `submit_case` tool_result; next iteration.
-3. Validators pass → `_judge_task` reads the ledger, builds the evaluator prompt, calls the evaluator, appends the verdict to the ledger.
+3. Validators pass → `_evaluator_task` reads the ledger, builds the evaluator prompt, calls the evaluator, appends the verdict to the ledger.
    - **Accept** → `_run_task` returns `"done"`; the task is committed.
    - **Reject** → `format_reject_feedback(verdict)` is returned as the `submit_case` tool_result; next iteration.
 
@@ -127,7 +122,7 @@ shrinks the working budget](two-loops.md#a-subtlety-evaluator-rejections-eat-ite
 |---|---|
 | Worker case: schema, parse, prompt rendering | `tilth/case.py` |
 | Evaluator verdict: schema, parse, feedback + ledger formatting | `tilth/verdict.py` |
-| Evaluator prompt (static) | `tilth/prompts/judge.md` |
+| Evaluator prompt (static) | `tilth/prompts/evaluator.md` |
 | Worker advocate framing | `tilth/prompts/system.md` |
-| The exchange + ledger read/append | `tilth/loop.py:_judge_task`, `_run_task` |
+| The exchange + ledger read/append | `tilth/loop.py:_evaluator_task`, `_run_task` |
 | Ledger I/O | `tilth/session.py:append_ledger_entry` / `read_ledger` |

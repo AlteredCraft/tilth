@@ -194,7 +194,7 @@ def test_hook_outcomes_aggregated(events_path):
 
 
 def test_evaluator_accept_reject_counted(events_path):
-    """Phase 1 of v1: judge_verdict → evaluator_verdict (structured payload).
+    """Phase 1 of v1: evaluator_verdict → evaluator_verdict (structured payload).
     The accepts/rejects bool survives as an overall summary stat; the new
     rejection_categories aggregation lives in test_summary_rejection_category_counts.py."""
     _write(

@@ -10,7 +10,7 @@ Five memory channels live *outside* the agent. Some are project files the user o
 | `prd.json` | `sessions/<id>/` (harness-owned) | `tilth prep-feature` (seed) and the harness (status flips) | the harness (task selection); worker (the *plan* as injected prose context) |
 | Evaluator ledger | `sessions/<id>/ledger/<task_id>.jsonl` | the harness (one entry per evaluator call) | evaluator (its prior verdicts on this task); worker (the same, on a retry) |
 
-> The reviewing role is the **evaluator**; the config knobs still say `judge` (see [the dialogue page](../deep-dives/worker-evaluator-dialogue.md#a-note-on-the-name)).
+> The reviewing role is the **evaluator**.
 
 The worker writes none of these. It writes code in the worktree, which the harness commits. The split is clean: **memory channels are inputs to the agents; session artifacts under `sessions/<id>/` (events.jsonl, summary.json, proposed-learnings.md) are outputs the harness produces during a run.** `seed-meta.json` is the interview audit trail; a curated slice of it (TL;DR, scope notes, blockers, open questions) is now injected into the worker prompt as context, while the interview bookkeeping stays an output.
 

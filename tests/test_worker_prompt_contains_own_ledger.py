@@ -3,7 +3,7 @@
 This is the one surface that widens the visibility wall — the worker now reads
 the evaluator's prior verdicts on this task. It's "about the work", not harness
 mechanics. The section is empty on a task's first run (the ledger only fills
-after a judge call); its payoff is on resume, so the test seeds the ledger.
+after a evaluator call); its payoff is on resume, so the test seeds the ledger.
 """
 
 from __future__ import annotations

@@ -234,7 +234,7 @@ def _render_evaluator_verdict(_typ: str, ts: str, p: dict[str, Any]) -> str:
         )
 
     return _bubble(
-        side="judge",
+        side="evaluator",
         title=f"evaluator {label}",
         ts=ts,
         body="".join(body_parts),

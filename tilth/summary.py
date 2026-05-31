@@ -44,11 +44,6 @@ Schema (v2 — Phase 1 of v1-implementation-plan.md):
         "stop":            {"reason": str, "ts": str},   # absent if no stop yet
     }
 
-v2 break vs v1: `judge` → `evaluator` (overall and per-task), structured
-`rejection_categories` aggregation added. Driven by the `evaluator_verdict`
-event (successor to `judge_verdict`). No migration — per the v1 contract,
-v0 sessions are not resumed under v1.
-
 Refreshed at every task boundary and at every stop path (see loop.py:
 _refresh_summary). Refresh is best-effort — failures must not break the run.
 """

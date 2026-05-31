@@ -1,7 +1,7 @@
 """Phase 4 visibility: the evaluator sees the real validator output.
 
 Before Phase 4 the evaluator got a static "all passed" line. Now it sees the
-actual ruff/pytest output so it can judge `weak_test`/`acceptance_gap` against
+actual ruff/pytest output so it can evaluator `weak_test`/`acceptance_gap` against
 what actually ran. The evaluator is only called after a pass, so this is always
 *passing* output — failures go to the worker, not here.
 """
