@@ -1,6 +1,6 @@
 """Verb-routed CLI entry point.
 
-Subcommands (the canonical surface from Phase 3 of proposals/prep-feature.md):
+Subcommands (the canonical surface from Phase 3 of proposals/completed/prep-feature.md):
 
     tilth prep-feature <workspace> [--brief TEXT]
     tilth run          <workspace>

@@ -47,7 +47,7 @@ None of these block the dialogue; each is its own workstream.
 
 **Status: ✅ Landed 2026-05-29.** What shipped (and where it diverged from this plan):
 
-- **Verdict as a tool call**, not prompt-only JSON — `tilth/verdict.py` owns `SUBMIT_VERDICT_TOOL`, `VERDICT_SCHEMA_VERSION`, `parse_verdict` (defensive: first valid `submit_verdict` call wins, corrupted siblings skipped), and `format_reject_feedback`. `LLMClient.chat` gained a `tool_choice` passthrough. Decided via [`probes/phase1_verdict_tool_call_probe.py`](probes/phase1_verdict_tool_call_probe.py); uses `tool_choice="auto"` to dodge the DeepSeek/OpenRouter double-emit quirk ([#21](https://github.com/AlteredCraft/tilth/issues/21)).
+- **Verdict as a tool call**, not prompt-only JSON — `tilth/verdict.py` owns `SUBMIT_VERDICT_TOOL`, `VERDICT_SCHEMA_VERSION`, `parse_verdict` (defensive: first valid `submit_verdict` call wins, corrupted siblings skipped), and `format_reject_feedback`. `LLMClient.chat` gained a `tool_choice` passthrough. Decided via [`probes/phase1_verdict_tool_call_probe.py`](../probes/phase1_verdict_tool_call_probe.py); uses `tool_choice="auto"` to dodge the DeepSeek/OpenRouter double-emit quirk ([#21](https://github.com/AlteredCraft/tilth/issues/21)).
 - **Events:** `evaluator_verdict` (replaces v0 `judge_verdict`), `evaluator_parse_error` (carries capped `raw_tool_calls` for faithful failure capture), `prompt_assembled` (worker + evaluator, the cross-cutting capture seam). `summary.py` → v2: `judge`→`evaluator`, structured `rejection_categories`, plus `prep_started_at` vs run `started_at`.
 - **Two scope additions discovered during demo runs** (both folded into Phase 1):
     1. **Judge-prompt softening** — `judge.md`'s scope-creep rule was redrawn from "any file outside the AC → reject" to *cross-task interference → hard reject; everything else → use judgement*. See the *Scope addition* note below.
@@ -61,7 +61,7 @@ None of these block the dialogue; each is its own workstream.
 
 **Why this phase first:** It's the smallest change with a real signal in the demo. Rejection feedback today is prose the worker has to interpret; structured `next_step` is the highest-leverage single change. It also forces the judge prompt rewrite and parsing infrastructure that later phases build on.
 
-**Mechanism — verdict as a tool call, not a free-form JSON response.** Settled by probing the configured judge (`deepseek/deepseek-v4-pro` via OpenRouter — see [`probes/phase1_verdict_tool_call_probe.py`](probes/phase1_verdict_tool_call_probe.py)). Findings:
+**Mechanism — verdict as a tool call, not a free-form JSON response.** Settled by probing the configured judge (`deepseek/deepseek-v4-pro` via OpenRouter — see [`probes/phase1_verdict_tool_call_probe.py`](../probes/phase1_verdict_tool_call_probe.py)). Findings:
 
 - The model reliably emits a `submit_verdict` tool call with schema-valid JSON in all probed scenarios (accept, reject, with and without `tool_choice` forcing).
 - `tool_choice="auto"` (default) returned cleaner results than forcing — the system prompt + tool definition is sufficient to elicit the call. Forcing produced a clean first call *plus* a second call corrupted by DeepSeek's internal template syntax leaking through OpenRouter's normalisation (tracked in [#21](https://github.com/AlteredCraft/tilth/issues/21), FYI-only).

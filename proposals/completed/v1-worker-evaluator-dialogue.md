@@ -43,7 +43,7 @@ The worker no longer "stops calling tools and responds with a summary." Instead,
 The four fields each address a specific friction:
 
 - **`summary`** — concise framing (today's "respond with a summary" survives, narrowed).
-- **`ac_coverage`** — explicit 1:1 mapping between AC and the change that addresses it. Closes the soft contract in [`prd-json.md:66`](../docs/deep-dives/prd-json.md) — the evaluator now reads a worker-authored claim of which AC each piece of work satisfies and can check it. (F3.)
+- **`ac_coverage`** — explicit 1:1 mapping between AC and the change that addresses it. Closes the soft contract in [`prd-json.md:66`](../../docs/deep-dives/prd-json.md) — the evaluator now reads a worker-authored claim of which AC each piece of work satisfies and can check it. (F3.)
 - **`work_arounds`** — slot for the worker to *name* "I had to touch this file because of the authorized command's side effects." Resolves the F4 disambiguation problem at the source: cleanup-vs-creep stops being a diff-reading riddle and becomes a worker-authored claim the evaluator can accept or reject.
 - **`uncertainties`** — where the worker flags ambiguity rather than guessing. Currently no such slot exists; the worker either guesses or pads the summary with hedging. Giving it a structured place forces the question into the open.
 

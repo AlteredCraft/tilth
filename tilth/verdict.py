@@ -5,7 +5,7 @@ This module owns three things:
 1. The `submit_verdict` **tool definition** the judge model is given (OpenAI
    tool-call shape). Schema lives here, not in the prompt — that's the
    point of Phase 1's "verdict as a tool call" decision in
-   `proposals/v1-implementation-plan.md`.
+   `proposals/completed/v1-implementation-plan.md`.
 
 2. The defensive **parser** that pulls a verdict out of an assistant
    message's `tool_calls`. Iterates the list, takes the first call that

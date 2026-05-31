@@ -1,9 +1,26 @@
 # Proposal: `tilth prep-feature` and the seed-handoff cleanup
 
-**Status:** Draft, scope settled — open questions resolved 2026-05-25; prerequisites in place (the `agents-md-stance` PR shipped, locking AGENTS.md as read-only to Tilth)
+**Status:** **Landed.** Phases 1–3 shipped end-to-end 2026-05-29 ([`5d09297`](https://github.com/AlteredCraft/tilth/commit/5d09297)) and were hardened through 2026-05-30. `tilth prep-feature` is now the documented primary workflow — see [Seeding a session](../../docs/deep-dives/seeding.md). The design in §§4–9 is the *original* proposal, kept for provenance; the **Landed** section below records what shipped and where the harness diverged from it.
 **Author:** Sam
 **Date:** 2026-05-25
 **Related:** [#10](https://github.com/AlteredCraft/tilth/issues/10) (closed by this), [#13](https://github.com/AlteredCraft/tilth/issues/13) (complementary), [#14](https://github.com/AlteredCraft/tilth/issues/14) (supersedes), [PR #15 — agents-md-stance](https://github.com/AlteredCraft/tilth/pull/15) (shipped sibling)
+
+## Landed — what shipped (and where it diverged)
+
+**All three phases shipped end-to-end on 2026-05-29** ([`5d09297`](https://github.com/AlteredCraft/tilth/commit/5d09297)), then hardened through 2026-05-30. The runtime story now lives in [Seeding a session](../../docs/deep-dives/seeding.md); the design in §§4–9 is the original plan, and where the shipped harness diverged it's recorded here.
+
+**Diverged from this proposal:**
+
+- **Refuse → interactive picker.** §5.5 and §7-#2 specified *refusing* (with a hint) when a `prepared`/`running`/`failed` session already exists. Shipped instead as an **interactive picker** ([`ac6bc29`](https://github.com/AlteredCraft/tilth/commit/ac6bc29)): on a TTY, `prep-feature` offers run / resume / discard-and-prep / start-alongside / cancel, and `run` with no prepared session offers prep-now / resume / discard-and-prep / cancel. Non-TTY keeps the clean exit-2 + hint; `--force` (auto-discard blockers) and `--keep-existing` (start alongside) are the non-interactive equivalents.
+- **Worktree created at prep time.** The proposal implied the worktree is the run-time mount and that seed tests land in `<workspace>/tests/` (§5.3, §5.8). Shipped: `ws.ensure_worktree` runs *during prep*, so seed tests land in `sessions/<id>/workspace/tests/` on branch `session/<id>` — the source repo's working tree stays clean across both prep and run (interview reads still route to the source). They still ship in the PR, via the branch rather than the source tree.
+- **Seed anchored as a commit.** Prep makes a single `seed: N task(s) + M test(s)` commit right after the write ([`0e3ba27`](https://github.com/AlteredCraft/tilth/commit/0e3ba27), `seed_committed` event) so future-task seed tests don't read as uncommitted scope creep in T-001's diff. Not in the original design.
+- **Existing-PRD onramp.** The seeder gained a spec/RFC anchor path ([`6f45013`](https://github.com/AlteredCraft/tilth/commit/6f45013)): point it at an in-repo doc and the interview shifts to confirmation + gap-filling. Beyond the original §5.4 cold-start-only sketch.
+- **Two more seed modules than sketched.** §5.4 sketched `frontend.py` + `tty.py`; `tilth/seed/` also shipped **`sink.py`** (the `FileSeedSink` — shape validation + atomic staged-then-`os.replace` write) and **`tools.py`** (the narrowed schemas: `read_file` / `glob` / `grep` / `ask_user` / `write_seed`).
+- **Robustness + UX folds.** Engine recovers from malformed `write_seed` JSON instead of crashing ([`259203e`](https://github.com/AlteredCraft/tilth/commit/259203e)); an explicit `ask_user` + anti-narration rule stops the model addressing the user via plain assistant text ([`9d78113`](https://github.com/AlteredCraft/tilth/commit/9d78113)); a `--brief` flag passes the opening brief non-interactively.
+
+**Matched the proposal as written:** the artifact moves (§4A — closes [#10](https://github.com/AlteredCraft/tilth/issues/10)), the `seed-meta.json` contract + visualizer panel (§5.1, §5.9), the `TILTH_PREP_*` env routing (§5.6), the TTY token-total strip (§5.7), the demo migration + `examples/seed-reference/todo-cli/` capture (§5.8), the verb router (§5.5 / Phase 3), and the read-only-AGENTS.md stance (§10).
+
+---
 
 ## 1. Problem
 
@@ -79,7 +96,7 @@ The seeder writes, atomically per session:
 
 - **`sessions/<id>/prd.json`** — canonical tilth task list. JSON array, each entry: `{id, title, description, acceptance_criteria, status: "pending"}`.
 - **`sessions/<id>/seed-meta.json`** — interview metadata.
-- **`<workspace>/tests/test_t0NN_<slug>.py`** — one per task, named to match tilth's pytest filter. Written to the user's repo because they are legitimate test files that ship in the PR.
+- **`<workspace>/tests/test_t0NN_<slug>.py`** — one per task, named to match tilth's pytest filter. Written to the user's repo because they are legitimate test files that ship in the PR. **(Superseded — see Landed:** they land in the session worktree `sessions/<id>/workspace/tests/` on branch `session/<id>`, not the source working tree; they reach the PR via the branch.)
 - **`session_prepared` event** appended to `sessions/<id>/events.jsonl` so the timeline is continuous from interview through execution.
 
 The seeder **never writes to `<workspace>/AGENTS.md`** — same posture as the rest of the harness (locked in by the agents-md-stance PR). If it exists, the seeder reads it for grounding context; project conventions there should inform task slicing and test style. If it doesn't exist, the seeder leaves it that way and **does not nag the user about it**. AGENTS.md is one signal among several — useful when present, not load-bearing. The worker and judge prompts reflect this posture (see the prompt-alignment sub-step in Phase 2, §6).
@@ -160,6 +177,8 @@ Resolution rules for `tilth prep-feature`:
 - If a `prepared` session for this workspace already exists, refuse with a message naming the session and pointing to `tilth reset <id>`. Re-prep is intentional and requires explicit teardown — no "append to existing PRD" semantics in v1.
 - If a `running` or `failed` session for this workspace exists, refuse with the same hint (reset or resume the in-flight session before starting a fresh prep).
 
+> **Superseded — see Landed:** both "refuse" rules above (for `run` and `prep-feature`) shipped as an **interactive picker** on a TTY (`--force` / `--keep-existing` for non-interactive use); only a non-TTY still gets the clean refuse-and-hint. The verb router itself shipped as written.
+
 Back-compat for bare `uv run tilth <workspace>`: detect the positional-only form and emit a deprecation warning routing to `tilth run`, then dispatch as `run`. Remove after one minor version.
 
 ### 5.6 Model configuration for the interview
@@ -220,6 +239,8 @@ Anticipate further `examples/seed-reference/<project>/` entries over time as mor
 
 Tilth has no external users yet, so temporary breakage between phases is acceptable. Work methodically; ship each phase when it's correct, not when it's backwards-compatible.
 
+> **✅ All three phases landed** (2026-05-29, [`5d09297`](https://github.com/AlteredCraft/tilth/commit/5d09297)). See the **Landed** section near the top for what shipped and where it diverged from the design below.
+
 ### Phase 1 — Artifact moves (no new features)
 
 Move `prd.json` and `progress.txt` to `sessions/<id>/`. Touch the load/save call sites in `loop.py` and `memory.py`. Add `status` to `checkpoint.json`. Capture the existing demo `prd.json` + tests into `examples/seed-reference/todo-cli/` in the tilth repo. Delete them from the demo repo.
@@ -245,7 +266,7 @@ Phase 3 can land anytime after phase 2; it's a polish step, not load-bearing.
 ## 7. Open questions — resolved 2026-05-25
 
 1. **TTY UX for `ask_user`.** Plain `input()` plus numbered menus. KISS. Defer `questionary` (or similar) until the TTY UX is actually shown to bite. Folded into §5.4.
-2. **Re-prep on an existing prepared session.** Refuse by default; `tilth reset <id>` is the escape hatch. Resolution rule documented in §5.5 under *Resolution rules for `tilth prep-feature`*.
+2. **Re-prep on an existing prepared session.** Refuse by default; `tilth reset <id>` is the escape hatch. Resolution rule documented in §5.5 under *Resolution rules for `tilth prep-feature`*. **(Superseded — shipped as an interactive picker; see Landed.)**
 3. **Interview budget.** Count tokens via the existing `model_call` event accounting and surface a running prompt/completion/total in the TTY. No hard cap in v1. See §5.7; the deferred cap is listed in §9.
 4. **Empty `tests/` directory.** The seeder confirms the test-directory location with the user via `ask_user` and creates `tests/` only if missing. No-op when present. Folded into §5.3.
 5. **Surfacing a missing AGENTS.md.** The seeder does not call this out. AGENTS.md is additional signal, not load-bearing. The worker and judge prompts already lean this way; Phase 2 includes a small prompt-alignment pass (§6). Folded into §5.3.

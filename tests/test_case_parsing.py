@@ -2,7 +2,7 @@
 
 Mirrors test_evaluator_verdict_parsing.py — the case reuses the same
 tool-call + defensive-parse + value-local-normalize pattern as the verdict
-(see the conventions block in proposals/v1-implementation-plan.md).
+(see the conventions block in proposals/completed/v1-implementation-plan.md).
 """
 
 from __future__ import annotations

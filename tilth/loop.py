@@ -2026,7 +2026,7 @@ def _legacy_main() -> int:
 
     The verb router (tilth.cli) calls this when the user invokes the bare
     positional form `tilth <workspace>` or one of the old action flags.
-    Emits a deprecation warning on the bare form per proposals/prep-feature.md
+    Emits a deprecation warning on the bare form per proposals/completed/prep-feature.md
     §5.5; removal scheduled for one minor version out.
     """
     load_dotenv()

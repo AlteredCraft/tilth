@@ -56,7 +56,7 @@ Event types:
                          once per judge call at the worker's current iter;
                          self_improve fires once per completed task at iter=0.
     evaluator_verdict  — structured verdict from the evaluator (v1 of the
-                         dialogue, see proposals/v1-implementation-plan.md
+                         dialogue, see proposals/completed/v1-implementation-plan.md
                          Phase 1). Payload: {verdict (accept|reject),
                          rejection_category (enum|null — null on accept),
                          concern, evidence, next_step (str|null — null on

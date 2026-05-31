@@ -134,10 +134,10 @@ Plus one safety cap:
 
 3. **`MAX_INTERVIEW_ITERATIONS` (60) hit without `write_seed`.** `InterviewAbort`. Generous on purpose; this should never fire under normal use, but it's the difference between a runaway interview and a stuck one.
 
-There's no soft cap on tokens in v1 — the prompt-line token strip is the only signal. If a hard cap proves necessary in practice, the existing token-cap pattern (`TILTH_PREP_MAX_TOKENS`) is the precedent. See `proposals/prep-feature.md` §9.
+There's no soft cap on tokens in v1 — the prompt-line token strip is the only signal. If a hard cap proves necessary in practice, the existing token-cap pattern (`TILTH_PREP_MAX_TOKENS`) is the precedent. See `proposals/completed/prep-feature.md` §9.
 
 ## Reading further
 
-- The proposal: `proposals/prep-feature.md` in the Tilth repo — Phase 1 (artifact moves), Phase 2 (the interview engine), Phase 3 (CLI verb router + this page).
+- The proposal: `proposals/completed/prep-feature.md` in the Tilth repo — Phase 1 (artifact moves), Phase 2 (the interview engine), Phase 3 (CLI verb router + this page).
 - The original skill body: `~/.claude/skills/tilth-prd-seeder/SKILL.md` was the Claude Code skill version; `tilth/seed/prompts.md` is the in-harness port.
 - A worked example seed: [`examples/seed-reference/todo-cli/`](https://github.com/AlteredCraft/tilth/tree/main/examples/seed-reference/todo-cli) in the Tilth repo — hand-crafted reference for a Python todo CLI.
