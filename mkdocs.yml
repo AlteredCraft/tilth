@@ -1,6 +1,7 @@
 site_name: Tilth
 site_description: A minimal long-running agent harness against any OpenAI-compatible LLM endpoint.
 site_author: Altered Craft
+site_url: https://alteredcraft.github.io/tilth/
 repo_url: https://github.com/AlteredCraft/tilth
 repo_name: AlteredCraft/tilth
 edit_uri: edit/main/docs/
