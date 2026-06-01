@@ -137,6 +137,24 @@ uv run tilth visualize <session_id>
 jq -c . sessions/<session_id>/events.jsonl | head -40
 ```
 
+## Working with GitHub milestones
+
+There is no `gh milestone` command. Manage the milestone *object* through the REST API (`gh api`); assign issues to it with the built-in `gh issue` flags — which reference the milestone by **title**, so it must exist first.
+
+```bash
+# Manage the milestone object (use the milestone NUMBER, not an issue id, for edit/delete)
+gh api repos/{owner}/{repo}/milestones -f title="…" -f description="…" -f due_on="2026-07-01T00:00:00Z"
+gh api repos/{owner}/{repo}/milestones --jq '.[] | "#\(.number) \(.state) \(.title)"'
+gh api -X PATCH  repos/{owner}/{repo}/milestones/<n> -f state=closed
+gh api -X DELETE repos/{owner}/{repo}/milestones/<n>
+
+# Assign / filter by milestone title
+gh issue edit <n>... --milestone "…"   # accepts multiple issues; --remove-milestone detaches
+gh issue list --milestone "…"
+```
+
+Creating issues or milestones is network-side — per *Things not to do without asking*, only do it on an explicit request.
+
 ## Working with the demo
 
 The demo lives in its own repo at [`AlteredCraft/tilth-demo-todo-cli`](https://github.com/AlteredCraft/tilth-demo-todo-cli). Clone it wherever you keep code before running it. The path is just an argument to `uv run tilth`, so any layout works; the docs use `~/projects/tilth-demo` as an illustrative example.
