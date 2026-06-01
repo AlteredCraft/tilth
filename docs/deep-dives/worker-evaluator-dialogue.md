@@ -7,6 +7,11 @@ of that exchange; [The two loops](two-loops.md) shows where it sits in the loop,
 and [Agent visibility](agent-visibility.md) covers what each side does and doesn't
 see.
 
+The evaluator earns its place by judging the thing the validators can't. Ruff and
+pytest prove the code runs and the test is green — table stakes. The evaluator is
+the reviewer asking the next question: is this a *proper* solution, or does it just
+happen to pass? That framing is what the rejection categories below encode.
+
 ## A note on the name
 
 The reviewing role is the **evaluator** — in prose, in events (`evaluator_verdict`),

@@ -10,6 +10,10 @@ A minimal long-running agent harness against an **OpenAI-compatible** LLM endpoi
 
 **Target run:** I test with 10-60 minutes of autonomous work against an open model (default `deepseek/deepseek-v4-flash` on OpenRouter for the worker; the evaluator and prep interview default to `deepseek/deepseek-v4-pro`). Completing a task list against a small project on a per-session git worktree.
 
+## How Tilth differs
+
+Many minimal coding agents are *interactive* — a developer watches the output and course-corrects, kills a bad run, or re-prompts. Tilth runs *autonomously* for the length of a run, with no one watching mid-task. That single difference is why it carries machinery a pair-programming agent can skip: an **evaluator** that judges whether a change is a *proper* solution (not just green tests), **between-task caps** that stand in for the budget ceiling a human would otherwise impose, a per-task **evaluator ledger**, and **state kept out of the model's context**. Observability is offline-first to match — the goal is a finished run you can replay end-to-end (`events.jsonl` → `tilth visualize`), not a live TUI. None of this is a knock on interactive agents; it's a different shape for a different job.
+
 For the full product story — the Brain/Hands/Session split in detail, the memory channels, the two loops, the worker↔evaluator dialogue, token recording and enforcement, the agent-visibility boundary, and the safety guards — see the **[docs site](./docs/index.md)**. This README is the elevator pitch.
 
 ## Quickstart

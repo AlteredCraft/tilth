@@ -18,6 +18,19 @@ A minimal long-running agent harness against an **OpenAI-compatible** LLM endpoi
 *Tilth's Ralph loop*
 {: .caption }
 
+## How Tilth differs from other harnesses
+
+Tilth is informed by the minimal-harness lineage — small system prompt, a handful of tools, state in files — but it makes one different bet: it runs **autonomously**. Many minimal coding agents are *interactive*: a developer watches the scrollback and course-corrects, kills a bad run, or re-prompts mid-task. Tilth removes that human for the length of a run (10–60 min).
+
+Almost everything distinctive about Tilth follows from that one difference. Each piece stands in for a call a watching human would otherwise make:
+
+- **The [evaluator](deep-dives/worker-evaluator-dialogue.md)** — a second model that judges whether a change is a *proper* solution, not just whether the tests are green. Passing the validators is table stakes; the evaluator is the reviewer who isn't in the room.
+- **[Between-task caps](deep-dives/caps.md)** — the budget ceiling (iterations, tokens, wall-clock) a human would otherwise impose by noticing a runaway and stopping it.
+- **[State kept out of the model](deep-dives/agent-visibility.md)** — the mutable plan/status machinery is hidden, so an unattended agent can't mark its own work done, skip ahead, or rewrite the queue.
+- **Offline-first [observability](getting-started/visualizing.md)** — the goal isn't a live TUI but a finished run you can replay end-to-end from its `events.jsonl`.
+
+None of this is a knock on interactive agents; it's a different shape for a different job.
+
 ## What's in these docs
 
 - **[Getting started](getting-started/installation.md)** — install, seed a task list with `prep-feature`, run the demo, resume / reset / visualize a session.

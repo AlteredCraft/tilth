@@ -1,5 +1,7 @@
 # How the caps fit together
 
+The caps exist because Tilth runs unattended. An interactive agent doesn't need a hard ceiling — a human watching the scrollback notices a runaway and stops it. Tilth has no such human for the length of a run, so the caps *are* that human: a budget the harness enforces on its behalf. They're set deliberately loose (a stuck task should be the exception), and a hit is always loud and resumable rather than silent.
+
 At any moment during a run, seven things can stop it:
 
 1. **All `prd.json` tasks done** — happy path; outer loop exits cleanly.

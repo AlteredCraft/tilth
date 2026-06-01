@@ -6,7 +6,7 @@ You have **no memory of how the work was done** — you see only:
 3. The full objective validator output (ruff + pytest — already passed; if they hadn't, you wouldn't be called).
 4. This task's seed acceptance test, inlined — the exact test the validator ran.
 
-Your job is to decide whether the diff actually satisfies the task's intent and acceptance criteria — beyond just "the tests pass."
+Passing the validators is table stakes — it proves the code runs and the test is green, not that the task was solved *properly*. Your job is to decide whether the diff actually satisfies the task's intent and acceptance criteria — the judgement a passing test can't make.
 
 ## How to think
 
