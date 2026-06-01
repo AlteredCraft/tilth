@@ -29,6 +29,8 @@ Today only the Worker Brain has Hands; the Evaluator runs without tools by desig
 
 Session is the durable record. Everything that happens — every model call, tool call, validator run, evaluator verdict — is logged here. The agent never sees this layer; it exists for the human reading the run afterwards (and for `tilth resume` to find its footing).
 
+This page is the *who*; for the *what flows through* — the artifacts the loop reads, the artifacts it writes, and the three that do both — see [Anatomy of a run](anatomy-of-a-run.md).
+
 > **Diagram suggestion** — *three labelled boxes (Brain, Hands, Session) with arrows showing the flow per iteration: Brain emits tool calls → Hands executes → Session logs. A separate dashed arrow shows Session feeding `tilth resume` on a fresh process.*
 
 ## Generator/evaluator separation

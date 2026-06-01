@@ -56,6 +56,13 @@ nav:
       # memory), repo layout, and the six load-bearing invariants. Read this
       # before extending the harness.
       - Overview: architecture/overview.md
+      # The data-flow view of a run: what the per-task loop reads (system.md,
+      # AGENTS.md, the seed slice, the acceptance tests, the worktree), what it
+      # writes (commits, events.jsonl, summary.json, checkpoint.json,
+      # proposed-learnings.md), and the three artifacts that feed back as
+      # working memory (prd.json status, progress.txt, ledger). The
+      # "what flows through" map — reach for it before Overview's who-does-what.
+      - Anatomy of a run: architecture/anatomy-of-a-run.md
       # The memory channels that live *outside* the agent — `AGENTS.md`, git
       # history, `progress.txt`, `prd.json`, and the per-task evaluator ledger
       # — with a who-reads/who-writes table and the rationale for keeping state

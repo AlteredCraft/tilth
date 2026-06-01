@@ -12,7 +12,7 @@ Five memory channels live *outside* the agent. Some are project files the user o
 
 > The reviewing role is the **evaluator**.
 
-The worker writes none of these. It writes code in the worktree, which the harness commits. The split is clean: **memory channels are inputs to the agents; session artifacts under `sessions/<id>/` (events.jsonl, summary.json, proposed-learnings.md) are outputs the harness produces during a run.** `seed-meta.json` is the interview audit trail; a curated slice of it (TL;DR, scope notes, blockers, open questions) is now injected into the worker prompt as context, while the interview bookkeeping stays an output.
+The worker writes none of these. It writes code in the worktree, which the harness commits. The split is clean: **memory channels are inputs to the agents; session artifacts under `sessions/<id>/` (events.jsonl, summary.json, proposed-learnings.md) are outputs the harness produces during a run.** `seed-meta.json` is the interview audit trail; a curated slice of it (TL;DR, scope notes, blockers, open questions) is now injected into the worker prompt as context, while the interview bookkeeping stays an output. The full read-it-once picture — every input, every output, and the three artifacts that are *both* — is laid out in [Anatomy of a run](anatomy-of-a-run.md); this page zooms in on the input channels.
 
 `prd.json` and `progress.txt` used to live in the workspace itself, which leaked harness state into every PR. Phase 1 of the prep-feature work moved them under `sessions/<id>/`. Your workspace now only ships the things that genuinely belong in the PR — source changes and tests.
 
