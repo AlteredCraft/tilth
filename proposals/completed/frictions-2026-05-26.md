@@ -119,7 +119,7 @@ It then has to make a binary accept/reject call with no memory and a narrow wind
 
 ### F7. Cost shape is bimodal; no early-out for unsalvageable tasks
 
-Successful tasks are cheap: 8 iterations, tens of thousands of tokens. Tasks that hit an unresolvable contradiction are expensive: 41 iter / 448k tokens on T-001 alone in #16's session; T-001 in `173822` ran to iter 38+ before user interrupt.
+Successful tasks are cheap: 32 iterations, tens of thousands of tokens. Tasks that hit an unresolvable contradiction are expensive: 41 iter / 448k tokens on T-001 alone in #16's session; T-001 in `173822` ran to iter 38+ before user interrupt.
 
 The harness has caps (`TILTH_MAX_ITERATIONS_PER_TASK=32`, `TILTH_MAX_TOKENS`) but no mechanism to detect "this task's contract is unsatisfiable" earlier than the cap. The signal exists in the loop — three consecutive evaluator rejects on the same scope-creep reasoning, the worker trying the same fix shape repeatedly — but nothing reads it.
 

@@ -18,7 +18,7 @@ A cap-4 (iter_cap) hit, with the post-run summary the harness prints on the way 
 
 ![Terminal capture: task T-003 reaches iter 8, the harness logs "task T-003 hit iteration cap [TILTH_MAX_ITERATIONS_PER_TASK=8]" and then "× T-003 failed (iter_cap); halting run". A run summary block follows: session 20260523-082151-45f0a5, branch session/20260523-082151-45f0a5, duration 2m27s (2.0% of TILTH_MAX_WALL_CLOCK_MINUTES=120), tokens 75,387 (3.8% of TILTH_MAX_TOKENS=2,000,000), tasks done=2 failed=1 pending=2.](../assets/iter-cap-and-summary.png)
 
-*Two things to read here. Top: the cap fires and the run halts mid-task list (T-003 of five). Bottom: the run summary surfaces every cap as a percentage, so it's obvious which one bit — duration and tokens are both well under, only iterations were tight.*
+*Two things to read here. Top: the cap fires and the run halts mid-task list (T-003 of five). Bottom: the run summary surfaces every cap as a percentage, so it's obvious which one bit — duration and tokens are both well under, only iterations were tight. (This capture predates the default bump — the cap was set to `8` for this run, below today's default of `32` — which is why it halts this early.)*
 {: .caption }
 
 The `failed=1 pending=2` line in the summary is what `tilth resume` reads to plan its retry — see [Resuming a session](../getting-started/resuming.md) for what picks up from this exact point (same session id).

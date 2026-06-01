@@ -4,7 +4,7 @@ Tilth runs autonomously for an hour or two at a time, against a real workspace, 
 
 ## Hard stops
 
-- **Iteration cap per task** (default `8`, env: `TILTH_MAX_ITERATIONS_PER_TASK`).
+- **Iteration cap per task** (default `32`, env: `TILTH_MAX_ITERATIONS_PER_TASK`).
 - **Wall-clock cap per run** (default `120` minutes, env: `TILTH_MAX_WALL_CLOCK_MINUTES`).
 - **Token cap per session** (default `2,000,000`, env: `TILTH_MAX_TOKENS`).
 - **Optional evaluator-call cap per task** (default `0` = off, env: `MAX_EVALUATOR_CALLS_PER_TASK`).

@@ -11,6 +11,8 @@ Tilth is a small Python package; setup is straight `uv` plumbing plus a `.env`.
 
 ## Clone and install
 
+> **Install-from-source, for now.** Tilth is early research, so the supported install path today is cloning the repo and running it through `uv` (below). There's no `pip install tilth` or prebuilt binary yet — a packaged install story is on the roadmap, not here.
+
 Tilth and the project you point it at are **independent checkouts** — Tilth lives in its own directory, and the codebase it works on lives somewhere else. Clone Tilth wherever you keep code; the `tilth` command takes the target repo as a plain path argument (`uv run tilth <path>`), so any layout works.
 
 ```bash
@@ -43,7 +45,7 @@ All three of `TILTH_BASE_URL`, `TILTH_API_KEY`, and `TILTH_WORKER_MODEL` are **r
 | `TILTH_PREP_MODEL` | same as worker | Model that runs the `tilth prep-feature` interview. Set to a frontier reasoning model independently of the worker. |
 | `TILTH_PREP_BASE_URL` | inherits worker | Point the seeder at a *different* provider than the worker (e.g. worker on a budget provider, prep on a frontier one). |
 | `TILTH_PREP_API_KEY` | inherits worker | Bearer token for the prep provider. |
-| `TILTH_MAX_ITERATIONS_PER_TASK` | `8` | Tool-use iterations before a task is marked failed. |
+| `TILTH_MAX_ITERATIONS_PER_TASK` | `32` | Tool-use iterations before a task is marked failed. |
 | `TILTH_MAX_WALL_CLOCK_MINUTES` | `120` | Outer-loop wall-clock cap. |
 | `TILTH_MAX_TOKENS` | `2000000` | Cumulative session token cap. |
 | `MAX_EVALUATOR_CALLS_PER_TASK` | `0` (off) | Optional cap on worker↔evaluator ping-pong. |

@@ -41,7 +41,7 @@ Three failure modes prevented by hiding mechanics from the agent:
 A natural follow-on. AGENTS.md is for *project* conventions, not harness mechanics:
 
 - **Belongs in AGENTS.md:** language version, test framework, file layout, style rules, project-specific gotchas, accumulated learnings.
-- **Does *not* belong in AGENTS.md:** "record token counts in `events.jsonl`" (agent doesn't write that file), "update `prd.json` status when done" (agent doesn't manage prd), "stop after 8 iterations" (handled by `max_iterations_per_task`), "don't run dangerous commands" (handled by `pre_tool` hook), "the evaluator will evaluate your work" (see "gaming the evaluator" above).
+- **Does *not* belong in AGENTS.md:** "record token counts in `events.jsonl`" (agent doesn't write that file), "update `prd.json` status when done" (agent doesn't manage prd), "stop after 32 iterations" (handled by `max_iterations_per_task`), "don't run dangerous commands" (handled by `pre_tool` hook), "the evaluator will evaluate your work" (see "gaming the evaluator" above).
 
 The cleanest test: if you removed a rule from AGENTS.md and the harness still enforces the underlying behaviour, the rule shouldn't be there. Harness machinery handles the mechanics; AGENTS.md handles the project.
 

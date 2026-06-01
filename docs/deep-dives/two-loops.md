@@ -54,12 +54,12 @@ Each iteration is **exactly one worker `client.chat()` call**, plus whatever the
 
 ## A subtlety: evaluator rejections eat iterations
 
-This is worth flagging because it's not obvious. With `MAX_ITERATIONS_PER_TASK=8`:
+This is worth flagging because it's not obvious. Under `MAX_ITERATIONS_PER_TASK` (32 by default):
 
-- Worker spends 5 iterations writing code, submits a case.
+- Worker spends several iterations writing code, then submits a case.
 - Validators pass, evaluator rejects.
-- Worker has 3 iterations left to address the rejection, submit again, get re-evaluated.
-- If the evaluator rejects again, worker has fewer iterations to recover.
+- Worker now has to address the rejection, submit again, and get re-evaluated — all out of the *same* fixed budget.
+- If the evaluator rejects again, the worker has fewer iterations left to recover; a string of rejections can run a task into the cap.
 
 **A stricter evaluator effectively shrinks the working iteration budget.** The evaluator prompt's instruction that "vague rejections waste worker iterations" exists for this exact reason — every reject costs the worker forward progress on the same fixed budget.
 
@@ -105,7 +105,7 @@ Four halt-with-failure exits (`iter_cap`, `evaluator_cap`, `empty_responses`, `n
 ## Worst-case tokens per task
 
 ```
-worker_tokens × MAX_ITERATIONS_PER_TASK       (8 by default)
+worker_tokens × MAX_ITERATIONS_PER_TASK       (32 by default)
 + evaluator_tokens × number_of_evaluator_calls (1 per submit_case that passes
                                                 validators; capped by
                                                 MAX_EVALUATOR_CALLS_PER_TASK if set,
@@ -122,4 +122,4 @@ The evaluator is called once per `submit_case` attempt that passes validators. W
 - **`MAX_ITERATIONS_PER_TASK`** stops a task that's spinning. Bounds worker effort *within* a task. Caps tokens per task *indirectly* (no direct per-task token cap exists).
 - **`MAX_EVALUATOR_CALLS_PER_TASK`** (optional, off by default) stops a task that's worker↔evaluator ping-ponging. Bounds evaluator spend on a single PRD item.
 
-Default `MAX_ITERATIONS_PER_TASK=8` means: each task gets at most 8 worker turns to explore → edit → run tests → fix lint → respond to the evaluator → finally submit an accepted case with everything green. For tightly-scoped tasks with upfront tests, that's usually 3–5 in practice. Bumping to 12 or 16 gives the agent more room on harder tasks; lowering to 4 forces tighter PRDs.
+Default `MAX_ITERATIONS_PER_TASK=32` means: each task gets at most 32 worker turns to explore → edit → run tests → fix lint → respond to the evaluator → finally submit an accepted case with everything green. For tightly-scoped tasks with upfront tests, that's usually 3–5 in practice. Bumping to 12 or 16 gives the agent more room on harder tasks; lowering to 4 forces tighter PRDs.

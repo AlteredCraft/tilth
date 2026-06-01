@@ -1,6 +1,6 @@
 # Running the demo
 
-The demo is a small todo-CLI workspace — a tiny Python project with `AGENTS.md` and an existing `tests/__init__.py`, otherwise empty. The demo path mirrors what a real first-time user does: seed a task list with `tilth prep-feature`, then run it. The seed is not pre-baked.
+The demo workspace is deliberately almost empty — just an `AGENTS.md` (the project's conventions) and a `.gitignore`. It exists mainly as a *git repo*, which is all Tilth needs to do what it always does: branch off a worktree and build inside it. The path mirrors what a real first-time user does — seed a task list with `tilth prep-feature`, then run it. Nothing is pre-baked; the todo CLI gets built from scratch during the run.
 
 ## Clone the demo workspace
 
@@ -17,8 +17,12 @@ Tilth's task list (`prd.json`) and the matching acceptance tests come from an *i
 ```bash
 uv run tilth prep-feature ~/projects/tilth-demo
 ```
+The interview prompts you for a one-line brief (try: *"build a minimal todo CLI with add, list, and done subcommands, on-disk format `- [ ] item` in `TODOS.md`"*), then asks a few targeted questions to slice the work and lock acceptance criteria. The output is **harness-owned and lands on the Tilth side, not in the demo repo**: the task list at `<tilth-clone>/sessions/<id>/prd.json`, plus one `test_t<NNN>_*.py` per task under that session's worktree at `<tilth-clone>/sessions/<id>/workspace/tests/` (on branch `session/<id>`). Your demo checkout stays as empty as it started. See [Seeding a session](../deep-dives/seeding.md) for the full interview-engine story.
 
-The interview prompts you for a one-line brief (try: *"build a minimal todo CLI with add, list, and done subcommands, on-disk format `- [ ] item` in `TODOS.md`"*), then asks a few targeted questions to slice the work and lock acceptance criteria. The output lands as `sessions/<id>/prd.json` plus one `test_t<NNN>_*.py` per task under `~/projects/tilth-demo/tests/`. See [Seeding a session](../deep-dives/seeding.md) for the full interview-engine story.
+![Filesystem trees for one Tilth run: HARNESS SIDE under ~/projects/tilth/sessions/<id>/ holds workspace/, events.jsonl, summary.json, checkpoint.json, chat.html; TARGET REPO SIDE under ~/projects/tilth-demo/.git/ holds refs/heads/session/<id> and worktrees/<id>/. A sage-green arrow labeled 'git worktree binds these' connects the workspace/ on the left to the worktrees/<id>/ admin entry on the right.](../assets/session-layout.png)
+
+*Where a session's state lives. Everything the harness writes — `prd.json`, the seeded tests under `workspace/`, the event log — sits under your **Tilth** clone (`sessions/<id>/`); only the `session/<id>` branch and its worktree admin entry live in the demo repo's `.git`. Full breakdown in [Session layout](../deep-dives/session-layout.md).*
+{: .caption }
 
 You can preview what a finished seed for this codebase looks like by reading [`examples/seed-reference/todo-cli/`](https://github.com/AlteredCraft/tilth/tree/main/examples/seed-reference/todo-cli) in the Tilth repo — same project, a hand-crafted reference.
 
@@ -41,7 +45,7 @@ What happens, end-to-end:
     - Commit on the worktree branch. Append to `progress.txt`. Mark the task `done` in `prd.json`.
 4. Stops on: all tasks done, iteration cap, wall-clock cap, token cap, evaluator-call cap, or a terminal failure (e.g. a provider returning empty responses, or the worker never presenting a case).
 
-You can interrupt at any point with Ctrl-C. Ctrl-C and cap hits (iteration, wall-clock, token) both leave the run in a resumable state — see [Resuming a session](resuming.md) to pick it back up. If a cap was what stopped you, bump it in `.env` first or `tilth resume` will trip it again.
+You can interrupt at any point with Ctrl-C. Ctrl-C and cap hits (iteration, wall-clock, token) all leave the run in a resumable state — see [Resuming a session](resuming.md) to pick it back up. Of the three caps, only the **token** cap needs attention before you resume: the cumulative token total carries across resumes, so if `TILTH_MAX_TOKENS` is what stopped the run, raise it in `.env` first or `tilth resume` trips it again on the first check. The wall-clock budget resets per resume, and the iteration cap is per-task (a retried task starts counting from one), so neither blocks a resume unless the work genuinely needs a bigger budget — see [What resume does](resuming.md#what-resume-does).
 
 ## What you should expect to see
 
@@ -49,7 +53,7 @@ The console streams every tool call as it happens. The per-task loop has the sha
 
 ![Six rounded boxes arranged left to right depicting one task's lifecycle inside Tilth's harness: PROMPT (a stack of three document icons representing AGENTS.md, progress.txt, and the task; caption "fresh context built from disk"); TOOL LOOP (a wrench-and-file glyph encircled by a loop arrow, with monospace tool labels bash, read_file, edit_file, grep; caption "worker iterates until it stops"); VALIDATORS (a checkmark over a terminal prompt, labels ruff and pytest; caption "objective gate"); JUDGE (a balance scale; caption "subjective gate, fresh context"); SELF-IMPROVE (a notebook with a sage-green bookmark ribbon; caption "propose a learning (optional)"); COMMIT (a git-branch glyph with a single new-commit dot; caption "one task = one commit"). Two label-bars span the top: "WORKER SEES" over PROMPT and TOOL LOOP, "HARNESS ONLY" over the remaining four boxes. Sage-green forward arrows connect each box to the next; two thinner sage-green feedback curves return to TOOL LOOP from VALIDATORS (labelled validator_failed) and from JUDGE (labelled evaluator_rejected).](../assets/per-task-lifecycle.jpg)
 
-*One task's lifecycle inside the harness. The worker sees the Prompt (now including the feature plan as context and, on a retry, the evaluator's prior verdicts on this task) and the Tool Loop; the Self-Improve step and the cross-task evaluation machinery stay harness-side. Failed validators or a rejected evaluator verdict feed back into the Tool Loop for another iteration. (The diagram still labels the review box "JUDGE" — it predates the role rename and is queued for regeneration.)*
+*One task's lifecycle inside the harness. The worker sees the Prompt and the Tool Loop; the Self-Improve step and the cross-task evaluation machinery stay harness-side. Failed validators or a rejected evaluator verdict feed back into the Tool Loop for another iteration.*
 {: .caption }
 
 A clean run ends with every task in `prd.json` marked `done` and a commit-per-task on the `session/<id>` branch. When the loop doesn't track this cleanly, watch for these patterns:

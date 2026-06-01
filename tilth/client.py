@@ -137,7 +137,7 @@ class TilthConfig:
             prep_base_url=prep_base_url,
             prep_api_key=prep_api_key,
             prep_model=prep_model,
-            max_iterations_per_task=int(os.environ.get("TILTH_MAX_ITERATIONS_PER_TASK", "8")),
+            max_iterations_per_task=int(os.environ.get("TILTH_MAX_ITERATIONS_PER_TASK", "32")),
             max_evaluator_calls_per_task=int(
                 os.environ.get("MAX_EVALUATOR_CALLS_PER_TASK", "0") or "0"
             ),

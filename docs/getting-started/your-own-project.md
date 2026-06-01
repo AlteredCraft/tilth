@@ -1,10 +1,8 @@
 # Using Tilth on your own project
 
-The honest version, not the marketing version.
+> **Early-stage research project.** Tilth is a research harness, not a hardened product. Running it should be *safe*: every change lands on an isolated `session/<id>` worktree branch, never on your `main`, and the harness never auto-merges — you review the diff like any other branch. What isn't guaranteed yet is *quality*. In these early stages the branch Tilth hands back may be rough or incomplete, and the tokens spent getting there are real. Treat runs as spend-at-your-own-risk and keep the first ones small.
 
 This page is for a reader who has finished the [demo walkthrough](running-the-demo.md) and now wants to point Tilth at their own codebase. [Installation](installation.md) and [Running the demo](running-the-demo.md) cover the harness mechanics — this page covers what's specific to applying it to your *own* repo: seeding the task list with `tilth prep-feature`, picking an evaluator, and the caveats that aren't obvious from a demo run.
-
-> **TL;DR.** This works well on a small Python project with 5–15 well-specified tasks and existing test patterns. Anything bigger or polyglot, you fork the harness.
 
 ## 1. Prep your repo
 
@@ -68,25 +66,22 @@ The session log lives at `{{tilth-clone-path}}/sessions/<id>/events.jsonl` — e
 
 ## 5. Caveats worth being upfront about
 
-- **It's Python-centric.** `post_edit` lints `.py` files. `validators` runs `pytest` and `ruff`. JavaScript / Rust / Go projects need `tilth/validators.py` and `tilth/hooks/post_edit.py` adapted to your toolchain — not deep work, but not zero.
-- **Ruff config matters.** If your project doesn't already use ruff, the validator will fire constantly and the agent will spend iterations fixing things that aren't really broken. Either add a permissive `[tool.ruff]` block to your `pyproject.toml`, or swap the ruff validator for whatever linter you already use.
+- **It's Python-only today — polyglot is the intent.** Right now `post_edit` lints `.py` files and `validators` runs `pytest` and `ruff`, so the mechanical floor assumes a Python toolchain. Making that floor language-pluggable — so Tilth can drive JavaScript, Rust, or Go projects on their own toolchains — is a tracked goal ([#20](https://github.com/AlteredCraft/tilth/issues/20)), not a finished feature. Until it lands, pointing Tilth at a non-Python project means adapting `tilth/validators.py` and `tilth/hooks/post_edit.py` to your toolchain yourself — not deep work, but not zero.
 - **The interview drives the seed; you drive the interview.** `prep-feature` interviews against your code, but the answers come from you. Vague briefs and rushed answers produce vague seeds and weak acceptance criteria, which burn tokens and produce branches you'll rewrite. The interview is the high-leverage moment — slow down here, not in the run.
-- **Costs are real, in two places.** The interview itself is a real spend (a frontier-tier reasoning model across many turns); the prompt-line token strip surfaces it so you can abort if it drifts. Then the run itself spends hundreds of thousands of tokens across worker + evaluator + self-improvement. The `TILTH_MAX_TOKENS` cap exists for a reason — set it on first run. Cost per token varies wildly across providers; pick your worker accordingly. Be careful about reaching for a smaller evaluator model to cut costs — see [Picking a evaluator model](#6-picking-an-evaluator-model) below.
+- **Costs are real, in two places.** The interview itself is a real spend (a frontier-tier reasoning model across many turns); the prompt-line token strip surfaces it so you can abort if it drifts. Then the run itself spends hundreds of thousands of tokens across worker + evaluator + self-improvement. The `TILTH_MAX_TOKENS` cap exists for a reason — set it on first run. If you set it too low, you can simply raise it and `--resume` the session. Cost per token varies wildly across providers; pick your worker accordingly. Be careful about reaching for a smaller evaluator model to cut costs — see [Picking a evaluator model](#6-picking-an-evaluator-model) below.
 - **AGENTS.md is yours.** Tilth reads it, never writes it. The self-improvement step's proposals land in `sessions/<id>/proposed-learnings.md` for you to review and (optionally) promote into AGENTS.md by hand. The file only grows when you decide it should.
 - **Tools are intentionally narrow.** No web fetch, no MCP, no curl-based downloads. If your tasks require external API access, you add a tool to `tilth/tools/` and register it. Keep tools focused — every tool description ships in the prompt every turn.
 - **The harness commits to your repo's git db.** Tilth keeps the working tree under `sessions/<id>/workspace/` on its own side, but the branch `session/<id>` lives in *your* repo's `.git`. So if you delete your Tilth clone without resetting first, those branches remain in your project. Clean up branches the same way you would for a normal feature branch — or run `tilth reset` before you blow Tilth away. See [Session layout](../deep-dives/session-layout.md) for the full split.
 
 ## 6. Picking an evaluator model
 
-The evaluator call is the single most consequential model decision in the harness. It's the only thing standing between "validators passed" and "this gets committed to a branch you'll merge." (The role is the *evaluator*; the config knob you set here is still `TILTH_EVALUATOR_MODEL`.)
+The evaluator call is the single most consequential model decision in the harness. It's the only thing standing between "validators passed" and "this gets committed to a branch you'll merge."
 
 ### Default: evaluator ≥ worker
 
 For correctness gating on code diffs, the evaluator should be **at least as capable as the worker, often more capable**. A weaker evaluator fails in the worst possible way: it accepts bad work because it didn't notice the problem.
 
-This is the opposite of the intuition many people start with ("the worker did the hard work, the evaluator just rubber-stamps"). The evaluator sees the diff, the acceptance criteria, the full validator output, the inlined seed test, the worker's structured case, and its own prior verdicts on this task — but not the worker's chain-of-thought or tool history. It's reviewing an artifact, not retracing the work — so it needs more capability to compensate, not less.
-
-Academic LLM-as-a-judge research bears this out: evaluators are typically run with GPT-4-class models judging GPT-3.5-class outputs, not the other way around. The point of separation is **independence**, not capability reduction.
+The evaluator sees the diff, the acceptance criteria, the full validator output, the inlined seed test, the worker's structured case, and its own prior verdicts on this task — but not the worker's chain-of-thought or tool history. It's reviewing an artifact, not retracing the work — so it needs more capability to compensate, not less.
 
 ### When dual-provider routing actually pays off
 
@@ -95,23 +90,10 @@ The `TILTH_EVALUATOR_BASE_URL` / `TILTH_EVALUATOR_API_KEY` feature is genuinely 
 - **Worker = open model, evaluator = Claude (both on OpenRouter).** Different model families catch different failure modes. Same-family judging shares the worker's blind spots.
 - **Worker = capable open model, evaluator = frontier closed model.** When you need the strongest possible gate, route the evaluator to whatever's at the top of the leaderboard for code review.
 
-Both of these are *upgrading* the evaluator, not downgrading it.
-
-### When a smaller / cheaper evaluator is OK
-
-There's a narrow band where a cheap evaluator works:
-
-- **Shallow checks.** Binary outcomes ("did this string change?", "is this JSON?"), regex matches, simple format validation.
-- **Policy gates.** "Did the response avoid the banned topics?", "Is this on-brand?" — small finetuned classifiers can do this for a fraction of the cost.
-- **Worker is already top-tier and tasks are tightly bounded.** If the worker is Sonnet 4.5 doing well-specified PRD tasks, a Haiku-class evaluator catches the obvious failures cheaply.
-
-For a Ralph loop doing real code review, none of these usually apply. Default to a evaluator that's at least as good as the worker. Only swap to a smaller evaluator after you've measured evaluator accept-rate on known-bad tasks and confirmed it's still catching them.
-
 ## 7. When this is the wrong tool
 
 - **Closed-source-only tasks.** If you can't share code with OpenRouter, this isn't the right tool today. A self-hosted OpenAI-compatible endpoint (vLLM, LM Studio) might work via the OpenAI SDK but hasn't been validated.
 - **Models without tool-calling support.** Some OpenRouter routes, some smaller open models, and most "completion-only" endpoints will fail or hallucinate tool calls. Verify on the demo workspace first.
-- **Polyglot codebases.** Adapt the validators, or accept that only the evaluator model is gating quality.
 - **One-shot prompts.** If your work fits in one Claude Code or Cursor session, just use that.
 - **Hours-long, mission-critical, or production-touching runs.** Use a managed runtime (Google Agent Platform, Claude Managed Agents) instead. This harness is for *learning the pattern* on small bounded work.
 
@@ -120,6 +102,5 @@ For a Ralph loop doing real code review, none of these usually apply. Default to
 1. Brief the interview **narrowly**. Two or three tasks' worth of work — a feature with a clear contract, not an open-ended refactor. "Add `--format json` to the export CLI" beats "improve the export system."
 2. Drive the interview honestly. When asked an out-of-scope question, push back rather than nod through it; when the model proposes a slice that looks wrong, redirect with words rather than `Other` defaults. The seed compounds — early shortcuts mean later iterations.
 3. Watch the console during `tilth run` — it streams every tool call. If the agent thrashes on one task, kill the run, reset, re-prep with a sharper brief.
-4. Inspect `sessions/<id>/events.jsonl` after the run. Look for unexpected patterns: tasks that took many iterations, evaluator rejections, validator failure loops. Each is a signal.
+4. Inspect `sessions/<id>/events.jsonl` after the run. Look for unexpected patterns: tasks that took many iterations, evaluator rejections, validator failure loops. Each is a signal. For a readable pass over the same data, render the run with [`tilth visualize`](visualizing.md) — it lays the event log out as a chat-style timeline with the seed context panelled above it.
 5. Read `sessions/<id>/proposed-learnings.md` and decide what (if anything) belongs in your `AGENTS.md`. The first few proposals are often noise — prune ruthlessly.
-6. Iterate the harness, not just the prompts. If a class of failure keeps recurring, add a hook (the ratchet pattern). Constraints are earned by failures.
