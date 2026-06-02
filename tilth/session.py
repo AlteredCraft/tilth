@@ -98,6 +98,11 @@ Event types:
     task_done          — task accepted (validators + evaluator passed)
     task_failed        — task could not be completed; payload.reason ∈
                          {iter_cap, evaluator_cap, empty_responses, no_case}
+    commit             — a completed task's work was committed to the session
+                         branch (after task_done). Payload: {task_id, trace_id,
+                         sha}. Emitted only on the success path; the FAILED
+                         commit path does not log this. Distinct from
+                         seed_committed (the prep-time seed-bundle commit).
     proposed_learnings — self-improvement step's per-task verdict. Payload:
                          {task_id, trace_id, span_id, emitted, entry?, reason?}.
                          When emitted=True, `entry` carries the learning text
@@ -126,7 +131,8 @@ Event types:
     session_resume     — --resume woke a session; payload carries the resume plan
                          (which failed tasks were retried, FAILED commit unwound, etc.)
     stop               — run terminated; payload.reason ∈
-                         {all_done, wall_clock, token_cap, iter_cap, interrupted, error}
+                         {all_done, wall_clock, token_cap, iter_cap, evaluator_cap,
+                         empty_responses, no_case, interrupted, error}
 
 Per-task observability fields:
     trace_id           — 32-hex (OTel-shape), constant for the whole task. Lets

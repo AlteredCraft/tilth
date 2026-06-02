@@ -1463,9 +1463,10 @@ _TERMINAL_FAILURE_STOPS = frozenset(
 def _stop_to_status(reason: str) -> str:
     """Map a `stop` reason to the resulting session status.
 
-    `all_done` is terminal-success; iter_cap/evaluator_cap/error are terminal-failure;
-    everything else (wall_clock, token_cap, interrupted) leaves the session
-    `running` — those are stops the user can resume from.
+    `all_done` is terminal-success; iter_cap / evaluator_cap / empty_responses /
+    no_case / error are terminal-failure; everything else (wall_clock,
+    token_cap, interrupted) leaves the session `running` — those are stops the
+    user can resume from.
     """
     if reason == "all_done":
         return "all_done"
