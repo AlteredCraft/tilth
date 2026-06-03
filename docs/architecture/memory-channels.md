@@ -4,7 +4,7 @@ Five memory channels live *outside* the agent. Some are project files the user o
 
 | Channel | Lives in | Written by | Read by |
 |---|---|---|---|
-| `AGENTS.md` | the workspace (user-owned) | the user | worker, evaluator, self-improve step (injected when present) |
+| `AGENTS.md` / `CLAUDE.md` | the workspace (user-owned) | the user | worker, evaluator, self-improve step (injected when present) |
 | Git history | the worktree | the harness (one commit per task) | humans, evaluator (via diff) |
 | `progress.txt` | `sessions/<id>/` (harness-owned) | the harness (one line per task outcome) | worker (last ~30 lines injected) |
 | `prd.json` | `sessions/<id>/` (harness-owned) | `tilth prep-feature` (seed) and the harness (status flips) | the harness (task selection); worker (the *plan* as injected prose context) |
@@ -52,6 +52,10 @@ Where things live.
 - **Does *not* belong in AGENTS.md:** "record token counts in `events.jsonl`" (agent doesn't write that file), "update `prd.json` status when done" (agent doesn't manage prd), "stop after 32 iterations" (handled by `max_iterations_per_task`), "don't run dangerous commands" (handled by `pre_tool` hook), "the evaluator will evaluate your work" (see [Agent visibility](../deep-dives/agent-visibility.md)).
 
 The cleanest test: if you removed a rule from AGENTS.md and the harness still enforced the underlying behaviour, the rule shouldn't be there.
+
+### Which file(s) Tilth reads
+
+The channel isn't tied to a single filename. By default Tilth reads `AGENTS.md` **and** `CLAUDE.md` from the workspace root — in that order, concatenated — so a repo that keeps its conventions in `CLAUDE.md` (Claude Code's convention) is picked up out of the box, not left invisible. Override the list with `TILTH_CONTEXT_FILES` (comma-separated, first-listed highest priority); only files that exist are injected, and the combined text is capped so the prompt stays legible. Tilth never writes any of them.
 
 ### Where do learnings go?
 

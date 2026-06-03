@@ -56,7 +56,9 @@ class _FakeClient:
     def __init__(self, response: dict, max_iter: int = 60):
         self._response = response
         self.config = SimpleNamespace(
-            max_iterations_per_task=max_iter, max_evaluator_calls_per_task=0
+            max_iterations_per_task=max_iter,
+            max_evaluator_calls_per_task=0,
+            context_files=["AGENTS.md", "CLAUDE.md"],
         )
         self.message_lengths: list[int] = []
         self.had_roleless_message = False

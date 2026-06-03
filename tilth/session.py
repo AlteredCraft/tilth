@@ -44,7 +44,14 @@ Event types:
                          can distinguish "ran, said nothing" from "didn't run".
     memory_load        — a memory channel was loaded into a prompt. Payload
                          carries `channels` (per-channel: present, chars,
-                         truncated, sha256_8) and `user_prompt_chars`.
+                         truncated, sha256_8) and `user_prompt_chars`. The
+                         `agents_md` channel is the project-context channel —
+                         the files named by TILTH_CONTEXT_FILES (default
+                         AGENTS.md,CLAUDE.md), concatenated; its aggregate
+                         fields describe the combined injection and it also
+                         carries `files` (one {name, present, chars, sha256_8}
+                         per configured file) and `loaded` (names present, in
+                         order).
     validator_run      — pytest/ruff/mypy result
     prompt_assembled   — an assembled user message just before it's sent to a
                          model. Payload: {role (worker|evaluator|self_improve),

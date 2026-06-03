@@ -20,10 +20,12 @@ from __future__ import annotations
 import json
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from openai import OpenAI
+
+from .memory import DEFAULT_CONTEXT_FILES
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
 
@@ -99,6 +101,7 @@ class TilthConfig:
     max_evaluator_calls_per_task: int
     max_wall_clock_minutes: int
     max_tokens: int
+    context_files: list[str] = field(default_factory=lambda: list(DEFAULT_CONTEXT_FILES))
 
     @classmethod
     def from_env(cls) -> TilthConfig:
@@ -127,6 +130,9 @@ class TilthConfig:
         prep_model = os.environ.get("TILTH_PREP_MODEL", "").strip() or worker_model
         prep_base_url = os.environ.get("TILTH_PREP_BASE_URL", "").strip() or base_url
         prep_api_key = os.environ.get("TILTH_PREP_API_KEY", "").strip() or api_key
+        context_files = [
+            f.strip() for f in os.environ.get("TILTH_CONTEXT_FILES", "").split(",") if f.strip()
+        ] or list(DEFAULT_CONTEXT_FILES)
         return cls(
             base_url=base_url,
             api_key=api_key,
@@ -143,6 +149,7 @@ class TilthConfig:
             ),
             max_wall_clock_minutes=int(os.environ.get("TILTH_MAX_WALL_CLOCK_MINUTES", "120")),
             max_tokens=int(os.environ.get("TILTH_MAX_TOKENS", "2000000")),
+            context_files=context_files,
         )
 
 
@@ -165,7 +172,9 @@ class LLMClient:
         ):
             self._evaluator = self._worker
         else:
-            self._evaluator = OpenAI(base_url=config.evaluator_base_url, api_key=config.evaluator_api_key)
+            self._evaluator = OpenAI(
+                base_url=config.evaluator_base_url, api_key=config.evaluator_api_key
+            )
         if (
             config.prep_base_url == config.base_url
             and config.prep_api_key == config.api_key

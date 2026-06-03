@@ -19,6 +19,7 @@ OPTIONAL = (
     "TILTH_PREP_MODEL",
     "TILTH_PREP_BASE_URL",
     "TILTH_PREP_API_KEY",
+    "TILTH_CONTEXT_FILES",
 )
 
 
@@ -88,3 +89,34 @@ def test_prep_overrides_independently_of_evaluator(monkeypatch):
     assert cfg.prep_base_url == "https://prep.invalid/v1"
     assert cfg.prep_api_key == "pkey"
     assert cfg.prep_model == "prep-m"
+
+
+def _set_required(monkeypatch) -> None:
+    monkeypatch.setenv("TILTH_BASE_URL", "https://test.invalid/v1")
+    monkeypatch.setenv("TILTH_API_KEY", "k")
+    monkeypatch.setenv("TILTH_WORKER_MODEL", "test-model")
+
+
+def test_context_files_defaults_to_agents_and_claude(monkeypatch):
+    _clear(monkeypatch)
+    _set_required(monkeypatch)
+    cfg = TilthConfig.from_env()
+    assert cfg.context_files == ["AGENTS.md", "CLAUDE.md"]
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("AGENTS.md", ["AGENTS.md"]),
+        ("CLAUDE.md,AGENTS.md", ["CLAUDE.md", "AGENTS.md"]),
+        ("  FOO.md ,  BAR.md  ", ["FOO.md", "BAR.md"]),  # whitespace stripped
+        ("", ["AGENTS.md", "CLAUDE.md"]),  # empty → default
+        ("  ,  , ", ["AGENTS.md", "CLAUDE.md"]),  # only separators → default
+    ],
+)
+def test_context_files_parsed_from_env(monkeypatch, raw, expected):
+    _clear(monkeypatch)
+    _set_required(monkeypatch)
+    monkeypatch.setenv("TILTH_CONTEXT_FILES", raw)
+    cfg = TilthConfig.from_env()
+    assert cfg.context_files == expected

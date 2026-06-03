@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from tilth import loop
 from tilth.loop import _self_improve, _self_improve_session_context
 from tilth.session import Session
 
@@ -93,6 +93,8 @@ def test_ledger_task_ids_enumerates_without_creating_dir(session):
 # ---- driving _self_improve end-to-end --------------------------------------
 
 class _FakeClient:
+    config = SimpleNamespace(context_files=["AGENTS.md", "CLAUDE.md"])
+
     def chat(self, messages, tools=None, model=None, tool_choice=None):
         # decline to propose — we only care about the assembled prompt + events
         return {"message": {"role": "assistant", "content": '{"propose": "no"}'},

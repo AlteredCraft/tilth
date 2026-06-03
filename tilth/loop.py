@@ -2,7 +2,7 @@
 
 For each pending task in sessions/<id>/prd.json:
   1. Reset context — build a fresh message list from disk
-     (workspace AGENTS.md + session progress tail + task).
+     (workspace context files + session progress tail + task).
   2. Tool-loop with the worker model.
   3. When the worker calls `submit_case` (its done-signal, Phase 3), run
      validators (ruff + pytest).
@@ -379,13 +379,13 @@ def _evaluator_task(
     criteria = task.get("acceptance_criteria") or []
     if criteria:
         parts += ["", "## Acceptance criteria"] + [f"- {c}" for c in criteria]
-    agents_md = memory.load_agents_md(worktree)
-    if agents_md.strip():
+    ctx_text, ctx_names = memory.load_context_files(worktree, client.config.context_files)
+    if ctx_text.strip():
         parts += [
             "",
-            "## Project context (AGENTS.md)",
+            f"## Project context ({', '.join(ctx_names)})",
             "",
-            agents_md.rstrip(),
+            ctx_text.rstrip(),
         ]
     # Evaluator memory: prior verdicts on this same task (Phase 2). Read here
     # — before this call's verdict is appended below — so the section shows
@@ -635,13 +635,18 @@ def _self_improve(
     for the user's later review. The worker never reads that file back; the
     learning does not influence subsequent tasks in this run. Cross-run
     persistence happens when the user (or a future end-of-session hook)
-    promotes proposals into AGENTS.md by hand.
+    promotes proposals into AGENTS.md (or whichever project-context file they
+    keep, per TILTH_CONTEXT_FILES) by hand.
     """
     diff = ws.task_diff(worktree)
     if len(diff) > JUDGE_DIFF_MAX_CHARS:
         diff = diff[:JUDGE_DIFF_MAX_CHARS] + "\n... [truncated]"
 
-    agents_md = memory.load_agents_md(worktree).strip() or "(no AGENTS.md in this project)"
+    ctx_text, ctx_names = memory.load_context_files(worktree, client.config.context_files)
+    loaded_label = ", ".join(ctx_names) if ctx_names else (
+        client.config.context_files[0] if client.config.context_files else "AGENTS.md"
+    )
+    agents_md = ctx_text.strip() or f"(no {loaded_label} in this project)"
     session_context = _self_improve_session_context(session)  # Phase 5
 
     parts = [
@@ -649,7 +654,7 @@ def _self_improve(
         "",
         f"Description:\n{task.get('description', '').strip()}",
         "",
-        "## Current AGENTS.md",
+        f"## Current project context ({loaded_label})",
         "",
         agents_md,
         "",
@@ -1121,7 +1126,12 @@ def _run_task(
     prd = _load_prd(session.root)
     own_ledger = session.read_ledger(task["id"], limit=LEDGER_INJECT_LIMIT)
     user_prompt, mem_manifest = memory.build_user_prompt(
-        task, worktree, session.root, prd=prd, own_ledger=own_ledger
+        task,
+        worktree,
+        session.root,
+        prd=prd,
+        own_ledger=own_ledger,
+        context_files=client.config.context_files,
     )
     session.log(
         "memory_load",
@@ -2040,7 +2050,7 @@ def _legacy_main() -> int:
         nargs="?",
         type=Path,
         help=(
-            "Path to a workspace dir (a git repo, optionally with AGENTS.md). "
+            "Path to a workspace dir (a git repo, optionally with AGENTS.md / CLAUDE.md). "
             "prd.json and progress.txt live under sessions/<id>/ — they're "
             "harness-owned runtime artifacts, not workspace files."
         ),

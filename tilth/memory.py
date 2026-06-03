@@ -34,13 +34,21 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 from .verdict import format_ledger_section
 
 PROGRESS_TAIL_LINES = 30
+# Aggregate cap across all configured context files once concatenated — the
+# worker/evaluator prompt budget cares about the combined injection, not any
+# single file. (Name kept for back-compat with the `agents_md` manifest channel.)
 AGENTS_MD_MAX_CHARS = 8_000
+# The project-conventions channel. Read in order, first-listed highest priority;
+# every present file is concatenated. Overridable via TILTH_CONTEXT_FILES so a
+# repo carrying its conventions in CLAUDE.md (Claude Code's convention) is seen.
+DEFAULT_CONTEXT_FILES: tuple[str, ...] = ("AGENTS.md", "CLAUDE.md")
 PROGRESS_MAX_CHARS = 4_000
 # Phase 4 visibility expansion. Per-field injection caps, separate from the
 # `prompt_assembled` *log* cap (loop.PROMPT_ASSEMBLED_CHAR_CAP). Keep these
@@ -77,21 +85,65 @@ def _hash8(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
 
 
-def _load_agents_md(workspace: Path) -> tuple[str, dict[str, Any]]:
-    p = workspace / "AGENTS.md"
-    if not p.is_file():
-        return "", {"present": False, "chars": 0, "truncated": False, "sha256_8": ""}
-    raw = p.read_text()
-    truncated = len(raw) > AGENTS_MD_MAX_CHARS
-    if truncated:
-        text = raw[:AGENTS_MD_MAX_CHARS] + "\n\n[... AGENTS.md truncated; consider compacting it]"
+def _load_context_files(
+    workspace: Path, filenames: Sequence[str]
+) -> tuple[str, dict[str, Any]]:
+    """Load the configured project-context files from the workspace root, in order.
+
+    Each present file is concatenated (a `### <name>` provenance header is added
+    only when more than one file is present, so the single-file case stays a
+    clean body). Truncation is applied to the *combined* text against the
+    aggregate cap. Returns (text, manifest); the manifest carries the aggregate
+    {present, chars, truncated, sha256_8} plus a `files` list with one
+    {name, present, chars, sha256_8} entry per configured filename and `loaded`
+    (the names actually present, in order) — so `events.jsonl` stays honest
+    about what the worker saw.
+    """
+    file_manifests: list[dict[str, Any]] = []
+    blocks: list[tuple[str, str]] = []
+    for name in filenames:
+        p = workspace / name
+        if not p.is_file():
+            file_manifests.append(
+                {"name": name, "present": False, "chars": 0, "sha256_8": ""}
+            )
+            continue
+        raw = p.read_text()
+        file_manifests.append(
+            {"name": name, "present": True, "chars": len(raw), "sha256_8": _hash8(raw)}
+        )
+        blocks.append((name, raw))
+
+    loaded = [name for name, _ in blocks]
+    if not blocks:
+        return "", {
+            "present": False,
+            "chars": 0,
+            "truncated": False,
+            "sha256_8": "",
+            "files": file_manifests,
+            "loaded": [],
+        }
+
+    if len(blocks) == 1:
+        combined = blocks[0][1]
     else:
-        text = raw
+        combined = "\n\n".join(f"### {name}\n\n{raw.rstrip()}" for name, raw in blocks)
+
+    truncated = len(combined) > AGENTS_MD_MAX_CHARS
+    if truncated:
+        text = combined[:AGENTS_MD_MAX_CHARS] + (
+            "\n\n[... project context truncated; consider compacting it]"
+        )
+    else:
+        text = combined
     return text, {
         "present": True,
-        "chars": len(raw),
+        "chars": len(combined),
         "truncated": truncated,
-        "sha256_8": _hash8(raw),
+        "sha256_8": _hash8(combined),
+        "files": file_manifests,
+        "loaded": loaded,
     }
 
 
@@ -113,9 +165,13 @@ def _load_progress_tail(session_dir: Path) -> tuple[str, dict[str, Any]]:
     }
 
 
-def load_agents_md(workspace: Path) -> str:
-    """Public single-string accessor — used outside the per-task prompt build."""
-    return _load_agents_md(workspace)[0]
+def load_context_files(
+    workspace: Path, filenames: Sequence[str]
+) -> tuple[str, list[str]]:
+    """Public accessor — used outside the per-task prompt build (evaluator, self-
+    improve). Returns (concatenated body, names actually loaded in order)."""
+    text, manifest = _load_context_files(workspace, filenames)
+    return text, manifest["loaded"]
 
 
 def load_progress_tail(session_dir: Path) -> str:
@@ -251,11 +307,13 @@ def build_user_prompt(
     *,
     prd: list[dict[str, Any]] | None = None,
     own_ledger: list[dict[str, Any]] | None = None,
+    context_files: Sequence[str] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Assemble the user-side prompt and a manifest of what was loaded.
 
-    AGENTS.md is read from `workspace` (user-owned, in the source repo). The
-    progress tail is read from `session_dir` (harness-owned runtime journal).
+    The project-context files (`context_files`, default DEFAULT_CONTEXT_FILES)
+    are read from `workspace` (user-owned, in the source repo). The progress
+    tail is read from `session_dir` (harness-owned runtime journal).
 
     Phase 4 widens what the worker sees: the full feature plan (`prd`), the
     seed context (`seed-meta.json` under `session_dir`), and its own task
@@ -267,7 +325,9 @@ def build_user_prompt(
     `memory_load` event — it describes which channels were present, their
     char counts, whether anything was truncated, and a short content hash.
     """
-    agents_md, agents_meta = _load_agents_md(workspace)
+    agents_md, agents_meta = _load_context_files(
+        workspace, context_files if context_files is not None else DEFAULT_CONTEXT_FILES
+    )
     progress_tail, progress_meta = _load_progress_tail(session_dir)
     full_prd, prd_meta = _render_full_prd(prd, task["id"])
     seed_meta_text, seed_meta_meta = _load_seed_meta(session_dir)
@@ -276,8 +336,10 @@ def build_user_prompt(
     parts: list[str] = []
 
     if agents_md.strip():
+        loaded = agents_meta.get("loaded") or []
+        header = f"## Project context ({', '.join(loaded)})" if loaded else "## Project context"
         parts += [
-            "## Project context (AGENTS.md)",
+            header,
             "",
             agents_md.rstrip(),
             "",
