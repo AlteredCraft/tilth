@@ -13,10 +13,23 @@ A minimal long-running agent harness against an **OpenAI-compatible** LLM endpoi
 
 **Target run:** I test with 10-60 minutes of autonomous work against an open model (default `deepseek/deepseek-v4-flash` on OpenRouter for the worker; the evaluator and prep interview default to `deepseek/deepseek-v4-pro`). Completing a task list against a small project on a per-session git worktree.
 
-![The Ralph loop — PRD task to worker agent to validators to evaluator to commit, looping back, all inside a per-session git worktree](assets/ralph-loop.png)
+![The harness loop — PRD task to worker agent to validators to evaluator to commit, with two feedback paths and a New Task loop, all inside a per-session git worktree](assets/harness-loop.jpg)
 
-*Tilth's Ralph loop*
+*The harness loop*
 {: .caption }
+
+## What is a harness?
+
+A **harness** is the deterministic code wrapped around the model — it decides what the model sees, when it runs, and what happens to what it produces. The model is the *brain*; the harness is everything around it that turns a single model call into a loop that finishes work.
+
+The labels under each box in the diagram above are that harness, made literal: `loop.py`, `validators.py`, and `workspace.py` are Tilth's code; `prd.json` is the state it reads; `evaluator.md` is the prompt it hands to a second model. The harness owns the **arrows** — the forward path, the dashed `Fails` / `Rejects` feedback, and the green `New Task` loop. It picks the next task, runs the validators, routes the evaluator's verdict, commits to the session branch, and moves on. That green `New Task` arrow is the Ralph loop proper — the outer loop that carries a session from one task to the next.
+
+The model owns only what happens *inside* a box:
+
+- the **worker agent's** tool use — which tools to call, and when to `submit_case`;
+- the **evaluator's** verdict — `accept` or `reject` (the model decides it; the harness routes it onto an arrow).
+
+That boundary is the point of an autonomous harness: the agent acts within a step, the harness orchestrates the steps, and the agent never steers the loop or sees the machinery driving it. For the code-level version — the two nested loops, the caps, and what the agent can and can't see — see [The two loops](deep-dives/two-loops.md) and [Agent visibility](deep-dives/agent-visibility.md).
 
 ## How Tilth differs from other harnesses
 
