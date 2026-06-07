@@ -4,6 +4,7 @@ Honest, code-level walk-throughs of mechanics that aren't load-bearing for *usin
 
 The [Getting started](../getting-started/installation.md) and [Architecture](../architecture/overview.md) sections cover "how do I run this." This section covers "how does it actually work inside."
 
+- **[Hyper-observability](hyper-observability.md)** — Tilth's standing goal: every prompt the harness sends is recorded and every run replays end-to-end from its `events.jsonl`. What the observability surface gives you today, what it doesn't yet, and why feeding a run's log to a co-dev agent to hunt anomalies has been one of the more useful debugging moves.
 - **[The two loops](two-loops.md)** — Ralph (outer) vs. tool-use (inner), iteration accounting, the inner-loop flowchart, the worker↔evaluator dialogue (the worker submits a *case*, the evaluator returns a structured *verdict*), evaluator-rejection accounting, worst-case tokens per task.
 - **[The worker↔evaluator dialogue](worker-evaluator-dialogue.md)** — the structured `case` / `verdict` exchange the inner loop ends in: `submit_case`, `submit_verdict`, the six rejection categories, and the per-task ledger that gives the evaluator memory across iterations.
 - **[Token recording and enforcement](token-recording.md)** — where the cap is set, where the running counter lives, the three call sites that record tokens, where enforcement happens, and the gaps worth knowing.

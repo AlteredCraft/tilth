@@ -74,6 +74,13 @@ nav:
       # when extending, debugging, or reasoning about the safety story —
       # not needed just to *use* the harness.
       - Overview: deep-dives/index.md
+      # The flagship differentiator page: Tilth's "hyper-observability" goal —
+      # every prompt the harness sends is recorded (prompt_assembled /
+      # memory_load / model_call) and every run replays end-to-end (events.jsonl
+      # → visualize, summary.json). Covers what exists now, the by-design and
+      # roadmap gaps, and the dev practice of feeding a run's log to a co-dev
+      # agent to hunt anomalies. Start here for the "why observability" story.
+      - Hyper-observability: deep-dives/hyper-observability.md
       # Ralph (outer) vs. tool-use (inner) loops; what does and doesn't count
       # as an iteration; the inner-loop flowchart; why evaluator rejections eat
       # iterations; worst-case tokens-per-task formula.

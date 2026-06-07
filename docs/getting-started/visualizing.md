@@ -2,6 +2,8 @@
 
 Render `events.jsonl` as a chat-style HTML page. Easier to skim than `jq`-ing the raw log.
 
+This page is the practical how-to; for the bigger picture — why a fully replayable run matters and what the wider observability surface gives you — see [Hyper-observability](../deep-dives/hyper-observability.md).
+
 ## How to visualize
 
 ```bash

@@ -27,7 +27,7 @@ Today only the Worker Brain has Hands; the Evaluator runs without tools by desig
 
 `tilth/session.py`. Append-only `events.jsonl` + `checkpoint.json`, enough to `wake(session_id)` on a fresh process. A `summary.json` is rebuilt at every task boundary (`tilth/summary.py`) as a denormalised view for the visualizer and any external consumers. Per-task evaluator ledgers live alongside it under `sessions/<id>/ledger/` and are re-read on resume.
 
-Session is the durable record. Everything that happens — every model call, tool call, validator run, evaluator verdict — is logged here. The agent never sees this layer; it exists for the human reading the run afterwards (and for `tilth resume` to find its footing).
+Session is the durable record. Everything that happens — every model call, tool call, validator run, evaluator verdict — is logged here. The agent never sees this layer; it exists for the human reading the run afterwards (and for `tilth resume` to find its footing). What that durable record buys you — every prompt recorded, every run replayable — is the subject of [Hyper-observability](../deep-dives/hyper-observability.md).
 
 This page is the *who*; for the *what flows through* — the artifacts the loop reads, the artifacts it writes, and the three that do both — see [Anatomy of a run](anatomy-of-a-run.md).
 

@@ -40,7 +40,7 @@ Almost everything distinctive about Tilth follows from that one difference. Each
 - **The [evaluator](deep-dives/worker-evaluator-dialogue.md)** — a second model that judges whether a change is a *proper* solution, not just whether the tests are green. Passing the validators is table stakes; the evaluator is the reviewer who isn't in the room.
 - **[Between-task caps](deep-dives/caps.md)** — the budget ceiling (iterations, tokens, wall-clock) a human would otherwise impose by noticing a runaway and stopping it.
 - **[State kept out of the model](deep-dives/agent-visibility.md)** — the mutable plan/status machinery is hidden, so an unattended agent can't mark its own work done, skip ahead, or rewrite the queue.
-- **Offline-first [observability](getting-started/visualizing.md)** — the goal isn't a live TUI but a finished run you can replay end-to-end from its `events.jsonl`.
+- **[Hyper-observability](deep-dives/hyper-observability.md)** — when no one is watching mid-run, the recording *is* the supervision. Every prompt the harness sends is recorded and every run replays end-to-end from its `events.jsonl` (`tilth visualize`). Offline-first by design: a finished run you inspect, not a live TUI to babysit.
 
 None of this is a knock on interactive agents; it's a different shape for a different job.
 
