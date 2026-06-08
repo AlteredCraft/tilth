@@ -51,49 +51,23 @@ def test_session_metadata_captured(events_path):
     assert s["stop"] == {"reason": "all_done", "ts": "2026-05-04T10:05:00Z"}
 
 
-def test_prep_and_run_starts_are_distinguished(events_path):
-    """prep-feature and run each emit a session_start; the summary must keep
-    them apart so prep wall-time isn't silently folded into the run's
-    started_at (the bug that motivated the phase tag)."""
+def test_session_start_sets_started_at(events_path):
+    """A run's session_start sets started_at (prep-feature and its phase tag are
+    gone in the prompt-driven harness; there's no separate prep clock)."""
     _write(
         events_path,
         [
-            {
-                "ts": "2026-05-04T09:00:00Z",
-                "type": "session_start",
-                "payload": {"source": "/tmp/foo", "phase": "prep-feature",
-                            "worktree": "/tmp/wt", "branch": "session/x"},
-            },
             {
                 "ts": "2026-05-04T10:00:00Z",
                 "type": "session_start",
                 "payload": {"source": "/tmp/foo", "phase": "run",
                             "worktree": "/tmp/wt", "branch": "session/x"},
             },
-            {"ts": "2026-05-04T10:05:00Z", "type": "stop", "payload": {"reason": "all_done"}},
-        ],
-    )
-    s = summary.build_from_events(events_path)
-    assert s["prep_started_at"] == "2026-05-04T09:00:00Z"
-    assert s["started_at"] == "2026-05-04T10:00:00Z"
-
-
-def test_unphased_session_start_is_treated_as_run(events_path):
-    """Legacy/edge session_start with no phase field → the run start, and
-    prep_started_at stays null."""
-    _write(
-        events_path,
-        [
-            {
-                "ts": "2026-05-04T10:00:00Z",
-                "type": "session_start",
-                "payload": {"source": "/tmp/foo", "worktree": "/tmp/wt", "branch": "session/x"},
-            },
         ],
     )
     s = summary.build_from_events(events_path)
     assert s["started_at"] == "2026-05-04T10:00:00Z"
-    assert s["prep_started_at"] is None
+    assert "prep_started_at" not in s
 
 
 def test_tokens_summed_across_model_calls(events_path):

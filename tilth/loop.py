@@ -1,23 +1,25 @@
 """Ralph loop entry point.
 
-For each pending task in sessions/<id>/prd.json:
-  1. Reset context — build a fresh message list from disk
-     (workspace context files + session progress tail + task).
+The feature is authored as markdown under `<workspace>/.tilth/tasks/` (an
+`overview.md` plus one `T-NNN-*.md` per task — see `tilth/tasks.py`). For each
+pending task:
+  1. Reset context — build a fresh message list from disk (workspace context
+     files + feature overview + full plan + session progress tail + this task +
+     the evaluator's prior verdicts on it).
   2. Tool-loop with the worker model.
-  3. When the worker calls `submit_case` (its done-signal, Phase 3), run
-     validators (ruff + pytest).
-     - Pass: the evaluator reviews the case + diff + ledger in a fresh context.
-       - Accept: collect a proposed learning (session-local, user-reviewed),
-                 commit, mark done, next task.
+  3. When the worker calls `submit_case` (its done-signal), the evaluator
+     reviews the case + diff + ledger in a fresh context.
+       - Accept: commit, mark done, next task.
        - Reject: feed the structured verdict back as the submit_case
                  tool_result; another iteration.
-     - Fail: feed the validator report back as the submit_case tool_result;
-             another iteration.
+
+There are no codified validators (ruff/pytest) in this prompt-driven harness —
+the evaluator is the only gate. The worker may run anything it likes via `bash`,
+but nothing is enforced between iterations.
 """
 
 from __future__ import annotations
 
-import argparse
 import json
 import sys
 import time
@@ -25,10 +27,9 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
 from rich.console import Console
 
-from tilth import memory, summary, tools, validators, visualize
+from tilth import memory, summary, tasks, tools, visualize
 from tilth import workspace as ws
 from tilth.case import (
     NAME_SUBMIT_CASE,
@@ -40,11 +41,9 @@ from tilth.client import (
     LLMClient,
     TilthConfig,
     assistant_history_message,
-    parse_json_lenient,
 )
-from tilth.seed import FileSeedSink, TTYFrontend, run_interview
-from tilth.seed.interview import InterviewAbort
-from tilth.session import Session, iter_events, session_label
+from tilth.session import Session, iter_events
+from tilth.tasks import TasksError
 from tilth.verdict import (
     SUBMIT_VERDICT_TOOL,
     VERDICT_SCHEMA_VERSION,
@@ -91,21 +90,12 @@ def _evaluator_prompt() -> str:
     return (PROMPTS_DIR / "evaluator.md").read_text()
 
 
-def _propose_learning_prompt() -> str:
-    return (PROMPTS_DIR / "propose_learning.md").read_text()
-
-
 # --- evaluator -------------------------------------------
 
 JUDGE_DIFF_MAX_CHARS = 12_000
 PROMPT_ASSEMBLED_CHAR_CAP = 16_000
 MODEL_RAW_ARGS_CHAR_CAP = 16_000  # generous — faithful capture is the priority
 LEDGER_INJECT_LIMIT = 5  # OQ #1: last-N ledger entries injected into evaluator prompt
-# Phase 4 visibility: per-field injection caps for the evaluator prompt,
-# separate from the prompt_assembled *log* cap above. A noisy validator dump or
-# a long seed test must not blow the evaluator's context.
-VALIDATOR_OUTPUT_INJECT_CAP = 4_000
-SEED_TEST_INJECT_CAP = 6_000
 
 WORKER_NO_CASE_NUDGE = (
     "You stopped without calling `submit_case`. This harness no longer treats "
@@ -296,58 +286,6 @@ def _build_ledger_entry(
     }
 
 
-def _format_validator_section(results: list[validators.ValidatorResult]) -> str:
-    """Render the actual validator output for the evaluator (Phase 4).
-
-    Replaces the old static "all passed" line. The evaluator is only called
-    *after* the validators pass, so this is passing output — its value is
-    letting the evaluator see which tests ran and what they cover when judging
-    `weak_test` / `acceptance_gap`, not surfacing failures (those go to the
-    worker via the submit_case tool_result). Capped per the injection budget.
-    """
-    blocks: list[str] = []
-    for r in results:
-        out = (r.output or "").strip() or "(no output)"
-        if len(out) > VALIDATOR_OUTPUT_INJECT_CAP:
-            out = (
-                out[:VALIDATOR_OUTPUT_INJECT_CAP]
-                + f"\n... [truncated, total {len(r.output)} chars]"
-            )
-        status = "PASS" if r.passed else "FAIL"
-        blocks.append(f"### {r.name} — {status}\n```\n{out}\n```")
-    return "\n\n".join(blocks)
-
-
-def _format_seed_test_section(worktree: Path, task_id: str) -> str:
-    """Inline this task's seed acceptance test(s) for the evaluator (#16).
-
-    Reads the worktree-current version — exactly what pytest validated. If the
-    worker tampered with a seed test, the diff already surfaces that as
-    cross-task interference; here the evaluator can read what the passing test
-    actually asserts, to evaluator `weak_test`. Absent/unreadable → "".
-    """
-    tests_dir = worktree / "tests"
-    if not tests_dir.is_dir():
-        return ""
-    matches = sorted(tests_dir.glob(validators.task_test_glob(task_id)))
-    if not matches:
-        return ""
-    blocks = ["## Seed acceptance test (the test the validator ran)", ""]
-    budget = SEED_TEST_INJECT_CAP
-    for p in matches:
-        try:
-            body = p.read_text()
-        except OSError:
-            continue
-        if len(body) > budget:
-            body = body[:budget] + "\n... [truncated]"
-        budget -= len(body)
-        blocks.append(f"`{p.relative_to(worktree)}`:\n```python\n{body}\n```")
-        if budget <= 0:
-            break
-    return "\n".join(blocks)
-
-
 def _evaluator_task(
     task: dict[str, Any],
     worktree: Path,
@@ -357,7 +295,7 @@ def _evaluator_task(
     trace_id: str,
     span_id: str,
     case: dict[str, Any] | None = None,
-    results: list[validators.ValidatorResult] | None = None,
+    overview: str | None = None,
 ) -> dict[str, Any]:
     """Call the evaluator in a fresh context. Returns a structured verdict.
 
@@ -379,6 +317,13 @@ def _evaluator_task(
     criteria = task.get("acceptance_criteria") or []
     if criteria:
         parts += ["", "## Acceptance criteria"] + [f"- {c}" for c in criteria]
+    if overview and overview.strip():
+        parts += [
+            "",
+            "## Feature overview (the why + scope boundaries)",
+            "",
+            overview.strip(),
+        ]
     ctx_text, ctx_names = memory.load_context_files(worktree, client.config.context_files)
     if ctx_text.strip():
         parts += [
@@ -397,15 +342,7 @@ def _evaluator_task(
         parts += ["", ledger_section]
     if case is not None:
         parts += ["", format_case_section(case)]
-    seed_test_section = _format_seed_test_section(worktree, task["id"])
-    if seed_test_section:
-        parts += ["", seed_test_section]
     parts += [
-        "",
-        "## Validator output (all objective validators PASSED — this is the proof)",
-        "",
-        _format_validator_section(results or [])
-        or "All objective validators (ruff, pytest) PASSED.",
         "",
         "## Diff (working tree vs HEAD on this task's branch)",
         "",
@@ -581,164 +518,48 @@ def _call_evaluator_with_retry(
     }
 
 
-# --- self-improvement: propose a learning -----------------------------------
+# --- task list + status -----------------------------------------------------
+#
+# The task *content* is authored markdown under `<workspace>/.tilth/tasks/`
+# (read-only; loaded via tilth.tasks). Per-task *status* is harness-owned and
+# lives in sessions/<id>/task-status.json — a flat {task_id: status} map. A task
+# absent from the map is `pending`. The loop overlays status onto the static
+# task list to get the prd-shaped list the rest of the harness consumes.
 
-def _self_improve_session_context(session: Session) -> str:
-    """Phase 5: cross-task signal for the self-improver.
-
-    Two pieces, both grounding a proposal in a *pattern* rather than one task's
-    symptom: the session's rejection-category histogram, and every task's
-    evaluator ledger (its verdict arc across iterations).
-
-    The histogram is rebuilt fresh from events here (not read from summary.json)
-    because `_self_improve` runs *before* the task-boundary summary refresh —
-    reading the file would lag by the just-completed task. Reuses the canonical
-    `summary.build_from_events` rollup so the counts match summary.json once it
-    catches up. Returns "" when there's nothing yet (first task, no rejections).
-    """
-    parts: list[str] = []
-
-    rollup = summary.build_from_events(session.events_path)
-    categories = (rollup.get("evaluator") or {}).get("rejection_categories") or {}
-    if categories:
-        hist = ", ".join(f"{cat}: {n}" for cat, n in sorted(categories.items()))
-        parts += ["## Rejection patterns across this session (by category)", "", hist, ""]
-
-    ledger_blocks: list[str] = []
-    for tid in session.ledger_task_ids():
-        section = format_ledger_section(
-            session.read_ledger(tid),
-            header=f"### {tid} — the evaluator's iterations",
-        )
-        if section:
-            ledger_blocks.append(section)
-    if ledger_blocks:
-        parts += [
-            "## Per-task evaluator ledgers (this session)",
-            "",
-            *ledger_blocks,
-        ]
-
-    return "\n".join(parts).rstrip()
+STATUS_FILENAME = "task-status.json"
 
 
-def _self_improve(
-    task: dict[str, Any],
-    worktree: Path,
-    session: Session,
-    client: LLMClient,
-    trace_id: str,
-) -> None:
-    """Ask the worker model whether this task surfaced a durable learning worth capturing.
-
-    A "yes" appends to sessions/<id>/proposed-learnings.md — a session output
-    for the user's later review. The worker never reads that file back; the
-    learning does not influence subsequent tasks in this run. Cross-run
-    persistence happens when the user (or a future end-of-session hook)
-    promotes proposals into AGENTS.md (or whichever project-context file they
-    keep, per TILTH_CONTEXT_FILES) by hand.
-    """
-    diff = ws.task_diff(worktree)
-    if len(diff) > JUDGE_DIFF_MAX_CHARS:
-        diff = diff[:JUDGE_DIFF_MAX_CHARS] + "\n... [truncated]"
-
-    ctx_text, ctx_names = memory.load_context_files(worktree, client.config.context_files)
-    loaded_label = ", ".join(ctx_names) if ctx_names else (
-        client.config.context_files[0] if client.config.context_files else "AGENTS.md"
-    )
-    agents_md = ctx_text.strip() or f"(no {loaded_label} in this project)"
-    session_context = _self_improve_session_context(session)  # Phase 5
-
-    parts = [
-        f"Task just completed: {task['id']} — {task['title']}",
-        "",
-        f"Description:\n{task.get('description', '').strip()}",
-        "",
-        f"## Current project context ({loaded_label})",
-        "",
-        agents_md,
-        "",
-        "## Diff produced",
-        "",
-        f"```diff\n{diff or '(empty)'}\n```",
-    ]
-    if session_context:
-        parts += ["", session_context]
-    parts += ["", "Respond with strict JSON only."]
-    user = "\n".join(parts)
-
-    span_id = _span_id()
-    # Observability parity (Phase 5): self_improve now emits prompt_assembled
-    # like the worker and evaluator — so a post-run reviewer sees the cross-task
-    # signal the self-improver actually had.
-    _log_prompt_assembled(
-        session,
-        role="self_improve",
-        task_id=task["id"],
-        trace_id=trace_id,
-        span_id=span_id,
-        iter_value=0,
-        content=user,
-    )
-    messages = [
-        {"role": "system", "content": _propose_learning_prompt()},
-        {"role": "user", "content": user},
-    ]
-    resp = client.chat(messages)
-    usage = resp.get("usage") or {}
-    prompt_tokens = int(usage.get("prompt_tokens") or 0)
-    eval_tokens = int(usage.get("completion_tokens") or 0)
-    session.add_tokens(prompt_tokens + eval_tokens)
-
-    base = {"task_id": task["id"], "trace_id": trace_id, "span_id": span_id}
-
-    msg = resp.get("message") or {}
-    _log_model_call(session, phase="self_improve", msg=msg, resp=resp, base=base)
-
-    content = (msg.get("content") or "").strip()
-    parsed = parse_json_lenient(content)
-    if not parsed:
-        session.log(
-            "proposed_learnings",
-            {**base, "emitted": False, "reason": "unparseable", "raw": content[:500]},
-        )
-        return
-
-    if str(parsed.get("propose", "")).lower() != "yes":
-        session.log(
-            "proposed_learnings", {**base, "emitted": False, "reason": "no_proposal"}
-        )
-        return
-
-    learning = str(parsed.get("learning", "")).strip()
-    if not learning:
-        session.log(
-            "proposed_learnings", {**base, "emitted": False, "reason": "empty_learning"}
-        )
-        return
-
-    memory.append_proposed_learning(session.root, task["id"], task["title"], learning)
-    session.log(
-        "proposed_learnings",
-        {**base, "emitted": True, "entry": learning},
-    )
-    console.print(f"[blue]→ proposed learning[/blue] {learning}")
+def _load_status(session_dir: Path) -> dict[str, str]:
+    path = session_dir / STATUS_FILENAME
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text())
+    except json.JSONDecodeError:
+        return {}
+    return {k: v for k, v in data.items() if isinstance(v, str)} if isinstance(data, dict) else {}
 
 
-# --- prd handling -----------------------------------------------------------
-
-def _load_prd(session_dir: Path) -> list[dict[str, Any]]:
-    prd_path = session_dir / "prd.json"
-    if not prd_path.is_file():
-        raise FileNotFoundError(
-            f"No prd.json at {prd_path}. "
-            "Seed a prepared session first (Phase 2: `tilth prep-feature`)."
-        )
-    return json.loads(prd_path.read_text())
+def _save_status(session_dir: Path, status_map: dict[str, str]) -> None:
+    (session_dir / STATUS_FILENAME).write_text(json.dumps(status_map, indent=2) + "\n")
 
 
-def _save_prd(session_dir: Path, prd: list[dict[str, Any]]) -> None:
-    (session_dir / "prd.json").write_text(json.dumps(prd, indent=2) + "\n")
+def _set_task_status(session_dir: Path, task_id: str, status: str) -> None:
+    status_map = _load_status(session_dir)
+    status_map[task_id] = status
+    _save_status(session_dir, status_map)
+
+
+def _overlay_status(
+    static_tasks: list[dict[str, Any]], status_map: dict[str, str]
+) -> list[dict[str, Any]]:
+    """Return prd-shaped task dicts (copies) with a `status` field overlaid."""
+    out: list[dict[str, Any]] = []
+    for t in static_tasks:
+        entry = dict(t)
+        entry["status"] = status_map.get(t["id"], "pending")
+        out.append(entry)
+    return out
 
 
 def _next_pending(prd: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -746,6 +567,20 @@ def _next_pending(prd: list[dict[str, Any]]) -> dict[str, Any] | None:
         if t.get("status", "pending") == "pending":
             return t
     return None
+
+
+def _load_static_tasks_for_session(session: Session) -> list[dict[str, Any]]:
+    """Best-effort load of a session's task list from its source repo.
+
+    Used by summary/resume helpers that need the task set without the live
+    `run()` having it in hand. Returns [] on any failure — these are reporting
+    paths that must not crash the run."""
+    if session.source is None:
+        return []
+    try:
+        return tasks.load_tasks(session.source)
+    except (TasksError, OSError):
+        return []
 
 
 # --- resume helpers ---------------------------------------------------------
@@ -787,253 +622,6 @@ def _read_checkpoint(session_dir: Path) -> dict[str, Any]:
         return {}
 
 
-def _find_resumable_session(sessions_root: Path, source: Path) -> tuple[str, str | None] | None:
-    """Most recent session for `source` whose last stop ≠ all_done.
-
-    Returns (session_id, last_stop_reason) or None. Sessions that haven't logged a
-    stop event yet (e.g. crashed before stop) are still treated as resumable.
-
-    Prepared sessions (created by `prep-feature` but never run) are skipped —
-    they're picked up by the normal `tilth <workspace>` flow, not by --resume.
-    """
-    if not sessions_root.is_dir():
-        return None
-    target = str(source)
-    for d in sorted(sessions_root.iterdir(), key=lambda p: p.name, reverse=True):
-        if not d.is_dir():
-            continue
-        if _checkpoint_status(d) == "prepared":
-            continue
-        sess_source: str | None = None
-        last_stop: str | None = None
-        for rec in iter_events(d / "events.jsonl"):
-            t = rec.get("type")
-            if t == "session_start":
-                sess_source = (rec.get("payload") or {}).get("source")
-            elif t == "stop":
-                last_stop = (rec.get("payload") or {}).get("reason")
-        if sess_source != target:
-            continue
-        if last_stop == "all_done":
-            continue
-        return (d.name, last_stop)
-    return None
-
-
-def _checkpoint_status(session_dir: Path) -> str | None:
-    cp = _read_checkpoint(session_dir)
-    s = cp.get("status")
-    return s if isinstance(s, str) else None
-
-
-def _find_prepared_sessions(sessions_root: Path, source: Path) -> list[str]:
-    """All session IDs for `source` whose checkpoint status is `prepared`.
-
-    Used by `tilth <workspace>` to pick up a session prep-feature seeded.
-    """
-    if not sessions_root.is_dir():
-        return []
-    target = str(source)
-    out: list[str] = []
-    for d in sorted(sessions_root.iterdir()):
-        if not d.is_dir():
-            continue
-        cp = _read_checkpoint(d)
-        if cp.get("status") == "prepared" and cp.get("source") == target:
-            out.append(d.name)
-    return out
-
-
-def _find_blocking_sessions(sessions_root: Path, source: Path) -> list[tuple[str, str]]:
-    """Sessions for `source` in non-terminal states (`prepared|running|failed`).
-
-    Used by prep-feature to refuse re-prep when an earlier session is still in
-    flight. Returns a list of (session_id, status) sorted by id.
-    """
-    if not sessions_root.is_dir():
-        return []
-    target = str(source)
-    blocking_statuses = {"prepared", "running", "failed"}
-    out: list[tuple[str, str]] = []
-    for d in sorted(sessions_root.iterdir()):
-        if not d.is_dir():
-            continue
-        cp = _read_checkpoint(d)
-        if cp.get("source") != target:
-            continue
-        status = cp.get("status")
-        if isinstance(status, str) and status in blocking_statuses:
-            out.append((d.name, status))
-    return out
-
-
-# --- interactive pickers ----------------------------------------------------
-#
-# The two failure cases that benefit most from interactive recovery:
-#   - prep-feature with a blocking session for this workspace
-#   - run with no prepared session for this workspace
-#
-# Both helpers take an injectable `prompt_func` so tests can drive them
-# without touching real stdin. Default prompt_func is the built-in `input`.
-# Each returns a short action string; the call site dispatches.
-
-# Actions returned by _prompt_blocking_action.
-_PREP_ACTION_RUN = "run_existing"          # one prepared → launch worker
-_PREP_ACTION_RESUME = "resume_existing"    # one running/failed → resume it
-_PREP_ACTION_RESET_AND_PREP = "reset_and_prep"
-_PREP_ACTION_PREP_FRESH = "prep_fresh"     # start a new session, leave blockers alone
-_PREP_ACTION_CANCEL = "cancel"
-
-# Actions returned by _prompt_no_prep_action.
-_RUN_ACTION_PREP_NOW = "prep_now"
-_RUN_ACTION_RESUME = "resume"
-_RUN_ACTION_RESET_AND_PREP = "reset_and_prep"
-_RUN_ACTION_CANCEL = "cancel"
-
-
-def _format_session_row(sid: str, status: str, sessions_root: Path) -> str:
-    """`sessions/<sid>/  <status>  <label>` for a picker row."""
-    label = session_label(sessions_root / sid)
-    if label:
-        return f"sessions/{sid}/  {status:<9}  {label}"
-    return f"sessions/{sid}/  {status}"
-
-
-def _ask_choice(prompt_func, valid: set[str]) -> str:
-    """Loop on prompt_func until the answer is in `valid`. EOF/Ctrl-D → cancel."""
-    while True:
-        try:
-            raw = prompt_func("> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            return ""
-        if raw in valid:
-            return raw
-        console.print(f"[yellow]please choose one of: {sorted(valid)}[/yellow]")
-
-
-def _prompt_blocking_action(
-    blocking: list[tuple[str, str]],
-    sessions_root: Path,
-    prompt_func=input,
-) -> str:
-    """Picker shown when prep-feature finds blocking sessions for this workspace.
-
-    Single-blocker shape: offers run-or-resume (depending on status) vs.
-    reset-and-prep vs. cancel. Multi-blocker shape: offers reset-all vs. cancel.
-    """
-    fresh_note = (
-        "  3) start a new session (don't touch any existing sessions)"
-    )
-    if len(blocking) == 1:
-        sid, status = blocking[0]
-        console.print(
-            "[yellow]This workspace already has a session in flight:[/yellow]"
-        )
-        console.print(f"  {_format_session_row(sid, status, sessions_root)}")
-        console.print()
-        console.print("What would you like to do?")
-        if status == "prepared":
-            console.print("  1) run it now")
-            console.print("  2) discard it and start a new prep")
-            console.print(fresh_note)
-            console.print("  0) cancel")
-            choice = _ask_choice(prompt_func, {"0", "1", "2", "3"})
-            return {
-                "1": _PREP_ACTION_RUN,
-                "2": _PREP_ACTION_RESET_AND_PREP,
-                "3": _PREP_ACTION_PREP_FRESH,
-                "0": _PREP_ACTION_CANCEL,
-                "": _PREP_ACTION_CANCEL,
-            }[choice]
-        # running or failed
-        console.print("  1) resume it")
-        console.print("  2) discard it and start a new prep")
-        console.print(fresh_note)
-        console.print("  0) cancel")
-        choice = _ask_choice(prompt_func, {"0", "1", "2", "3"})
-        return {
-            "1": _PREP_ACTION_RESUME,
-            "2": _PREP_ACTION_RESET_AND_PREP,
-            "3": _PREP_ACTION_PREP_FRESH,
-            "0": _PREP_ACTION_CANCEL,
-            "": _PREP_ACTION_CANCEL,
-        }[choice]
-
-    console.print(
-        f"[yellow]This workspace has {len(blocking)} sessions in flight:[/yellow]"
-    )
-    for sid, status in blocking:
-        console.print(f"  {_format_session_row(sid, status, sessions_root)}")
-    console.print()
-    console.print(
-        "Heads up: `tilth run` requires exactly one prepared session per workspace, "
-        "so starting a new one alongside means you'll need to `tilth reset` the "
-        "extras before the next run."
-    )
-    console.print("What would you like to do?")
-    console.print(f"  1) discard all {len(blocking)} and start a new prep")
-    console.print("  2) start a new session (don't touch any existing sessions)")
-    console.print("  0) cancel")
-    choice = _ask_choice(prompt_func, {"0", "1", "2"})
-    return {
-        "1": _PREP_ACTION_RESET_AND_PREP,
-        "2": _PREP_ACTION_PREP_FRESH,
-        "0": _PREP_ACTION_CANCEL,
-        "": _PREP_ACTION_CANCEL,
-    }[choice]
-
-
-def _prompt_no_prep_action(
-    prior: tuple[str, str | None] | None,
-    sessions_root: Path,
-    prompt_func=input,
-) -> str:
-    """Picker shown when `tilth run` finds no prepared session for this workspace.
-
-    Distinguishes two cases:
-      - no prior session at all → just offer prep-now or cancel.
-      - resumable prior exists → offer resume / reset-and-prep / cancel.
-    """
-    if prior is None:
-        console.print(
-            "[yellow]No prepared session for this workspace, "
-            "and no prior session to resume.[/yellow]"
-        )
-        console.print()
-        console.print("What would you like to do?")
-        console.print("  1) prep one now (anchored interview)")
-        console.print("  0) cancel")
-        choice = _ask_choice(prompt_func, {"0", "1"})
-        return {
-            "1": _RUN_ACTION_PREP_NOW,
-            "0": _RUN_ACTION_CANCEL,
-            "": _RUN_ACTION_CANCEL,
-        }[choice]
-
-    sid, last_stop = prior
-    status = _checkpoint_status(sessions_root / sid) or "(unknown)"
-    console.print(
-        "[yellow]No prepared session for this workspace, "
-        "but a prior session is resumable:[/yellow]"
-    )
-    row = _format_session_row(sid, status, sessions_root)
-    if last_stop:
-        row = f"{row}  [last stop: {last_stop}]"
-    console.print(f"  {row}")
-    console.print()
-    console.print("What would you like to do?")
-    console.print("  1) resume that session")
-    console.print("  2) discard it and prep a new one")
-    console.print("  0) cancel")
-    choice = _ask_choice(prompt_func, {"0", "1", "2"})
-    return {
-        "1": _RUN_ACTION_RESUME,
-        "2": _RUN_ACTION_RESET_AND_PREP,
-        "0": _RUN_ACTION_CANCEL,
-        "": _RUN_ACTION_CANCEL,
-    }[choice]
-
-
 def _prepare_resume(session: Session, worktree: Path) -> str:
     """Flip trailing failed tasks back to pending and unwind their FAILED commits.
 
@@ -1045,7 +633,9 @@ def _prepare_resume(session: Session, worktree: Path) -> str:
     pending: list[str] = []
     unwound = False
 
-    prd = _load_prd(session.root)
+    static_tasks = _load_static_tasks_for_session(session)
+    status_map = _load_status(session.root)
+    prd = _overlay_status(static_tasks, status_map)
 
     if last_stop == "all_done":
         plan = "session reached all_done; nothing to resume"
@@ -1053,8 +643,8 @@ def _prepare_resume(session: Session, worktree: Path) -> str:
         failed = [t for t in prd if t.get("status") == "failed"]
         if failed:
             for t in failed:
-                t["status"] = "pending"
-            _save_prd(session.root, prd)
+                status_map.pop(t["id"], None)  # back to pending (absent == pending)
+            _save_status(session.root, status_map)
             unwound = ws.unwind_failed_commit(worktree)
             retried = [t["id"] for t in failed]
 
@@ -1100,18 +690,24 @@ def _run_task(
     client: LLMClient,
     session: Session,
     trace_id: str,
+    *,
+    prd: list[dict[str, Any]],
+    overview: str | None = None,
 ) -> str:
     """Run one task. Returns 'done', 'iter_cap', 'evaluator_cap', 'empty_responses',
     or 'no_case'.
 
-    A task is 'done' only when the worker calls `submit_case` (its done-signal,
-    Phase 3), the validators (ruff + pytest) pass, AND the evaluator accepts.
-    Validator failures and rejects are fed back as the submit_case tool_result;
-    the worker gets another iteration. Stopping without a case nudges it to
-    submit one — but only up to `MAX_CONSECUTIVE_NO_CASE_NUDGES` in a row
-    (→ 'no_case'). An empty model response (provider hiccup) is retried with
-    backoff up to `EMPTY_RESPONSE_RETRY_LIMIT` (→ 'empty_responses'); it is not
-    mistaken for the worker going quiet.
+    A task is 'done' only when the worker calls `submit_case` (its done-signal)
+    AND the evaluator accepts. Rejects are fed back as the submit_case
+    tool_result; the worker gets another iteration. There is no codified
+    validator gate — the evaluator is the only gate. Stopping without a case
+    nudges it to submit one — but only up to `MAX_CONSECUTIVE_NO_CASE_NUDGES` in
+    a row (→ 'no_case'). An empty model response (provider hiccup) is retried
+    with backoff up to `EMPTY_RESPONSE_RETRY_LIMIT` (→ 'empty_responses'); it is
+    not mistaken for the worker going quiet.
+
+    `prd` is the full status-overlaid task list (built by `run()` from the
+    static task set + the status store); the worker sees it as the feature plan.
     """
     setup_span = _span_id()
     session.log(
@@ -1119,11 +715,10 @@ def _run_task(
         {"task_id": task["id"], "trace_id": trace_id, "span_id": setup_span},
     )
 
-    # Phase 4 visibility: the worker now sees the full feature plan and its own
-    # task ledger (the evaluator's prior verdicts on this task). The ledger is
-    # empty on a task's first run — its payoff is on resume, where prior-run
-    # verdicts survive on disk.
-    prd = _load_prd(session.root)
+    # The worker sees the feature overview, the full plan, and its own task
+    # ledger (the evaluator's prior verdicts on this task). The ledger is empty
+    # on a task's first run — its payoff is on resume, where prior-run verdicts
+    # survive on disk.
     own_ledger = session.read_ledger(task["id"], limit=LEDGER_INJECT_LIMIT)
     user_prompt, mem_manifest = memory.build_user_prompt(
         task,
@@ -1132,6 +727,7 @@ def _run_task(
         prd=prd,
         own_ledger=own_ledger,
         context_files=client.config.context_files,
+        overview=overview,
     )
     session.log(
         "memory_load",
@@ -1372,43 +968,13 @@ def _run_task(
             _answer_case_calls(messages, case_tcs, case_err)
             continue
 
-        # Valid case → verify with validators, then the evaluator.
+        # Valid case → hand straight to the evaluator (the only gate).
         content = (case.get("summary") or "").strip()
         console.print(f"[dim]task {task['id']} case summary:[/dim] {content[:200]}")
-
-        done_ids = [t["id"] for t in prd if t.get("status") == "done"]
-        results = validators.run_all(worktree, [*done_ids, task["id"]])
-        passed = validators.all_passed(results)
-        session.log(
-            "validator_run",
-            {
-                "task_id": task["id"],
-                "trace_id": trace_id,
-                "span_id": iter_span,
-                "iter": iter_n + 1,
-                "passed": passed,
-                "results": [{"name": r.name, "passed": r.passed} for r in results],
-            },
-        )
-
-        if not passed:
-            report = validators.combined_report(results)
-            console.print(
-                f"[yellow]task {task['id']} validators failed; feeding back[/yellow]"
-            )
-            feedback = (
-                "The validators failed — the workspace does not pass yet, so the "
-                "case can't be reviewed.\nRead the report below, fix the issues, "
-                "and call `submit_case` again once validators will pass.\n\n"
-                f"{report}"
-            )
-            _answer_case_calls(messages, case_tcs, feedback)
-            continue
-
-        console.print(f"[green]task {task['id']} validators passed → evaluator[/green]")
+        console.print(f"[green]task {task['id']} case submitted → evaluator[/green]")
         verdict = _evaluator_task(
             task, worktree, client, session, iter_n, trace_id, iter_span,
-            case=case, results=results,
+            case=case, overview=overview,
         )
         evaluator_calls += 1
         concern = (verdict.get("concern") or "").strip()
@@ -1485,7 +1051,13 @@ def _stop_to_status(reason: str) -> str:
     return "running"
 
 
-def run(worktree: Path, session: Session, client: LLMClient) -> None:
+def run(
+    worktree: Path,
+    session: Session,
+    client: LLMClient,
+    overview: str,
+    static_tasks: list[dict[str, Any]],
+) -> None:
     while True:
         stop = _stop_reason(client, session)
         if stop:
@@ -1500,7 +1072,7 @@ def run(worktree: Path, session: Session, client: LLMClient) -> None:
             _refresh_summary(session)
             return
 
-        prd = _load_prd(session.root)
+        prd = _overlay_status(static_tasks, _load_status(session.root))
         task = _next_pending(prd)
         if task is None:
             console.print("[green]all tasks complete[/green]")
@@ -1510,12 +1082,12 @@ def run(worktree: Path, session: Session, client: LLMClient) -> None:
             return
 
         trace_id = _trace_id()
-        outcome = _run_task(task, worktree, client, session, trace_id)
+        outcome = _run_task(
+            task, worktree, client, session, trace_id, prd=prd, overview=overview
+        )
 
         if outcome == "done":
-            _self_improve(task, worktree, session, client, trace_id)
-            task["status"] = "done"
-            _save_prd(session.root, prd)
+            _set_task_status(session.root, task["id"], "done")
             memory.append_progress(session.root, f"{task['id']}\tdone\t{task['title']}")
             sha = ws.commit_task(worktree, task["id"], task["title"])
             session.log(
@@ -1524,8 +1096,7 @@ def run(worktree: Path, session: Session, client: LLMClient) -> None:
             console.print(f"[green]✓ {task['id']} committed ({sha})[/green]")
             _refresh_summary(session)
         else:
-            task["status"] = "failed"
-            _save_prd(session.root, prd)
+            _set_task_status(session.root, task["id"], "failed")
             memory.append_progress(
                 session.root, f"{task['id']}\tfailed:{outcome}\t{task['title']}"
             )
@@ -1582,16 +1153,14 @@ def _print_summary(session: Session, client: LLMClient) -> None:
     )
 
     counts = {"done": 0, "failed": 0, "pending": 0}
-    try:
-        prd = _load_prd(session.root)
-    except Exception:
-        prd = None
-    if prd is not None:
-        for t in prd:
-            status = t.get("status", "pending")
-            if status not in counts:
-                counts[status] = 0
-            counts[status] += 1
+    prd = _overlay_status(
+        _load_static_tasks_for_session(session), _load_status(session.root)
+    )
+    for t in prd:
+        status = t.get("status", "pending")
+        if status not in counts:
+            counts[status] = 0
+        counts[status] += 1
 
     wall_dim = (
         f"({wall_pct:.1f}% of TILTH_MAX_WALL_CLOCK_MINUTES={cfg.max_wall_clock_minutes})"
@@ -1602,13 +1171,6 @@ def _print_summary(session: Session, client: LLMClient) -> None:
     task_bits = [f"total={total}"] + [f"{k}={counts.get(k, 0)}" for k in base_keys]
     extras = [f"{k}={v}" for k, v in counts.items() if k not in base_keys]
 
-    learnings_emitted = sum(
-        1
-        for rec in iter_events(session.events_path)
-        if rec.get("type") == "proposed_learnings"
-        and (rec.get("payload") or {}).get("emitted") is True
-    )
-
     console.print()
     console.print("[bold]── run summary ──[/bold]")
     console.print(f"  session   {session.session_id}")
@@ -1617,13 +1179,6 @@ def _print_summary(session: Session, client: LLMClient) -> None:
     console.print(f"  duration  {_format_duration(elapsed)} [dim]{wall_dim}[/dim]")
     console.print(f"  tokens    {session.tokens_used:,} [dim]{tokens_dim}[/dim]")
     console.print(f"  tasks     {' '.join(task_bits + extras)}")
-    if learnings_emitted > 0:
-        path = session.root / "proposed-learnings.md"
-        plural = "s" if learnings_emitted != 1 else ""
-        console.print(
-            f"[blue]→ {learnings_emitted} proposed learning{plural} written to {path}"
-            f" — review when ready[/blue]"
-        )
 
 
 # --- reset ------------------------------------------------------------------
@@ -1671,169 +1226,6 @@ def _do_reset(session_id: str, assume_yes: bool) -> int:
     return 0
 
 
-# --- prep-feature -----------------------------------------------------------
-
-def _do_prep_feature(
-    source: Path,
-    brief: str | None,
-    *,
-    force: bool = False,
-    keep_existing: bool = False,
-) -> int:
-    if force and keep_existing:
-        console.print("[red]--force and --keep-existing are mutually exclusive[/red]")
-        return 2
-
-    blocking = _find_blocking_sessions(SESSIONS_DIR, source)
-    if blocking and keep_existing:
-        # Non-interactive equivalent of picker option "start a new session
-        # (don't touch any existing sessions)". Falls through to normal prep.
-        console.print(
-            f"[dim]--keep-existing: prepping alongside {len(blocking)} "
-            f"existing in-flight session(s)[/dim]"
-        )
-        blocking = []  # skip the picker / refusal logic below
-    if blocking and not force:
-        # Non-TTY → today's refuse-and-hint (preserves CI behavior).
-        if not sys.stdin.isatty():
-            console.print(
-                f"[red]cannot prep:[/red] this workspace already has "
-                f"{len(blocking)} session(s) in flight:"
-            )
-            for sid, status in blocking:
-                console.print(f"  {_format_session_row(sid, status, SESSIONS_DIR)}")
-            console.print(
-                "[yellow]hint:[/yellow] discard with "
-                "[bold]tilth reset <id>[/bold] (or "
-                "[bold]tilth resume[/bold] to continue), or pass "
-                "[bold]--force[/bold] to auto-discard."
-            )
-            return 2
-
-        # TTY → interactive picker. Dispatch on the user's choice.
-        action = _prompt_blocking_action(blocking, SESSIONS_DIR)
-        if action == _PREP_ACTION_CANCEL:
-            console.print("[yellow]cancelled[/yellow]")
-            return 0
-        if action == _PREP_ACTION_RUN:
-            return do_run_cmd(source)
-        if action == _PREP_ACTION_RESUME:
-            sid = blocking[0][0]
-            return do_resume_cmd(sid)
-        if action == _PREP_ACTION_PREP_FRESH:
-            # Leave blockers alone; just fall through to normal prep flow.
-            pass
-        elif action == _PREP_ACTION_RESET_AND_PREP:
-            for sid, _status in blocking:
-                rc = _do_reset(sid, assume_yes=True)
-                if rc != 0:
-                    console.print(f"[red]reset of {sid} failed; aborting prep[/red]")
-                    return rc
-
-    elif blocking and force:
-        # --force: auto-discard blockers, proceed silently (with a one-line note).
-        console.print(
-            f"[dim]--force: discarding {len(blocking)} blocking session(s)[/dim]"
-        )
-        for sid, _status in blocking:
-            rc = _do_reset(sid, assume_yes=True)
-            if rc != 0:
-                console.print(f"[red]reset of {sid} failed; aborting prep[/red]")
-                return rc
-
-    config = TilthConfig.from_env()
-    client = LLMClient(config)
-
-    if not brief:
-        console.print(f"[bold]prep-feature[/bold]  {source}")
-        console.print("Describe the feature or refactor (one line):")
-        try:
-            brief = input("> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            console.print("\n[yellow]aborted[/yellow]")
-            return 130
-        if not brief:
-            console.print("[red]empty brief; aborting[/red]")
-            return 2
-
-    session = Session.new(SESSIONS_DIR)
-    session.source = source
-    worktree, branch = ws.ensure_worktree(
-        source, session.session_id, session.root / "workspace"
-    )
-    session.workspace = worktree
-    session.branch = branch
-    session.save_checkpoint()
-    session.log(
-        "session_start",
-        {
-            "source": str(source),
-            "phase": "prep-feature",
-            "worktree": str(worktree),
-            "branch": branch,
-        },
-    )
-
-    console.print(f"[bold]session[/bold]  {session.session_id}")
-    console.print(f"[bold]branch[/bold]   {branch}")
-    console.print(f"[bold]model[/bold]    {config.prep_model}")
-
-    frontend = TTYFrontend(console=console)
-    sink = FileSeedSink()
-
-    try:
-        result = run_interview(
-            session=session,
-            source=source,
-            worktree=worktree,
-            client=client,
-            frontend=frontend,
-            sink=sink,
-            feature_brief=brief,
-        )
-    except KeyboardInterrupt:
-        console.print("\n[yellow]interrupted[/yellow]")
-        session.log("stop", {"reason": "interrupted"})
-        _refresh_summary(session)
-        return 130
-    except InterviewAbort as exc:
-        console.print(f"[red]interview aborted:[/red] {exc}")
-        session.log("stop", {"reason": "error", "error": str(exc)})
-        session.set_status("failed")
-        _refresh_summary(session)
-        return 1
-    except Exception as exc:
-        console.print(f"[red]error: {type(exc).__name__}: {exc}[/red]")
-        session.log("stop", {"reason": "error", "error": f"{type(exc).__name__}: {exc}"})
-        session.set_status("failed")
-        _refresh_summary(session)
-        raise
-
-    # Anchor the seed bundle in the session branch so subsequent task_diff()s
-    # don't carry every uncommitted seeded test as "scope creep" until each
-    # task's commit lands. Without this, the evaluator sees future-task tests in
-    # T-001's diff and rejects, and a confused worker may delete them.
-    try:
-        seed_sha = ws.commit_seed(worktree, len(result.prd_entries), len(result.test_files))
-    except ws.WorkspaceError as exc:
-        console.print(f"[red]seed commit failed:[/red] {exc}")
-        session.log("stop", {"reason": "error", "error": f"seed_commit: {exc}"})
-        session.set_status("failed")
-        _refresh_summary(session)
-        return 1
-    if seed_sha:
-        session.log("seed_committed", {"sha": seed_sha, "branch": branch})
-        console.print(f"[dim]seed commit {seed_sha}[/dim]")
-
-    _refresh_summary(session)
-    console.print()
-    console.print(f"[green]prepared[/green] sessions/{session.session_id}/")
-    console.print(
-        f"[green]→[/green] run: [bold]tilth run {source}[/bold] to start work"
-    )
-    return 0
-
-
 # --- per-subcommand handlers ------------------------------------------------
 
 def _resolve_session_id(maybe_id: str | None) -> str | None:
@@ -1870,18 +1262,6 @@ def do_visualize_cmd(maybe_id: str | None) -> int:
     return 0
 
 
-def do_prep_feature_cmd(
-    workspace: Path,
-    brief: str | None,
-    *,
-    force: bool = False,
-    keep_existing: bool = False,
-) -> int:
-    source = workspace.resolve()
-    ws.ensure_git_repo(source)
-    return _do_prep_feature(source, brief, force=force, keep_existing=keep_existing)
-
-
 def do_resume_cmd(maybe_id: str | None) -> int:
     sid = _resolve_session_id(maybe_id)
     if not sid:
@@ -1892,111 +1272,60 @@ def do_resume_cmd(maybe_id: str | None) -> int:
     config = TilthConfig.from_env()
     client = LLMClient(config)
     session = Session.wake(SESSIONS_DIR, sid)
-    if session.workspace is None:
-        console.print(
-            "[red]session has no worktree recorded[/red] — if it's a `prepared` "
-            "session, run [bold]tilth run <workspace>[/bold] to pick it up."
-        )
+    if session.workspace is None or session.source is None:
+        console.print("[red]session has no worktree/source recorded; cannot resume[/red]")
+        return 2
+    try:
+        overview, static_tasks = tasks.load_feature(session.source)
+    except TasksError as exc:
+        console.print(f"[red]cannot load tasks for resume:[/red]\n{exc}")
         return 2
     worktree = session.workspace
     plan = _prepare_resume(session, worktree)
     console.print(f"[bold]resume plan[/bold] {plan}")
-    return _run_session(session, worktree, client, config)
+    return _run_session(session, worktree, client, config, overview, static_tasks)
 
 
 def do_run_cmd(workspace: Path) -> int:
     source = workspace.resolve()
     ws.ensure_git_repo(source)
+
+    # Fail fast on a missing/malformed feature *before* creating any session or
+    # worktree — no orphan state, and the user gets the templates inline.
+    try:
+        overview, static_tasks = tasks.load_feature(source)
+    except TasksError as exc:
+        console.print(f"[red]cannot start run:[/red]\n{exc}")
+        return 2
+
     config = TilthConfig.from_env()
     client = LLMClient(config)
 
-    prepared = _find_prepared_sessions(SESSIONS_DIR, source)
-    if len(prepared) > 1:
-        console.print(
-            f"[red]multiple prepared sessions for this workspace:[/red] "
-            f"{len(prepared)} found"
-        )
-        for sid in prepared:
-            console.print(f"  {_format_session_row(sid, 'prepared', SESSIONS_DIR)}")
-        console.print(
-            "[yellow]hint:[/yellow] discard the ones you don't want with "
-            "[bold]tilth reset <id>[/bold] until exactly one remains."
-        )
-        return 2
-    if len(prepared) == 1:
-        sid = prepared[0]
-        console.print(
-            f"[dim]picking up prepared session sessions/{sid}/[/dim]"
-        )
-        session = Session.wake(SESSIONS_DIR, sid)
-        session.source = source
-        worktree, branch = ws.ensure_worktree(
-            source, session.session_id, session.root / "workspace"
-        )
-        session.workspace = worktree
-        session.branch = branch
-        session.set_status("running")
-        session.log(
-            "session_start",
-            {"source": str(source), "phase": "run", "worktree": str(worktree), "branch": branch},
-        )
-    else:
-        # No prepared session for this workspace. Don't create state and crash
-        # later at PRD-load — surface the choice up front.
-        prior = _find_resumable_session(SESSIONS_DIR, source)
-
-        if not sys.stdin.isatty():
-            # Non-TTY: clean error with the right pointer; exit 2, no orphan
-            # session or worktree.
-            if prior is None:
-                console.print(
-                    f"[red]no prepared session for {source}.[/red]"
-                )
-                console.print(
-                    f"  → [bold]tilth prep-feature {source}[/bold] to seed one first"
-                )
-                return 2
-            sid, last_stop = prior
-            reason = last_stop or "no stop event"
-            console.print(
-                f"[red]no prepared session for {source}; "
-                f"sessions/{sid}/ is resumable ({reason}).[/red]"
-            )
-            console.print(f"  → [bold]tilth resume {sid}[/bold]  (continue it)")
-            console.print(
-                f"  → [bold]tilth reset {sid} && tilth prep-feature {source}[/bold]  "
-                "(discard and start fresh)"
-            )
-            return 2
-
-        # TTY: interactive picker.
-        action = _prompt_no_prep_action(prior, SESSIONS_DIR)
-        if action == _RUN_ACTION_CANCEL:
-            console.print("[yellow]cancelled[/yellow]")
-            return 0
-        if action == _RUN_ACTION_RESUME:
-            assert prior is not None
-            return do_resume_cmd(prior[0])
-        if action == _RUN_ACTION_RESET_AND_PREP:
-            assert prior is not None
-            rc = _do_reset(prior[0], assume_yes=True)
-            if rc != 0:
-                return rc
-            rc = _do_prep_feature(source, brief=None)
-            if rc != 0:
-                return rc
-            return do_run_cmd(source)
-        # _RUN_ACTION_PREP_NOW
-        rc = _do_prep_feature(source, brief=None)
-        if rc != 0:
-            return rc
-        return do_run_cmd(source)
-
-    return _run_session(session, worktree, client, config)
+    session = Session.new(SESSIONS_DIR)
+    session.source = source
+    worktree, branch = ws.ensure_worktree(
+        source, session.session_id, session.root / "workspace"
+    )
+    session.workspace = worktree
+    session.branch = branch
+    session.set_status("running")
+    session.log(
+        "session_start",
+        {"source": str(source), "phase": "run", "worktree": str(worktree), "branch": branch},
+    )
+    console.print(
+        f"[dim]loaded {len(static_tasks)} task(s) from {tasks.tasks_dir(source)}[/dim]"
+    )
+    return _run_session(session, worktree, client, config, overview, static_tasks)
 
 
 def _run_session(
-    session: Session, worktree: Path, client: LLMClient, config: TilthConfig
+    session: Session,
+    worktree: Path,
+    client: LLMClient,
+    config: TilthConfig,
+    overview: str,
+    static_tasks: list[dict[str, Any]],
 ) -> int:
     console.print(f"[bold]session[/bold] {session.session_id}")
     console.print(f"[bold]worktree[/bold] {worktree}")
@@ -2005,7 +1334,7 @@ def _run_session(
     console.print(f"[bold]model[/bold] {config.worker_model}")
 
     try:
-        run(worktree, session, client)
+        run(worktree, session, client, overview, static_tasks)
     except KeyboardInterrupt:
         console.print("\n[yellow]interrupted[/yellow]")
         session.log("stop", {"reason": "interrupted"})
@@ -2030,211 +1359,6 @@ def main() -> int:
     from tilth.cli import main as cli_main
 
     return cli_main()
-
-
-def _legacy_main() -> int:
-    """The pre-Phase-3 argparse surface, retained for back-compat dispatch.
-
-    The verb router (tilth.cli) calls this when the user invokes the bare
-    positional form `tilth <workspace>` or one of the old action flags.
-    Emits a deprecation warning on the bare form per proposals/completed/prep-feature.md
-    §5.5; removal scheduled for one minor version out.
-    """
-    load_dotenv()
-    parser = argparse.ArgumentParser(
-        prog="tilth",
-        description="Run Tilth — a minimal long-running agent harness.",
-    )
-    parser.add_argument(
-        "workspace",
-        nargs="?",
-        type=Path,
-        help=(
-            "Path to a workspace dir (a git repo, optionally with AGENTS.md / CLAUDE.md). "
-            "prd.json and progress.txt live under sessions/<id>/ — they're "
-            "harness-owned runtime artifacts, not workspace files."
-        ),
-    )
-    action = parser.add_mutually_exclusive_group()
-    action.add_argument(
-        "--resume",
-        nargs="?",
-        const="",
-        default=None,
-        metavar="SESSION_ID",
-        help=(
-            "Resume an interrupted session. With no value, picks the most recent "
-            "session in sessions/. Trailing failed tasks are flipped back to pending "
-            "and their FAILED placeholder commit is unwound."
-        ),
-    )
-    action.add_argument(
-        "--reset",
-        nargs="?",
-        const="",
-        default=None,
-        metavar="SESSION_ID",
-        help=(
-            "Tear down a session: remove its worktree (even if dirty), delete its "
-            "session/<id> branch from the source repo, and drop sessions/<id>/. "
-            "With no value, targets the most recent session."
-        ),
-    )
-    action.add_argument(
-        "--visualize",
-        nargs="?",
-        const="",
-        default=None,
-        metavar="SESSION_ID",
-        help=(
-            "Render a session's events.jsonl as a chat-style HTML page at "
-            "sessions/<id>/chat.html. With no value, targets the most recent session."
-        ),
-    )
-    action.add_argument(
-        "--prep-feature",
-        action="store_true",
-        help=(
-            "Interview the reasoning model against the workspace to produce a task "
-            "seed (prd.json + matching test files), then stop. The seeded session is "
-            "picked up by a subsequent bare `tilth <workspace>` invocation."
-        ),
-    )
-    parser.add_argument(
-        "--brief",
-        default=None,
-        metavar="TEXT",
-        help=(
-            "One-line feature/refactor brief for --prep-feature. If omitted, you'll "
-            "be prompted interactively."
-        ),
-    )
-    parser.add_argument(
-        "-y", "--yes",
-        action="store_true",
-        help="Skip the confirmation prompt for --reset.",
-    )
-    args = parser.parse_args()
-
-    if args.reset is not None:
-        sid = args.reset or _latest_session_id(SESSIONS_DIR)
-        if not sid:
-            console.print(f"[red]no sessions found under {SESSIONS_DIR}[/red]")
-            return 2
-        if not args.reset:
-            console.print(f"[dim]--reset: latest session is {sid}[/dim]")
-        return _do_reset(sid, assume_yes=args.yes)
-
-    if args.visualize is not None:
-        sid = args.visualize or _latest_session_id(SESSIONS_DIR)
-        if not sid:
-            console.print(f"[red]no sessions found under {SESSIONS_DIR}[/red]")
-            return 2
-        if not args.visualize:
-            console.print(f"[dim]--visualize: latest session is {sid}[/dim]")
-        session_dir = SESSIONS_DIR / sid
-        if not session_dir.is_dir():
-            console.print(f"[red]no session at {session_dir}[/red]")
-            return 2
-        out = visualize.write_session_html(session_dir)
-        console.print(f"[green]wrote[/green] {out}")
-        return 0
-
-    if args.prep_feature:
-        if args.workspace is None:
-            parser.error("--prep-feature requires a workspace path")
-        source = args.workspace.resolve()
-        ws.ensure_git_repo(source)
-        return _do_prep_feature(source, args.brief)
-
-    config = TilthConfig.from_env()
-    client = LLMClient(config)
-
-    if args.resume is not None:
-        sid = args.resume or _latest_session_id(SESSIONS_DIR)
-        if not sid:
-            console.print(f"[red]no sessions found under {SESSIONS_DIR}[/red]")
-            return 2
-        if not args.resume:
-            console.print(f"[dim]--resume: latest session is {sid}[/dim]")
-        session = Session.wake(SESSIONS_DIR, sid)
-        if session.workspace is None:
-            console.print("[red]resumed session has no workspace recorded[/red]")
-            return 2
-        worktree = session.workspace
-        plan = _prepare_resume(session, worktree)
-        console.print(f"[bold]resume plan[/bold] {plan}")
-    else:
-        if args.workspace is None:
-            parser.error("workspace path required when not using --resume")
-        source = args.workspace.resolve()
-        ws.ensure_git_repo(source)
-
-        prepared = _find_prepared_sessions(SESSIONS_DIR, source)
-        if len(prepared) > 1:
-            console.print(
-                f"[red]multiple prepared sessions for this workspace:[/red] "
-                f"{len(prepared)} found"
-            )
-            for sid in prepared:
-                console.print(f"  • sessions/{sid}/")
-            console.print(
-                "[yellow]hint:[/yellow] discard the ones you don't want with "
-                "[bold]uv run tilth --reset <id>[/bold] until exactly one remains."
-            )
-            return 2
-        if len(prepared) == 1:
-            sid = prepared[0]
-            console.print(
-                f"[dim]picking up prepared session sessions/{sid}/[/dim]"
-            )
-            session = Session.wake(SESSIONS_DIR, sid)
-            session.source = source
-            worktree, branch = ws.ensure_worktree(
-                source, session.session_id, session.root / "workspace"
-            )
-            session.workspace = worktree
-            session.branch = branch
-            session.set_status("running")
-            session.log(
-                "session_start",
-                {
-                    "source": str(source),
-                    "phase": "run",
-                    "worktree": str(worktree),
-                    "branch": branch,
-                },
-            )
-        else:
-            # No prepared session for this workspace — delegate to the verb-router
-            # behavior (picker on TTY, clean error pointer on non-TTY). Keeps
-            # legacy and verb-router paths identical so we have one code path to
-            # maintain when the legacy flags are eventually removed.
-            return do_run_cmd(source)
-
-    console.print(f"[bold]session[/bold] {session.session_id}")
-    console.print(f"[bold]worktree[/bold] {worktree}")
-    if session.branch:
-        console.print(f"[bold]branch[/bold] {session.branch}")
-    console.print(f"[bold]model[/bold] {config.worker_model}")
-
-    try:
-        run(worktree, session, client)
-    except KeyboardInterrupt:
-        console.print("\n[yellow]interrupted[/yellow]")
-        session.log("stop", {"reason": "interrupted"})
-        session.set_status(_stop_to_status("interrupted"))
-        _refresh_summary(session)
-        return 130
-    except Exception as exc:
-        console.print(f"[red]error: {type(exc).__name__}: {exc}[/red]")
-        session.log("stop", {"reason": "error", "error": f"{type(exc).__name__}: {exc}"})
-        session.set_status(_stop_to_status("error"))
-        _refresh_summary(session)
-        raise
-    finally:
-        _print_summary(session, client)
-    return 0
 
 
 if __name__ == "__main__":

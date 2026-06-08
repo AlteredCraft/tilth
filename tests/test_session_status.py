@@ -1,8 +1,8 @@
-"""Session checkpoint carries a `status` field (prepared|running|all_done|failed).
+"""Session checkpoint carries a `status` field (running|all_done|failed).
 
-Phase 1 wires the field through Session.new/wake and adds `set_status`. Other
-statuses (notably `prepared`) become observable when Phase 2 ships prep-feature,
-but the round-trip and validation belong here.
+`set_status` validates against SESSION_STATUSES and persists to the checkpoint;
+`wake` round-trips it. (The prompt-driven refactor dropped the `prepared`
+status along with prep-feature.)
 """
 
 from __future__ import annotations
@@ -44,9 +44,9 @@ def test_set_status_rejects_unknown_value(sessions_root):
 
 def test_wake_preserves_status_from_disk(sessions_root):
     s = Session.new(sessions_root)
-    s.set_status("prepared")
+    s.set_status("all_done")
     woken = Session.wake(sessions_root, s.session_id)
-    assert woken.status == "prepared"
+    assert woken.status == "all_done"
 
 
 def test_wake_defaults_missing_status_to_running(sessions_root):
@@ -59,4 +59,4 @@ def test_wake_defaults_missing_status_to_running(sessions_root):
 
 
 def test_status_set_covers_documented_values():
-    assert SESSION_STATUSES == frozenset({"prepared", "running", "all_done", "failed"})
+    assert SESSION_STATUSES == frozenset({"running", "all_done", "failed"})

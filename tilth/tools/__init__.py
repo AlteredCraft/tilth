@@ -15,14 +15,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from tilth.hooks import post_edit, pre_tool
+from tilth.hooks import pre_tool
 from tilth.tools import bash as _bash
 from tilth.tools import files as _files
 from tilth.tools import search as _search
 
 __all__ = ["REGISTRY", "Tool", "ToolOutcome", "dispatch", "schemas"]
-
-POST_EDIT_TOOLS: frozenset[str] = frozenset({_files.NAME_WRITE, _files.NAME_EDIT})
 
 
 @dataclass
@@ -77,9 +75,4 @@ def dispatch(name: str, args: dict[str, Any], workspace: Path) -> ToolOutcome:
     except Exception as exc:
         return ToolOutcome(False, f"ERROR: {type(exc).__name__}: {exc}", hook_runs)
 
-    if name in POST_EDIT_TOOLS:
-        notice = post_edit(name, args, workspace)
-        hook_runs.append({"hook": "post_edit", "outcome": "warned" if notice else "silent"})
-        if notice:
-            result = result + notice
     return ToolOutcome(False, result, hook_runs)
