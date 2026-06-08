@@ -16,7 +16,7 @@ Many minimal coding agents are *interactive* — a developer watches the output 
 
 ### Hyper-observability
 
-If no one is watching a run mid-flight, the recording *is* the supervision. Tilth's standing goal is **hyper-observability** — *every prompt the harness sends is accessible, and every run is fully inspectable after the fact.* Every assembled prompt, memory load, model call, validator run, and evaluator verdict lands in an append-only `events.jsonl`, and `tilth visualize` replays the whole thing end-to-end as a self-contained `chat.html` — no live TUI to babysit, no state hidden out of reach.
+If no one is watching a run mid-flight, the recording *is* the supervision. Tilth's standing goal is **hyper-observability** — *every prompt the harness sends is accessible, and every run is fully inspectable after the fact.* Every assembled prompt, memory load, model call, validator run, and evaluator verdict lands in an append-only `events.jsonl`, and `tilth visualize` replays the whole thing end-to-end as a self-contained `chat.html` — no live TUI to babysit, no state hidden out of reach. Need the *exact bytes* a model received on a given turn? Set `TILTH_PROMPT_DUMP=1` and Tilth writes each call's full request (system + history + tool schemas) to `sessions/<id>/prompts/`, cross-referenced from the `model_call` events (off by default).
 
 ![A finished Tilth run rendered as chat-style HTML: session header, task divider, a model-call meta strip with an expanded reasoning block, and a bash tool call with its result](docs/assets/session-render.png)
 

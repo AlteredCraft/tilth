@@ -24,7 +24,7 @@ from typing import Any
 from tilth.client import LLMClient, assistant_history_message
 from tilth.seed import tools as seed_tools
 from tilth.seed.frontend import InterviewFrontend, SeedSink
-from tilth.session import Session
+from tilth.session import Session, dump_prompt
 
 PROMPTS_DIR = Path(__file__).resolve().parent
 MAX_INTERVIEW_ITERATIONS = 60  # generous; interviews aren't supposed to hit this
@@ -90,6 +90,13 @@ def run_interview(
 
     for iter_n in range(MAX_INTERVIEW_ITERATIONS):
         iter_span = _span_id()
+        dump_path = dump_prompt(
+            session.root,
+            getattr(client.config, "prompt_dump", False),
+            f"prep-iter{iter_n + 1:02d}",
+            messages,
+            schemas,
+        )
         resp = client.chat(messages, tools=schemas, model=interviewer_model)
         msg = resp.get("message") or {}
         usage = resp.get("usage") or {}
@@ -108,6 +115,8 @@ def run_interview(
             "eval_tokens": eval_tokens,
             "tokens_used_total": session.tokens_used,
         }
+        if dump_path:
+            model_call_payload["prompt_dump"] = dump_path
         if finish_reason := resp.get("finish_reason"):
             model_call_payload["finish_reason"] = finish_reason
         if reasoning_details := msg.get("reasoning_details"):

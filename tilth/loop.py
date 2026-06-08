@@ -44,7 +44,7 @@ from tilth.client import (
 )
 from tilth.seed import FileSeedSink, TTYFrontend, run_interview
 from tilth.seed.interview import InterviewAbort
-from tilth.session import Session, iter_events, session_label
+from tilth.session import Session, dump_prompt, iter_events, session_label
 from tilth.verdict import (
     SUBMIT_VERDICT_TOOL,
     VERDICT_SCHEMA_VERSION,
@@ -189,6 +189,7 @@ def _log_model_call(
     msg: dict[str, Any],
     resp: dict[str, Any],
     base: dict[str, Any],
+    prompt_dump: str | None = None,
 ) -> None:
     """Emit a `model_call` event for a non-worker model call.
 
@@ -207,6 +208,8 @@ def _log_model_call(
         "eval_tokens": int(usage.get("completion_tokens") or 0),
         "tokens_used_total": session.tokens_used,
     }
+    if prompt_dump:
+        payload["prompt_dump"] = prompt_dump
     if finish_reason := resp.get("finish_reason"):
         payload["finish_reason"] = finish_reason
     if reasoning_details := msg.get("reasoning_details"):
@@ -507,6 +510,13 @@ def _call_evaluator_with_retry(
     """
     last_err = ""
     for attempt in (1, 2):
+        dump_path = dump_prompt(
+            session.root,
+            getattr(client.config, "prompt_dump", False),
+            f"{task_id}-iter{iter_n + 1:02d}-judge{attempt}",
+            messages,
+            [SUBMIT_VERDICT_TOOL],
+        )
         resp = client.chat(
             messages,
             model=client.config.evaluator_model,
@@ -530,6 +540,7 @@ def _call_evaluator_with_retry(
                 "iter": iter_n + 1,
                 "attempt": attempt,
             },
+            prompt_dump=dump_path,
         )
 
         verdict, err = parse_verdict(msg)
@@ -684,6 +695,12 @@ def _self_improve(
         {"role": "system", "content": _propose_learning_prompt()},
         {"role": "user", "content": user},
     ]
+    dump_path = dump_prompt(
+        session.root,
+        getattr(client.config, "prompt_dump", False),
+        f"{task['id']}-self_improve",
+        messages,
+    )
     resp = client.chat(messages)
     usage = resp.get("usage") or {}
     prompt_tokens = int(usage.get("prompt_tokens") or 0)
@@ -693,7 +710,9 @@ def _self_improve(
     base = {"task_id": task["id"], "trace_id": trace_id, "span_id": span_id}
 
     msg = resp.get("message") or {}
-    _log_model_call(session, phase="self_improve", msg=msg, resp=resp, base=base)
+    _log_model_call(
+        session, phase="self_improve", msg=msg, resp=resp, base=base, prompt_dump=dump_path
+    )
 
     content = (msg.get("content") or "").strip()
     parsed = parse_json_lenient(content)
@@ -1165,6 +1184,13 @@ def _run_task(
     for iter_n in range(client.config.max_iterations_per_task):
         iter_span = _span_id()
         console.print(f"[dim]task {task['id']}  iter {iter_n + 1}[/dim]")
+        dump_path = dump_prompt(
+            session.root,
+            getattr(client.config, "prompt_dump", False),
+            f"{task['id']}-iter{iter_n + 1:02d}",
+            messages,
+            tool_schemas,
+        )
         resp = client.chat(messages, tools=tool_schemas)
 
         usage = resp.get("usage") or {}
@@ -1182,6 +1208,8 @@ def _run_task(
             "eval_tokens": eval_tokens,
             "tokens_used_total": session.tokens_used,
         }
+        if dump_path:
+            model_call_payload["prompt_dump"] = dump_path
         if finish_reason := resp.get("finish_reason"):
             model_call_payload["finish_reason"] = finish_reason
         if reasoning_details := msg.get("reasoning_details"):

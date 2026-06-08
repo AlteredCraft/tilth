@@ -11,7 +11,7 @@ The agent's *working directory* sits inside Tilth's `sessions/`, but every `git`
 
 ## Why the working tree lives on Tilth's side, not in the target repo
 
-A session has more artifacts than just the worktree — the rest of `sessions/<id>/` (events log, summary, checkpoint, rendered chat, plus the run's durable state — `prd.json`, `progress.txt`, `seed-meta.json`, the per-task `ledger/<task_id>.jsonl` files, and any collected `proposed-learnings.md`) all belong to one run. Co-locating them under one directory means one logical container per run, and `tilth reset` only has to walk one tree on the harness side.
+A session has more artifacts than just the worktree — the rest of `sessions/<id>/` (events log, summary, checkpoint, rendered chat, plus the run's durable state — `prd.json`, `progress.txt`, `seed-meta.json`, the per-task `ledger/<task_id>.jsonl` files, any collected `proposed-learnings.md`, and — only when [`TILTH_PROMPT_DUMP`](hyper-observability.md) is on — a `prompts/` directory of per-call request dumps) all belong to one run. Co-locating them under one directory means one logical container per run, and `tilth reset` only has to walk one tree on the harness side.
 
 The flip side: the target repo stays pristine. Tilth never asks you to add anything to your `.gitignore`, and never drops a `.worktrees/` directory at the root of your project. The only thing it writes into the target repo is the branch and the worktree admin entry — both reversible with one `git worktree remove --force` + one `git branch -D`. If you delete your Tilth clone entirely, no harness directories are left behind in your project. `tilth reset` handles both halves cleanly in one command; see [Reset mechanics](reset-mechanics.md).
 
@@ -36,7 +36,7 @@ The flip side: the target repo stays pristine. Tilth never asks you to add anyth
 | `context_reset` | A new task starts; messages rebuilt from disk | `task_id` | card |
 | `prompt_assembled` | A user message is assembled, pre-send | `role` (`worker` \| `evaluator` \| `self_improve`), `iter`, `content` (capped) | — |
 | `memory_load` | Memory channels loaded into a prompt | per-channel `present`/`chars`/`truncated`/`sha256_8` | — |
-| `model_call` | Any model call returns | `prompt_tokens`, `eval_tokens`, `phase` (non-worker), `attempt` (evaluator), `finish_reason`, reasoning | card |
+| `model_call` | Any model call returns | `prompt_tokens`, `eval_tokens`, `phase` (non-worker), `attempt` (evaluator), `finish_reason`, reasoning, `prompt_dump` (path; only when `TILTH_PROMPT_DUMP` is on) | card |
 | `empty_model_response` | The provider returned an empty turn | `iter`, `streak`, `finish_reason`, token counts | — |
 | `tool_call` | The model invoked a tool (incl. `submit_case`) | `tool`, `args` | card |
 | `tool_result` | The harness answered a tool call | `tool`, result | card |

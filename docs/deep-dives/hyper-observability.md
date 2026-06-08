@@ -40,6 +40,16 @@ observability-minded reading of it.
   per-channel `present` / `chars` / `truncated` / `sha256_8`. So you can tell
   not just *what* was sent but *where each part came from* and whether it was
   clipped.
+- **`TILTH_PROMPT_DUMP` (opt-in, default off)** — `prompt_assembled` records the
+  (capped) user message; when you need the *exact bytes* — the system prompt,
+  the full conversation history, and the literal tool schemas — set
+  `TILTH_PROMPT_DUMP=1`. Tilth then writes the complete request to
+  `sessions/<id>/prompts/<NNNN-label>.md` before *every* model call (worker,
+  evaluator, self-improve, prep interview), and stamps each `model_call` event
+  with a `prompt_dump` path pointing at its file — so you can navigate from the
+  event straight to the request that produced it. It's a debugger's flag: a few
+  KB–~20KB per iteration, and the dumps can include workspace file contents, so
+  it stays off unless you're chasing a specific question.
 
 ### Every model call is recorded
 

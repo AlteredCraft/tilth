@@ -20,6 +20,7 @@ OPTIONAL = (
     "TILTH_PREP_BASE_URL",
     "TILTH_PREP_API_KEY",
     "TILTH_CONTEXT_FILES",
+    "TILTH_PROMPT_DUMP",
 )
 
 
@@ -120,3 +121,29 @@ def test_context_files_parsed_from_env(monkeypatch, raw, expected):
     monkeypatch.setenv("TILTH_CONTEXT_FILES", raw)
     cfg = TilthConfig.from_env()
     assert cfg.context_files == expected
+
+
+def test_prompt_dump_defaults_off(monkeypatch):
+    _clear(monkeypatch)
+    _set_required(monkeypatch)
+    assert TilthConfig.from_env().prompt_dump is False
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("1", True),
+        ("true", True),
+        ("TRUE", True),
+        ("yes", True),
+        ("on", True),
+        ("0", False),
+        ("false", False),
+        ("", False),
+    ],
+)
+def test_prompt_dump_parsed_from_env(monkeypatch, raw, expected):
+    _clear(monkeypatch)
+    _set_required(monkeypatch)
+    monkeypatch.setenv("TILTH_PROMPT_DUMP", raw)
+    assert TilthConfig.from_env().prompt_dump is expected

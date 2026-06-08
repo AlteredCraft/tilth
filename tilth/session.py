@@ -27,7 +27,11 @@ Event types:
                          by convention, the interview sets `interview`. Every
                          model-calling site emits this — evaluator calls also
                          carry `attempt` (1 or 2) to pair retries with their
-                         `evaluator_parse_error`.
+                         `evaluator_parse_error`. When TILTH_PROMPT_DUMP is
+                         enabled (issue #6, default off), carries `prompt_dump`
+                         — the session-relative path to the dumped request
+                         (`prompts/<NNNN-label>.md`, the literal system + user +
+                         history + tool schemas sent on that call).
     tool_call          — a tool invocation by the model. Worktree tools route
                          through tools.dispatch; the worker's `submit_case`
                          (Phase 3) is a control-flow done-signal intercepted in
@@ -183,6 +187,80 @@ def iter_events(events_path: Path) -> Iterator[dict[str, Any]]:
                 yield json.loads(line)
             except json.JSONDecodeError:
                 continue
+
+
+def _render_prompt_dump(
+    messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None
+) -> str:
+    """Render the exact request (system + user + history + tool schemas) as
+    readable markdown for a prompt dump (issue #6).
+
+    Faithful, not pretty: every message's full content is emitted uncapped —
+    the whole point is to read back the literal bytes the model received, file
+    reads and diffs included. Tool-call args and tool schemas are fenced JSON;
+    reasoning echoed in the history is preserved so a thinking-mode round-trip
+    is visible.
+    """
+    n_tools = len(tools) if tools else 0
+    lines = ["# Prompt dump", "", f"_messages: {len(messages)} · tools: {n_tools}_", ""]
+    for i, m in enumerate(messages):
+        header = f"## [{i}] {m.get('role', '?')}"
+        if tcid := m.get("tool_call_id"):
+            header += f"  (tool_call_id={tcid})"
+        lines += [header, ""]
+        content = m.get("content")
+        if isinstance(content, str):
+            if content:
+                lines += [content, ""]
+        elif content is not None:
+            lines += ["```json", json.dumps(content, indent=2), "```", ""]
+        for tc in m.get("tool_calls") or []:
+            fn = tc.get("function") or {}
+            args = fn.get("arguments")
+            if not isinstance(args, str):
+                args = json.dumps(args, indent=2)
+            lines += [
+                f"**tool_call** `{fn.get('name')}` (id={tc.get('id')})",
+                "",
+                "```json",
+                args,
+                "```",
+                "",
+            ]
+        if details := m.get("reasoning_details"):
+            lines += ["_reasoning_details:_", "```json", json.dumps(details, indent=2), "```", ""]
+        elif isinstance(reasoning := m.get("reasoning"), str) and reasoning.strip():
+            lines += ["_reasoning:_", "", reasoning, ""]
+    if tools:
+        lines += ["## tool schemas", "", "```json", json.dumps(tools, indent=2), "```", ""]
+    return "\n".join(lines) + "\n"
+
+
+def dump_prompt(
+    root: Path,
+    enabled: bool,
+    label: str,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None = None,
+) -> str | None:
+    """Write the rendered request to sessions/<id>/prompts/ before a model call.
+
+    Opt-in (issue #6): when `enabled` is False this is a no-op returning None,
+    so the default path pays nothing. Otherwise writes one file per call and
+    returns its session-relative path (e.g. `prompts/0003-T-001-iter02.md`) for
+    the caller to stash in the `model_call` event. A zero-padded monotonic
+    sequence — derived from the files already on disk so it survives resume —
+    prefixes `label`, making call order obvious and filenames collision-free
+    even for non-iter calls (judge attempts, self-improve).
+    """
+    if not enabled:
+        return None
+    prompts_dir = root / "prompts"
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+    seq = sum(1 for _ in prompts_dir.glob("*.md")) + 1
+    name = f"{seq:04d}-{label.replace('/', '-')}.md"
+    (prompts_dir / name).write_text(_render_prompt_dump(messages, tools))
+    return f"prompts/{name}"
 
 
 SESSION_STATUSES = frozenset({"prepared", "running", "all_done", "failed"})

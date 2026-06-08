@@ -101,6 +101,7 @@ class TilthConfig:
     max_evaluator_calls_per_task: int
     max_wall_clock_minutes: int
     max_tokens: int
+    prompt_dump: bool = False
     context_files: list[str] = field(default_factory=lambda: list(DEFAULT_CONTEXT_FILES))
 
     @classmethod
@@ -149,6 +150,8 @@ class TilthConfig:
             ),
             max_wall_clock_minutes=int(os.environ.get("TILTH_MAX_WALL_CLOCK_MINUTES", "120")),
             max_tokens=int(os.environ.get("TILTH_MAX_TOKENS", "2000000")),
+            prompt_dump=os.environ.get("TILTH_PROMPT_DUMP", "").strip().lower()
+            in ("1", "true", "yes", "on"),
             context_files=context_files,
         )
 
