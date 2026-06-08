@@ -185,7 +185,7 @@ def _log_model_call(
     Mirrors the worker loop's inline model_call payload (tokens, finish_reason,
     reasoning round-trip) so every model-calling site in the system is
     observable the same way. `phase` tags which actor made the call
-    (`evaluator`, `self_improve`); the worker omits phase by convention.
+    (`evaluator`); the worker omits phase by convention.
     Call AFTER `session.add_tokens` so `tokens_used_total` is post-increment,
     matching the worker.
     """
@@ -848,7 +848,7 @@ def _run_task(
             except json.JSONDecodeError as exc:
                 # Malformed tool-arg JSON (token-boundary corruption on long
                 # payloads). Feed the error back as a tool_result so the model
-                # retries — same recovery pattern as the seed interview.
+                # retries — same recovery pattern as the case/verdict parsers.
                 err = f"ERROR: your `{tool_name}` arguments were not valid JSON: {exc}"
                 session.log(
                     "tool_call",
