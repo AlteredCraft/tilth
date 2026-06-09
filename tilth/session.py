@@ -23,10 +23,9 @@ Event types:
                          (often a tool argument) was cut off by the provider's
                          max-tokens limit and the agent will be working from
                          truncated output. Carries a `phase` field for non-worker
-                         calls (`evaluator`, `self_improve`); the worker omits it
-                         by convention, the interview sets `interview`. Every
-                         model-calling site emits this — evaluator calls also
-                         carry `attempt` (1 or 2) to pair retries with their
+                         calls (`evaluator`); the worker omits it by convention.
+                         Every model-calling site emits this — evaluator calls
+                         also carry `attempt` (1 or 2) to pair retries with their
                          `evaluator_parse_error`.
     tool_call          — a tool invocation by the model. Worktree tools route
                          through tools.dispatch; the worker's `submit_case`
@@ -52,16 +51,14 @@ Event types:
                          carries `files` (one {name, present, chars, sha256_8}
                          per configured file) and `loaded` (names present, in
                          order).
-    validator_run      — pytest/ruff/mypy result
     prompt_assembled   — an assembled user message just before it's sent to a
-                         model. Payload: {role (worker|evaluator|self_improve),
-                         iter, content (capped at PROMPT_ASSEMBLED_CHAR_CAP),
-                         chars (untruncated length), truncated (bool)}. Lets a
-                         post-run reviewer reconstruct what each actor saw on
-                         each turn without replaying the loop. Worker prompt
-                         fires once per task at iter=0; evaluator prompt fires
-                         once per evaluator call at the worker's current iter;
-                         self_improve fires once per completed task at iter=0.
+                         model. Payload: {role (worker|evaluator), iter, content
+                         (capped at PROMPT_ASSEMBLED_CHAR_CAP), chars (untruncated
+                         length), truncated (bool)}. Lets a post-run reviewer
+                         reconstruct what each actor saw on each turn without
+                         replaying the loop. Worker prompt fires once per task at
+                         iter=0; evaluator prompt fires once per evaluator call at
+                         the worker's current iter.
     evaluator_verdict  — structured verdict from the evaluator (v1 of the
                          dialogue, see proposals/completed/v1-implementation-plan.md
                          Phase 1). Payload: {verdict (accept|reject),
@@ -102,40 +99,18 @@ Event types:
                          prompt_tokens, eval_tokens}. The loop retries with
                          backoff; a sustained streak aborts the task with
                          `task_failed` reason `empty_responses`.
-    task_done          — task accepted (validators + evaluator passed)
+    task_done          — task accepted (the evaluator accepted the case + diff)
     task_failed        — task could not be completed; payload.reason ∈
                          {iter_cap, evaluator_cap, empty_responses, no_case}
     commit             — a completed task's work was committed to the session
                          branch (after task_done). Payload: {task_id, trace_id,
                          sha}. Emitted only on the success path; the FAILED
-                         commit path does not log this. Distinct from
-                         seed_committed (the prep-time seed-bundle commit).
-    proposed_learnings — self-improvement step's per-task verdict. Payload:
-                         {task_id, trace_id, span_id, emitted, entry?, reason?}.
-                         When emitted=True, `entry` carries the learning text
-                         appended to sessions/<id>/proposed-learnings.md (a
-                         session output for the user; never read by the worker
-                         or evaluator). When emitted=False, `reason` carries why
-                         (no_proposal | unparseable | empty_learning).
+                         commit path does not log this.
     context_reset      — beginning of a new task; messages rebuilt from disk
-    session_start      — fresh session began (worktree created). Payload `phase`
-                         distinguishes `prep-feature` (the interview) from `run`
-                         (the Ralph loop); both emit a session_start for the same
-                         session id. summary.py keys `prep_started_at` vs
-                         `started_at` off this. Unphased = treated as run.
-    session_prepared   — `tilth prep-feature` finished an interview and wrote a
-                         seed bundle. Payload carries `prd_entries` (count),
-                         `test_files` (count), `interviewer_model`, and
-                         `tokens_used` for the interview. Flips checkpoint
-                         status to `prepared`. The worktree was created at the
-                         start of prep (ws.ensure_worktree); the seed lands in
-                         it via FileSeedSink.write_seed.
-    seed_committed     — prep anchored the seed bundle as a single commit on the
-                         session branch right after `session_prepared`. Payload
-                         carries `sha` (short) and `branch` (`session/<id>`).
-                         Without this, every seeded test file would appear as
-                         uncommitted "scope creep" in T-001's `task_diff`.
-    session_resume     — --resume woke a session; payload carries the resume plan
+    session_start      — fresh session began (worktree created). Payload carries
+                         {source, phase: "run", worktree, branch}; summary.py
+                         keys `started_at` off this.
+    session_resume     — resume woke a session; payload carries the resume plan
                          (which failed tasks were retried, FAILED commit unwound, etc.)
     stop               — run terminated; payload.reason ∈
                          {all_done, wall_clock, token_cap, iter_cap, evaluator_cap,
@@ -146,8 +121,7 @@ Per-task observability fields:
                          downstream tools (Phoenix, Langfuse, Braintrust) ingest
                          events as a trace.
     span_id            — 16-hex (OTel-shape). Per-iteration for events inside an
-                         iteration; per-sub-operation for memory_load and
-                         proposed_learnings.
+                         iteration; per-sub-operation for memory_load.
 """
 
 from __future__ import annotations
@@ -185,7 +159,7 @@ def iter_events(events_path: Path) -> Iterator[dict[str, Any]]:
                 continue
 
 
-SESSION_STATUSES = frozenset({"prepared", "running", "all_done", "failed"})
+SESSION_STATUSES = frozenset({"running", "all_done", "failed"})
 
 
 @dataclass
@@ -199,7 +173,7 @@ class Session:
     workspace: Path | None = None       # worktree path; set when worktree exists
     branch: str | None = None
     tokens_used: int = 0
-    status: str = "running"             # prepared | running | all_done | failed
+    status: str = "running"             # running | all_done | failed
 
     @classmethod
     def new(cls, sessions_root: Path) -> Session:
@@ -225,9 +199,8 @@ class Session:
         `tokens_used` is preserved — if the run hit `token_cap`, bump the env var
         explicitly before resuming.
 
-        `status` is preserved from disk. Callers (e.g. `tilth run` waking a
-        `prepared` session) are responsible for flipping it to `running` and
-        re-saving.
+        `status` is preserved from disk; a resuming caller flips it back to
+        `running` via `set_status` as needed.
         """
         root = sessions_root / session_id
         if not root.is_dir():
@@ -335,64 +308,3 @@ class Session:
 
     def elapsed_minutes(self) -> float:
         return (time.time() - self.started_at) / 60.0
-
-
-_LABEL_MAX_CHARS = 60
-
-
-def session_label(session_dir: Path, max_chars: int = _LABEL_MAX_CHARS) -> str:
-    """Short human-readable label for a session, for use in picker menus.
-
-    Best-effort: tries seed-meta.json's tldr first, then prd.json's first entry
-    title, then returns "". Never raises — pickers can't tolerate a malformed
-    sessions/<id>/ taking down the menu.
-    """
-    label = _label_from_seed_meta(session_dir) or _label_from_prd(session_dir) or ""
-    if max_chars and len(label) > max_chars:
-        label = label[: max_chars - 1].rstrip() + "…"
-    return label
-
-
-def _label_from_seed_meta(session_dir: Path) -> str:
-    path = session_dir / "seed-meta.json"
-    if not path.is_file():
-        return ""
-    try:
-        meta = json.loads(path.read_text())
-    except (json.JSONDecodeError, OSError):
-        return ""
-    tldr = meta.get("tldr") if isinstance(meta, dict) else None
-    if not isinstance(tldr, str):
-        return ""
-    for raw in tldr.splitlines():
-        stripped = raw.strip()
-        if not stripped:
-            continue
-        # Strip a leading list-bullet marker (`- ` or `* `) but preserve
-        # markdown emphasis like `**T-001:**` verbatim — balancing it would
-        # need a real parser.
-        if stripped[:2] in ("- ", "* "):
-            stripped = stripped[2:].strip()
-        if stripped:
-            return stripped
-    return ""
-
-
-def _label_from_prd(session_dir: Path) -> str:
-    path = session_dir / "prd.json"
-    if not path.is_file():
-        return ""
-    try:
-        prd = json.loads(path.read_text())
-    except (json.JSONDecodeError, OSError):
-        return ""
-    if not isinstance(prd, list) or not prd:
-        return ""
-    first = prd[0]
-    if not isinstance(first, dict):
-        return ""
-    tid = first.get("id", "")
-    title = first.get("title", "")
-    if tid and title:
-        return f"{tid}: {title}"
-    return str(title or tid or "")

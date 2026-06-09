@@ -121,8 +121,8 @@ def _validate(args: dict[str, Any]) -> str | None:
     """Return the first schema violation, or None if the payload is clean.
 
     Single-error-only by design: the model gets one focused complaint to
-    fix at a time, which matches how the existing tool-arg recovery
-    feedback works (see `tilth/seed/interview.py:138-184`).
+    fix at a time, which matches how the loop's tool-arg recovery feeds a
+    single error back to the worker.
     """
     extra = set(args) - _ALLOWED_KEYS
     if extra:
@@ -176,8 +176,8 @@ def parse_verdict(
 
     Returns `(verdict_dict, None)` on success or `(None, error_for_model)`
     on failure. The error string is designed to be forwarded to the model
-    as `tool_result` content so the next attempt has a fix-it-yourself
-    hint, mirroring the seed interview's parse-error recovery pattern.
+    as `tool_result` content so the next attempt has a fix-it-yourself hint,
+    mirroring the worker-side `parse_case` recovery pattern.
     """
     tool_calls = msg.get("tool_calls") or []
     if not tool_calls:

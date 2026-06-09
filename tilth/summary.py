@@ -6,13 +6,12 @@ stable, denormalised view.
 
 Stable shape — bump SUMMARY_VERSION if breaking.
 
-Schema (v2 — Phase 1 of v1-implementation-plan.md):
+Schema (v3 — the prompt-driven refactor dropped prep-feature):
 
     {
-        "version": 2,
+        "version": 3,
         "session_id": str | null,
         "started_at":   "<ISO ts of the run's session_start>" | null,
-        "prep_started_at": "<ISO ts of the prep-feature session_start>" | null,
         "last_event_at":"<ISO ts of most recent event>" | null,
         "tokens": {
             "prompt": int,            # sum across all model_call events
@@ -57,7 +56,7 @@ from typing import Any
 
 from tilth.session import iter_events
 
-SUMMARY_VERSION = 2
+SUMMARY_VERSION = 3
 
 
 def _empty_task() -> dict[str, Any]:
@@ -89,7 +88,6 @@ def build_from_events(
     }
     started_at: str | None = None
     last_event_at: str | None = None
-    prep_started_at: str | None = None
     stop: dict[str, Any] | None = None
 
     def task_for(tid: str) -> dict[str, Any]:
@@ -106,13 +104,7 @@ def build_from_events(
         tid = p.get("task_id")
 
         if typ == "session_start":
-            # prep-feature and run each emit a session_start; tag separates
-            # them. `started_at` tracks the run; prep time is its own field.
-            # Unphased session_start (legacy) is treated as the run start.
-            if p.get("phase") == "prep-feature":
-                prep_started_at = ts
-            else:
-                started_at = ts
+            started_at = ts
         elif typ == "session_resume" and started_at is None:
             started_at = ts
             if session_id is None:
@@ -178,7 +170,6 @@ def build_from_events(
         "version": SUMMARY_VERSION,
         "session_id": session_id,
         "started_at": started_at,
-        "prep_started_at": prep_started_at,
         "last_event_at": last_event_at,
         "tokens": tokens,
         "tasks": tasks,

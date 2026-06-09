@@ -16,9 +16,6 @@ OPTIONAL = (
     "TILTH_EVALUATOR_MODEL",
     "TILTH_EVALUATOR_BASE_URL",
     "TILTH_EVALUATOR_API_KEY",
-    "TILTH_PREP_MODEL",
-    "TILTH_PREP_BASE_URL",
-    "TILTH_PREP_API_KEY",
     "TILTH_CONTEXT_FILES",
 )
 
@@ -60,35 +57,26 @@ def test_from_env_succeeds_with_required_set(monkeypatch):
     assert cfg.evaluator_model == "test-model"
     assert cfg.evaluator_base_url == "https://test.invalid/v1"
     assert cfg.evaluator_api_key == "k"
-    assert cfg.prep_model == "test-model"
-    assert cfg.prep_base_url == "https://test.invalid/v1"
-    assert cfg.prep_api_key == "k"
 
 
-def test_prep_overrides_independently_of_evaluator(monkeypatch):
-    """TILTH_PREP_* overrides apply only to prep, not evaluator — and vice versa.
-
-    A user routing prep to a different provider must not accidentally route
-    the evaluator there too."""
+def test_evaluator_overrides_independently_of_worker(monkeypatch):
+    """TILTH_EVALUATOR_* overrides apply only to the evaluator; the worker is
+    untouched and unset evaluator fields fall back to the worker's."""
     _clear(monkeypatch)
     monkeypatch.setenv("TILTH_BASE_URL", "https://worker.invalid/v1")
     monkeypatch.setenv("TILTH_API_KEY", "wkey")
     monkeypatch.setenv("TILTH_WORKER_MODEL", "worker-m")
-    monkeypatch.setenv("TILTH_PREP_BASE_URL", "https://prep.invalid/v1")
-    monkeypatch.setenv("TILTH_PREP_API_KEY", "pkey")
-    monkeypatch.setenv("TILTH_PREP_MODEL", "prep-m")
+    monkeypatch.setenv("TILTH_EVALUATOR_BASE_URL", "https://evaluator.invalid/v1")
+    monkeypatch.setenv("TILTH_EVALUATOR_API_KEY", "jkey")
+    monkeypatch.setenv("TILTH_EVALUATOR_MODEL", "evaluator-m")
     cfg = TilthConfig.from_env()
     # Worker untouched.
     assert cfg.base_url == "https://worker.invalid/v1"
     assert cfg.worker_model == "worker-m"
-    # Evaluator falls back to worker (no evaluator overrides).
-    assert cfg.evaluator_base_url == "https://worker.invalid/v1"
-    assert cfg.evaluator_api_key == "wkey"
-    assert cfg.evaluator_model == "worker-m"
-    # Prep overrides applied.
-    assert cfg.prep_base_url == "https://prep.invalid/v1"
-    assert cfg.prep_api_key == "pkey"
-    assert cfg.prep_model == "prep-m"
+    # Evaluator overrides applied.
+    assert cfg.evaluator_base_url == "https://evaluator.invalid/v1"
+    assert cfg.evaluator_api_key == "jkey"
+    assert cfg.evaluator_model == "evaluator-m"
 
 
 def _set_required(monkeypatch) -> None:

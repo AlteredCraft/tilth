@@ -4,9 +4,9 @@ We need to distinguish "hook ran, said nothing" from "hook didn't run". The
 ToolOutcome carries a `hook_runs` list — one entry per hook that was invoked
 for this dispatch — so loop.py can emit a `hook_run` event for each.
 
-`pre_tool` is invoked on every dispatch (it's the gate). `post_edit` is only
-invoked when the tool is write_file/edit_file; for other tools its absence
-from `hook_runs` is the signal that it was not applicable.
+`pre_tool` is invoked on every dispatch (it's the gate). The prompt-driven
+refactor removed the post_edit ruff hook, so no dispatch reports a `post_edit`
+hook run anymore.
 """
 
 from __future__ import annotations
@@ -45,13 +45,8 @@ def test_pre_tool_logged_with_block_outcome(workspace):
     assert "reason" in pre[0]
 
 
-def test_post_edit_not_logged_for_non_edit_tools(workspace):
-    out = tools.dispatch("bash", {"command": "echo hi"}, workspace)
-    post = [h for h in out.hook_runs if h["hook"] == "post_edit"]
-    assert post == []
-
-
-def test_post_edit_logged_silent_for_clean_python(workspace):
+def test_no_post_edit_hook_run_on_any_tool(workspace):
+    """post_edit was removed — even a write_file dispatch reports no post_edit."""
     target = workspace / "good.py"
     out = tools.dispatch(
         "write_file",
@@ -59,17 +54,6 @@ def test_post_edit_logged_silent_for_clean_python(workspace):
         workspace,
     )
     assert target.is_file()
-    post = [h for h in out.hook_runs if h["hook"] == "post_edit"]
-    assert len(post) == 1
-    assert post[0]["outcome"] == "silent"
-
-
-def test_post_edit_logged_warned_for_lint_failure(workspace):
-    out = tools.dispatch(
-        "write_file",
-        {"path": "bad.py", "content": "import os\n"},  # unused import → ruff warns
-        workspace,
-    )
-    post = [h for h in out.hook_runs if h["hook"] == "post_edit"]
-    assert len(post) == 1
-    assert post[0]["outcome"] == "warned"
+    assert [h for h in out.hook_runs if h["hook"] == "post_edit"] == []
+    bash_out = tools.dispatch("bash", {"command": "echo hi"}, workspace)
+    assert [h for h in bash_out.hook_runs if h["hook"] == "post_edit"] == []

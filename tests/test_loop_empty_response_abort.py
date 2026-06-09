@@ -108,7 +108,8 @@ QUIET = {  # content present, no tool call — the legitimate "went quiet" shape
 
 def test_empty_responses_abort_instead_of_spinning(session, worktree):
     client = _FakeClient(EMPTY)
-    outcome = _run_task(_task(), worktree, client, session, trace_id="tr")
+    outcome = _run_task(_task(), worktree, client, session, trace_id="tr",
+              prd=[{**_task(), "status": "pending"}])
     assert outcome == "empty_responses"
     # aborts at the retry limit — does NOT run to the 60-iteration cap
     assert len(client.message_lengths) == EMPTY_RESPONSE_RETRY_LIMIT
@@ -116,7 +117,8 @@ def test_empty_responses_abort_instead_of_spinning(session, worktree):
 
 def test_empty_responses_do_not_poison_history(session, worktree):
     client = _FakeClient(EMPTY)
-    _run_task(_task(), worktree, client, session, trace_id="tr")
+    _run_task(_task(), worktree, client, session, trace_id="tr",
+              prd=[{**_task(), "status": "pending"}])
     # an empty turn is never echoed back, so no role-less `{}` message is sent
     assert client.had_roleless_message is False
     # the message list doesn't grow across empty retries (nothing appended)
@@ -125,7 +127,8 @@ def test_empty_responses_do_not_poison_history(session, worktree):
 
 def test_empty_responses_logged_then_task_failed(session, worktree):
     client = _FakeClient(EMPTY)
-    _run_task(_task(), worktree, client, session, trace_id="tr")
+    _run_task(_task(), worktree, client, session, trace_id="tr",
+              prd=[{**_task(), "status": "pending"}])
     events = [json.loads(line) for line in session.events_path.read_text().splitlines()]
     types = [e["type"] for e in events]
     assert types.count("empty_model_response") == EMPTY_RESPONSE_RETRY_LIMIT
@@ -135,7 +138,8 @@ def test_empty_responses_logged_then_task_failed(session, worktree):
 
 def test_repeated_quiet_stops_abort_as_no_case(session, worktree):
     client = _FakeClient(QUIET)
-    outcome = _run_task(_task(), worktree, client, session, trace_id="tr")
+    outcome = _run_task(_task(), worktree, client, session, trace_id="tr",
+              prd=[{**_task(), "status": "pending"}])
     assert outcome == "no_case"
     assert len(client.message_lengths) == MAX_CONSECUTIVE_NO_CASE_NUDGES
     events = [json.loads(line) for line in session.events_path.read_text().splitlines()]

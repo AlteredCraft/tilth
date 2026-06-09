@@ -1,8 +1,9 @@
-"""tilth.cli.main routes subcommands to the right loop handlers, and
-back-compat shims the pre-Phase-3 surface (bare positional + legacy flags).
+"""tilth.cli.main routes subcommands to the right loop handlers.
 
 We don't exercise the handlers themselves here — those have dedicated tests.
-This file pins the routing contract: given an argv, the right thing runs.
+This file pins the routing contract: given an argv, the right thing runs. The
+prompt-driven refactor dropped prep-feature and the legacy flag/bare-positional
+surface; the verbs are run / resume / reset / visualize.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from tilth import cli, loop
 @pytest.fixture
 def patched_handlers(monkeypatch):
     """Replace each subcommand handler with a stub that records its call."""
-    calls: list[tuple[str, tuple]] = []
+    calls: list[tuple[str, tuple, dict]] = []
 
     def make_stub(name: str):
         def stub(*args, **kwargs):
@@ -26,12 +27,10 @@ def patched_handlers(monkeypatch):
             return 0
         return stub
 
-    monkeypatch.setattr(loop, "do_prep_feature_cmd", make_stub("prep-feature"))
     monkeypatch.setattr(loop, "do_run_cmd", make_stub("run"))
     monkeypatch.setattr(loop, "do_resume_cmd", make_stub("resume"))
     monkeypatch.setattr(loop, "do_reset_cmd", make_stub("reset"))
     monkeypatch.setattr(loop, "do_visualize_cmd", make_stub("visualize"))
-    monkeypatch.setattr(loop, "_legacy_main", make_stub("legacy"))
     return calls
 
 
@@ -51,52 +50,14 @@ def test_top_level_help_exits_zero(monkeypatch, capsys):
     rc = _run(monkeypatch, ["--help"])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "prep-feature" in out
     assert "run" in out
+    assert "prep-feature" not in out  # removed verb must not resurface in help
 
 
 def test_run_subcommand_dispatches_to_do_run_cmd(monkeypatch, patched_handlers):
     rc = _run(monkeypatch, ["run", "/tmp/some-repo"])
     assert rc == 0
     assert patched_handlers == [("run", (Path("/tmp/some-repo"),), {})]
-
-
-def test_prep_feature_dispatches_with_workspace_and_brief(monkeypatch, patched_handlers):
-    rc = _run(monkeypatch, ["prep-feature", "/tmp/repo", "--brief", "add X"])
-    assert rc == 0
-    assert patched_handlers == [
-        ("prep-feature", (Path("/tmp/repo"), "add X"), {"force": False, "keep_existing": False})
-    ]
-
-
-def test_prep_feature_brief_defaults_to_none(monkeypatch, patched_handlers):
-    rc = _run(monkeypatch, ["prep-feature", "/tmp/repo"])
-    assert rc == 0
-    assert patched_handlers == [
-        ("prep-feature", (Path("/tmp/repo"), None), {"force": False, "keep_existing": False})
-    ]
-
-
-def test_prep_feature_force_passes_through(monkeypatch, patched_handlers):
-    _run(monkeypatch, ["prep-feature", "/tmp/repo", "--brief", "x", "--force"])
-    assert patched_handlers == [
-        (
-            "prep-feature",
-            (Path("/tmp/repo"), "x"),
-            {"force": True, "keep_existing": False},
-        )
-    ]
-
-
-def test_prep_feature_keep_existing_passes_through(monkeypatch, patched_handlers):
-    _run(monkeypatch, ["prep-feature", "/tmp/repo", "--brief", "x", "--keep-existing"])
-    assert patched_handlers == [
-        (
-            "prep-feature",
-            (Path("/tmp/repo"), "x"),
-            {"force": False, "keep_existing": True},
-        )
-    ]
 
 
 def test_resume_with_id(monkeypatch, patched_handlers):
@@ -129,51 +90,17 @@ def test_visualize_without_id(monkeypatch, patched_handlers):
     assert patched_handlers == [("visualize", (None,), {})]
 
 
-# --- back-compat -----------------------------------------------------------
-
-def test_bare_positional_workspace_routes_to_legacy_with_deprecation(
-    monkeypatch, patched_handlers, capsys
-):
-    """The proposal §5.5 specifies: bare `tilth <ws>` emits a deprecation
-    pointer, then dispatches the legacy main (which continues as `run`)."""
-    rc = _run(monkeypatch, ["/tmp/some-repo"])
-    assert rc == 0
-    out = capsys.readouterr().out
-    assert "deprecated" in out
-    assert "tilth run /tmp/some-repo" in out
-    assert patched_handlers == [("legacy", (), {})]
-
-
-def test_legacy_flag_routes_to_legacy_without_deprecation(
-    monkeypatch, patched_handlers, capsys
-):
-    """The old --resume/--reset/--visualize/--prep-feature flags keep working
-    silently (no deprecation noise) for one minor version. Their dispatch
-    goes through the legacy main."""
-    rc = _run(monkeypatch, ["--resume"])
-    assert rc == 0
-    out = capsys.readouterr().out
-    assert "deprecated" not in out
-    assert patched_handlers == [("legacy", (), {})]
-
-
 def test_loop_main_shim_still_callable(monkeypatch, patched_handlers):
-    """Anyone importing `from tilth.loop import main` for the entry point
-    must still get a working dispatch path."""
+    """`from tilth.loop import main` must still get a working dispatch path."""
     monkeypatch.setattr(sys, "argv", ["tilth", "run", "/tmp/x"])
     rc = loop.main()
     assert rc == 0
     assert patched_handlers == [("run", (Path("/tmp/x"),), {})]
 
 
-# --- error surface ---------------------------------------------------------
-
-def test_unknown_subcommand_treated_as_bare_positional(monkeypatch, patched_handlers, capsys):
-    """Argparse subparsers would error on an unknown subcommand; we route
-    unknown first-tokens to the legacy path so a typo doesn't crash on the
-    subcommand parser before showing the deprecation pointer."""
-    rc = _run(monkeypatch, ["totally-not-a-subcommand"])
-    assert rc == 0
-    out = capsys.readouterr().out
-    assert "deprecated" in out
-    assert patched_handlers == [("legacy", (), {})]
+def test_unknown_subcommand_errors(monkeypatch):
+    """An unknown first token is an argparse usage error (exit 2), not a silent
+    fall-through — there's no legacy surface to route it to anymore."""
+    with pytest.raises(SystemExit) as exc:
+        _run(monkeypatch, ["totally-not-a-subcommand"])
+    assert exc.value.code == 2
