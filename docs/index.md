@@ -15,7 +15,7 @@ A minimal long-running agent harness against an **OpenAI-compatible** LLM endpoi
 
 > **Status — prompt-driven core.** Tilth is deliberately small and currently being driven *down* to its essentials: a worker and an independent evaluator, the base file/search/bash tools, and full observability. There is **no codified test/lint gate** — the evaluator is the only gate — and **no interview step**: you author the work as markdown under `<repo>/.tilth/tasks/` and run it. Capabilities get added back only as testing shows they're needed.
 
-![The harness loop — a task from .tilth/tasks/ to worker agent to evaluator to commit, with a Rejects feedback path and a New Task loop, all inside a per-session git worktree](assets/harness-loop.jpg)
+![The harness loop — a task from .tilth/tasks/ to worker agent to evaluator to commit, with a Rejects feedback path and a New Task loop, all inside a per-session git worktree](assets/harness-loop.png)
 
 *The harness loop*
 {: .caption }
