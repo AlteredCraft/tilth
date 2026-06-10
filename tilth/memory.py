@@ -278,7 +278,11 @@ def build_user_prompt(
 
     if progress_tail.strip():
         parts += [
-            "## Recent progress (last entries from progress.txt)",
+            # Names the content, not the file: a worker shown "progress.txt"
+            # goes looking for it in the workspace (observed: session
+            # 20260610-105540-b05876 burned iterations globbing for it). The
+            # journal is session-side and not the worker's to find.
+            "## Recent progress (this session)",
             "",
             progress_tail,
             "",
