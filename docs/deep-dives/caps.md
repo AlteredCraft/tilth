@@ -4,7 +4,7 @@ The caps exist because Tilth runs unattended. An interactive agent doesn't need 
 
 At any moment during a run, seven things can stop it:
 
-1. **All `prd.json` tasks done** — happy path; outer loop exits cleanly.
+1. **All tasks done** — happy path; outer loop exits cleanly.
 2. **`MAX_WALL_CLOCK_MINUTES` exceeded** — outer loop checks at the top of each task; the *current* task finishes first.
 3. **`MAX_TOKENS` exceeded** — same enforcement granularity as wall-clock; inter-task only.
 4. **`MAX_ITERATIONS_PER_TASK` exceeded inside a single task** — that task is marked `failed`, the run halts (does not continue to the next task — failures are halting events, not skip events). The next `tilth resume` flips the failed task back to `pending` and the agent retries it with a fresh iteration budget; partial work survives via a soft-reset of the FAILED placeholder commit.

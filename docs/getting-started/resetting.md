@@ -12,8 +12,6 @@ uv run tilth reset --yes            # skip the y/N confirmation
 
 `tilth reset` is **destructive by design** — it force-removes the worktree even if dirty, since its whole purpose is to discard a session's work. The `[y/N]` prompt (or `--yes` to skip) is the safety gate.
 
-The pre-Phase-3 flag form `--reset` still works for one minor version.
-
 ## What reset removes
 
 This is the codified version of the three-step manual cleanup (`rm -rf sessions/<id>` + `git worktree prune` + `git branch -D session/<id>`). It:

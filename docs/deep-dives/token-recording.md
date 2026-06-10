@@ -1,6 +1,6 @@
 # Token recording and enforcement
 
-Tokens flow through four files. End-to-end with line numbers (line numbers shift as the file evolves; grep `session.add_tokens` to find them).
+Tokens flow through three files. End-to-end (line numbers shift as the file evolves; grep `session.add_tokens` to find the call sites).
 
 > **Diagram suggestion** — *a single horizontal "lifecycle" diagram: env var (TILTH_MAX_TOKENS) → TilthConfig (set once) → Session.tokens_used (in-memory) → checkpoint.json (on disk) → _stop_reason() check. Each arrow labelled with the file/function that performs the transition.*
 
@@ -36,17 +36,16 @@ def add_tokens(self, n: int) -> None:
 
 The counter has two homes: an in-memory `int` for the live process, and a JSON file on disk that's at-most-one-call out of date.
 
-## Three call sites record tokens
+## Two call sites record tokens
 
-There's one model call per "spot" in the loop, and each records tokens the same way (the evaluator site records once per parse attempt, up to two). All three live in `tilth/loop.py`:
+There's one model call per "spot" in the loop, and each records tokens the same way (the evaluator site records once per parse attempt, up to two). Both live in `tilth/loop.py`:
 
-| Site | Function | What it's calling |
-|---|---|---|
-| `_evaluator_task` | `_evaluator_task` | evaluator model on a finished task (one call per attempt, up to 2) |
-| `_self_improve` | `_self_improve` | worker model asking "did this task surface a durable learning?" (collected into proposed-learnings.md) |
-| `_run_task` | `_run_task` | worker model — the main per-iteration call |
+| Site | What it's calling |
+|---|---|
+| `_run_task` | worker model — the main per-iteration call |
+| `_call_evaluator_with_retry` (via `_evaluator_task`) | evaluator model on a submitted case (one call per attempt, up to 2) |
 
-The pattern is the same in all three:
+The pattern is the same in both:
 
 ```python
 resp = client.chat(...)            # OpenAI-shape response (normalised by client._normalise)
@@ -62,7 +61,7 @@ A few things worth noting about this pattern:
 - **`or 0` everywhere.** If a provider ships a malformed response, the token count silently falls to zero rather than crashing the run. Defensive choice; the alternative is a 2-hour run dying on one weird `null`.
 - **`prompt + completion`, not `total`.** Some providers report `total_tokens` separately; we sum the two we trust. Equivalent to `total_tokens` for every well-formed response.
 
-The third site (in `_run_task`) also logs the per-call breakdown to `events.jsonl` as a `model_call` event:
+The worker site (in `_run_task`) also logs the per-call breakdown to `events.jsonl` as a `model_call` event:
 
 ```python
 session.log("model_call", {
@@ -74,7 +73,7 @@ session.log("model_call", {
 })
 ```
 
-That's the audit trail. After a run, grep `events.jsonl` for `model_call` and reconstruct exactly when tokens were spent. The evaluator and self-improve sites log a `model_call` event too, via the shared `_log_model_call` helper — same payload shape as the worker, plus a `phase` field (`evaluator` / `self_improve`) and, on the evaluator, an `attempt` (1 or 2) to pair a retry with its parse error. Every model call in the system is now observable the same way.
+That's the audit trail. After a run, grep `events.jsonl` for `model_call` and reconstruct exactly when tokens were spent. The evaluator site logs a `model_call` event too, via the shared `_log_model_call` helper — same payload shape as the worker, plus a `phase` field (`evaluator`) and an `attempt` (1 or 2) to pair a retry with its parse error. Every model call in the system is observable the same way.
 
 ## Enforcement is at the top of each task
 

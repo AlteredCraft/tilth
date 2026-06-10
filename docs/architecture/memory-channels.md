@@ -4,23 +4,21 @@ Five memory channels live *outside* the agent. Some are project files the user o
 
 | Channel | Lives in | Written by | Read by |
 |---|---|---|---|
-| `AGENTS.md` / `CLAUDE.md` | the workspace (user-owned) | the user | worker, evaluator, self-improve step (injected when present) |
+| `AGENTS.md` / `CLAUDE.md` | the workspace (user-owned) | the user | worker, evaluator (injected when present) |
 | Git history | the worktree | the harness (one commit per task) | humans, evaluator (via diff) |
 | `progress.txt` | `sessions/<id>/` (harness-owned) | the harness (one line per task outcome) | worker (last ~30 lines injected) |
-| `prd.json` | `sessions/<id>/` (harness-owned) | `tilth prep-feature` (seed) and the harness (status flips) | the harness (task selection); worker (the *plan* as injected prose context) |
+| Task markdown (`.tilth/tasks/`) | the workspace (user-authored, read-only to Tilth) | the user | the harness (task selection); worker (its task + the overview + the *plan* as injected prose context); evaluator (the task under review) |
 | Evaluator ledger | `sessions/<id>/ledger/<task_id>.jsonl` | the harness (one entry per evaluator call) | evaluator (its prior verdicts on this task); worker (the same, on a retry) |
 
 > The reviewing role is the **evaluator**.
 
-The worker writes none of these. It writes code in the worktree, which the harness commits. The split is clean: **memory channels are inputs to the agents; session artifacts under `sessions/<id>/` (events.jsonl, summary.json, proposed-learnings.md) are outputs the harness produces during a run.** `seed-meta.json` is the interview audit trail; a curated slice of it (TL;DR, scope notes, blockers, open questions) is now injected into the worker prompt as context, while the interview bookkeeping stays an output. The full read-it-once picture — every input, every output, and the three artifacts that are *both* — is laid out in [Anatomy of a run](anatomy-of-a-run.md); this page zooms in on the input channels.
+The worker writes none of these. It writes code in the worktree, which the harness commits. The split is clean: **memory channels are inputs to the agents; session artifacts under `sessions/<id>/` (`events.jsonl`, `summary.json`, `checkpoint.json`, `task-status.json`) are outputs the harness produces during a run.** The full read-it-once picture — every input, every output, and the three artifacts that are *both* — is laid out in [Anatomy of a run](anatomy-of-a-run.md); this page zooms in on the input channels.
 
-`prd.json` and `progress.txt` used to live in the workspace itself, which leaked harness state into every PR. Phase 1 of the prep-feature work moved them under `sessions/<id>/`. Your workspace now only ships the things that genuinely belong in the PR — source changes and tests.
-
-> **Diagram suggestion** — *five labelled "channels" feeding into a worker bubble at the centre with arrows annotated with the cadence of each: AGENTS.md ("at task start, one-way from user"), progress.txt ("last 30 lines, at task start"), git history ("via evaluator diff"), prd.json ("plan visible to worker as context; mutable status harness-only"), and the evaluator ledger ("the evaluator's prior verdicts on this task"). Reinforces the asymmetry of what the agent sees and the one-way directionality of AGENTS.md.*
+> **Diagram suggestion** — *five labelled "channels" feeding into a worker bubble at the centre with arrows annotated with the cadence of each: AGENTS.md/CLAUDE.md ("at task start, one-way from user"), progress.txt ("last 30 lines, at task start"), git history ("via evaluator diff"), task markdown ("overview + plan visible to worker as context; status overlay harness-only"), and the evaluator ledger ("the evaluator's prior verdicts on this task"). Reinforces the asymmetry of what the agent sees and the one-way directionality of the user-owned files.*
 
 ## `AGENTS.md` — your project conventions
 
-Short markdown. **User-owned, user-maintained.** Tilth reads it into the worker's user-prompt on every task, into the evaluator's prompt on every evaluator call, and into the self-improvement step's prompt — but never writes to it. Use whatever section headings make sense for your project; we suggest the ones below as a starting template:
+Short markdown. **User-owned, user-maintained.** Tilth reads it into the worker's user-prompt on every task and into the evaluator's prompt on every evaluator call — but never writes to it. Use whatever section headings make sense for your project; we suggest the ones below as a starting template:
 
 ```markdown
 # AGENTS.md
@@ -49,7 +47,7 @@ Where things live.
 **AGENTS.md should stay project-focused.** It's for *project* conventions, not harness mechanics:
 
 - **Belongs in AGENTS.md:** language version, test framework, file layout, style rules, project-specific gotchas, accumulated learnings.
-- **Does *not* belong in AGENTS.md:** "record token counts in `events.jsonl`" (agent doesn't write that file), "update `prd.json` status when done" (agent doesn't manage prd), "stop after 32 iterations" (handled by `max_iterations_per_task`), "don't run dangerous commands" (handled by `pre_tool` hook), "the evaluator will evaluate your work" (see [Agent visibility](../deep-dives/agent-visibility.md)).
+- **Does *not* belong in AGENTS.md:** "record token counts in `events.jsonl`" (agent doesn't write that file), "mark your task done when finished" (the harness manages status), "stop after 32 iterations" (handled by `max_iterations_per_task`), "don't run dangerous commands" (handled by `pre_tool` hook), "the evaluator will evaluate your work" (see [Agent visibility](../deep-dives/agent-visibility.md)).
 
 The cleanest test: if you removed a rule from AGENTS.md and the harness still enforced the underlying behaviour, the rule shouldn't be there.
 
@@ -57,15 +55,9 @@ The cleanest test: if you removed a rule from AGENTS.md and the harness still en
 
 The channel isn't tied to a single filename. By default Tilth reads `AGENTS.md` **and** `CLAUDE.md` from the workspace root — in that order, concatenated — so a repo that keeps its conventions in `CLAUDE.md` (Claude Code's convention) is picked up out of the box, not left invisible. Override the list with `TILTH_CONTEXT_FILES` (comma-separated, first-listed highest priority); only files that exist are injected, and the combined text is capped so the prompt stays legible. Tilth never writes any of them.
 
-### Where do learnings go?
-
-After each task, Tilth runs a *self-improvement* step that asks the worker model whether the task surfaced anything durable worth capturing for later. The output of that step does **not** land in your AGENTS.md. It lands in `sessions/<id>/proposed-learnings.md` — a session-local file outside the worktree, never in the PR diff.
-
-The user (and eventually an end-of-session findings hook) is the integrator: read the proposals at session end, decide which (if any) are worth promoting into your AGENTS.md, and merge them by hand. AGENTS.md stays in your voice, growing only when you decide it should.
-
 ## Git history — atomic commits per task
 
-The worktree branch (`session/<id>`) gets one commit per completed task. The evaluator sees the cumulative diff against `main` for each finished task; humans see the same diff at review time.
+The worktree branch (`session/<id>`) gets one commit per completed task. The evaluator sees the working-tree diff against the branch's HEAD for the task under review; humans see the cumulative branch diff at review time.
 
 A failed task lands a `FAILED (...)` placeholder commit so the partial work is preserved; `tilth resume` soft-unwinds that placeholder and the retry sees its own previous edits as uncommitted changes (so the evaluator gets a single cumulative diff, not just the new edits).
 
@@ -77,44 +69,31 @@ Lives at `sessions/<id>/progress.txt`. Starts empty when the session is created;
 
 The agent does *not* write to `progress.txt` directly; the harness writes after task done/fail.
 
-## `prd.json` — the task list
+## Task markdown — the work itself
 
-This is the work. Lives at `sessions/<id>/prd.json`. The harness does not plan; the *seed* (interview output) plans, and `tilth prep-feature` runs that interview against your codebase to produce the file. See [Seeding a session](../deep-dives/seeding.md) for the full story.
+This is the work. You author it in your repo at `<workspace>/.tilth/tasks/` — an `overview.md` (the feature's goal, context, and scope boundaries) plus one `T-NNN-<slug>.md` per task (frontmatter `id`/`title`, a description, acceptance criteria). The harness does not plan; you (or whatever agent you draft with) plan, and the files are the contract. The format reference is [The task format](../deep-dives/task-format.md).
 
-```json
-[
-  {
-    "id": "T-001",
-    "title": "Short imperative title",
-    "description": "What needs to be done. Be specific. Reference files if useful.",
-    "acceptance_criteria": [
-      "Concrete, checkable statement.",
-      "Another concrete, checkable statement."
-    ],
-    "status": "pending"
-  }
-]
-```
+The files are **read-only inputs** to Tilth — the harness never mutates your authored docs. Per-task *status* lives separately, in the harness-owned `sessions/<id>/task-status.json` (a flat `{task_id: status}` map; a task absent from the map is `pending`). The loop overlays status onto the static task list to pick the next pending task.
 
-The agent **never sees this file, its status fields, or the queue-management machinery.** The harness reads it to pick the next pending task and writes it to flip status (`pending` → `done` / `failed`). The agent does, since the [visibility expansion](../deep-dives/agent-visibility.md), see the *whole task list* as prose context (every task collapsed, the current one marked) — framed as "context, not work to do" so it understands the shape of the feature without pre-empting later tasks. What stays hidden is the mutable JSON state, not the plan.
+The agent **never sees the status store or the queue-management machinery.** It does see the *whole task list* as prose context (every task collapsed, the current one marked) plus the feature overview — framed as "context, not work to do" so it understands the shape of the feature without pre-empting later tasks. What stays hidden is the mutable state, not the plan.
 
-Hiding the mutable `prd.json` *state* (status fields, the queue machinery) from the agent prevents three real failure modes seen in earlier hand-built loops:
+Hiding the mutable status *state* from the agent prevents three real failure modes seen in earlier hand-built loops:
 
 1. The agent marks its own task done.
 2. The agent skips ahead to a "more interesting" task.
 3. The agent rewrites the queue.
 
-State management belongs in code; the agent works on one task at a time and stops.
+State management belongs in code; the agent works on one task at a time and stops. (The worker is also told to treat `.tilth/` as read-only context, and the evaluator hard-rejects diffs that edit it.)
 
 ## Evaluator ledger — the evaluator's per-task memory
 
-Lives at `sessions/<id>/ledger/<task_id>.jsonl`. One append-only entry per evaluator call (`{ts, iter, diff_summary, case, verdict}`). It gives the evaluator memory across iterations of a single task — so it can confirm a prior concern was resolved instead of re-litigating it, and escalate when the same rejection category recurs. The last 5 entries are injected into each evaluator call, and (since the visibility expansion) into the worker's prompt as the reviewer's prior verdicts on its current task. Task-scoped and session-local; never crosses sessions; read straight off disk on resume. See [The worker↔evaluator dialogue](../deep-dives/worker-evaluator-dialogue.md) for the full mechanism.
+Lives at `sessions/<id>/ledger/<task_id>.jsonl`. One append-only entry per evaluator call (`{ts, iter, diff_summary, case, verdict}`). It gives the evaluator memory across iterations of a single task — so it can confirm a prior concern was resolved instead of re-litigating it, and escalate when the same rejection category recurs. The last 5 entries are injected into each evaluator call, and into the worker's prompt as the reviewer's prior verdicts on its current task. Task-scoped and session-local; never crosses sessions; read straight off disk on resume. See [The worker↔evaluator dialogue](../deep-dives/worker-evaluator-dialogue.md) for the full mechanism.
 
 ## Why the channels live outside the agent
 
 You could imagine baking all of this into the system prompt and letting the agent juggle it. Why not?
 
-- **Context budget.** Re-injecting the whole task list every turn gets expensive fast and crowds out the model's working memory for the actual code.
+- **Context budget.** Re-injecting everything every turn gets expensive fast and crowds out the model's working memory for the actual code.
 - **Resumability.** State outside the agent survives across sessions and provider switches. State *inside* the agent is gone the moment the conversation resets.
 - **Auditability.** The channels are flat files in the workspace or session directory. You can `git log` them, diff them, hand them to teammates, version them. Anything inside the model is opaque.
 - **Independence of the evaluator.** The evaluator runs in a fresh context across tasks (it carries per-task memory only via the ledger); without external memory channels, it would have nothing to look at except what the worker chose to expose.

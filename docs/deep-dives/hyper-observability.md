@@ -32,9 +32,8 @@ observability-minded reading of it.
 ### Every prompt the harness sends is recorded
 
 - **`prompt_assembled`** — emitted for every user message *before it is sent*,
-  tagged with its `role` (`worker` / `evaluator` / `self_improve`), the
-  iteration, and the (capped) content. You can read the exact words each model
-  saw on each turn.
+  tagged with its `role` (`worker` / `evaluator`), the iteration, and the
+  (capped) content. You can read the exact words each model saw on each turn.
 - **`memory_load`** — emitted alongside, recording which
   [memory channels](../architecture/memory-channels.md) fed that prompt:
   per-channel `present` / `chars` / `truncated` / `sha256_8`. So you can tell
@@ -43,30 +42,29 @@ observability-minded reading of it.
 
 ### Every model call is recorded
 
-- **`model_call`** — emitted when any model call returns (worker, evaluator, or
-  self-improve), carrying `prompt_tokens`, `eval_tokens`, `finish_reason`, and
-  the model's reasoning when it emitted any. Grep `events.jsonl` for
-  `model_call` and you can reconstruct exactly when tokens were spent and why a
-  turn ended. See [Token recording](token-recording.md).
+- **`model_call`** — emitted when any model call returns (worker or evaluator),
+  carrying `prompt_tokens`, `eval_tokens`, `finish_reason`, and the model's
+  reasoning when it emitted any. Grep `events.jsonl` for `model_call` and you
+  can reconstruct exactly when tokens were spent and why a turn ended. See
+  [Token recording](token-recording.md).
 
 ### Every run replays end-to-end
 
 - **`tilth visualize`** rolls `events.jsonl` into a single self-contained
   `chat.html` — inline CSS, no JS — that renders the run as a conversation
   grouped by task: model calls with collapsible reasoning, tool calls and
-  results, validator runs, evaluator verdicts, commits, and stops. Read-only and
-  safe to run mid-flight. See [Visualizing a session](../getting-started/visualizing.md).
+  results, evaluator verdicts, commits, and stops. Read-only and safe to run
+  mid-flight. See [Visualizing a session](../getting-started/visualizing.md).
 - **`summary.json`** is the denormalised rollup of the same log — a
   machine-readable view for when you want the shape of a run without replaying
   every event.
 
 ### The prompts are plain, editable files
 
-The worker, evaluator, and self-improve prompts live in `tilth/prompts/*.md`
-(and the seeder's in `tilth/seed/`). They ship verbatim every turn, so the
-"accessible and adaptable" half is literal: open the file, read exactly what the
-agent is told, change it, and the next run uses your version. There is no hidden
-prompt template assembled out of reach.
+The worker and evaluator prompts live in `tilth/prompts/*.md`. They ship
+verbatim every turn, so the "accessible and adaptable" half is literal: open
+the file, read exactly what the agent is told, change it, and the next run uses
+your version. There is no hidden prompt template assembled out of reach.
 
 ## What's not here yet
 

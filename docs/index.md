@@ -2,18 +2,57 @@
 
 > *Prepare the ground, let the agent grow the work.*
 
-A minimal long-running agent harness against an **OpenAI-compatible** LLM endpoint. Tested today against [OpenRouter](https://openrouter.ai); the OpenAI SDK underneath means other OpenAI-flavour gateways should work, but support for them is on the roadmap rather than validated. Built to learn (and demonstrate) the Brain/Hands/Session split, the Ralph loop, and the four memory channels described in Addy Osmani's [long-running agents](https://addyosmani.com/blog/long-running-agents/), [agent harness engineering](https://addyosmani.com/blog/agent-harness-engineering/), and [self-improving agents](https://addyosmani.com/blog/self-improving-agents/) posts.
+A minimal long-running agent harness against an **OpenAI-compatible** LLM endpoint. Tested today against [OpenRouter](https://openrouter.ai); the OpenAI SDK underneath means other OpenAI-flavour gateways should work, but support for them is on the roadmap rather than validated. Built to learn (and demonstrate) the Brain/Hands/Session split, the Ralph loop, and the file-backed memory channels described in Addy Osmani's [long-running agents](https://addyosmani.com/blog/long-running-agents/) and [agent harness engineering](https://addyosmani.com/blog/agent-harness-engineering/) posts.
 
 ![Brain / Hands / Session split — three boxes connected by flow arrows, with the files that implement each piece](assets/brain-hands-session.png)
 
 *Brain / Hands / Session*
 {: .caption }
 
-**Audience:** This is an active research project for my work in [Altered Craft](https://alteredcraft.com). I do activly use it for real work, so I would advise it for single-dev / few-dev teams who want to *understand* what a long-running agent harness actually does. That is today (May-2026), in the future, we shall see.
+**Audience:** This is an active research project for my work in [Altered Craft](https://alteredcraft.com). I do actively use it for real work, so I would advise it for single-dev / few-dev teams who want to *understand* what a long-running agent harness actually does. That is today (June-2026), in the future, we shall see.
 
-**Target run:** I test with 10-60 minutes of autonomous work against an open model (default `deepseek/deepseek-v4-flash` on OpenRouter for the worker; the evaluator and prep interview default to `deepseek/deepseek-v4-pro`). Completing a task list against a small project on a per-session git worktree.
+**Target run:** I test with 10-60 minutes of autonomous work against an open model (default `deepseek/deepseek-v4-flash` on OpenRouter for the worker; the evaluator defaults to `deepseek/deepseek-v4-pro`). Completing a short task list against a small project on a per-session git worktree.
 
-![The harness loop — PRD task to worker agent to validators to evaluator to commit, with two feedback paths and a New Task loop, all inside a per-session git worktree](assets/harness-loop.jpg)
+> **Status — prompt-driven core.** Tilth is deliberately small and currently being driven *down* to its essentials: a worker and an independent evaluator, the base file/search/bash tools, and full observability. There is **no codified test/lint gate** — the evaluator is the only gate — and **no interview step**: you author the work as markdown under `<repo>/.tilth/tasks/` and run it. Capabilities get added back only as testing shows they're needed.
+
+<!-- IMAGE NEEDS REGENERATION — harness-loop.jpg still shows the removed
+     VALIDATORS box and a "PRD TASK / prd.json" box. New prompt (per
+     docs/assets/IMAGE_STYLE.md — paste the STYLE block from that file
+     verbatim at the end):
+
+A clean technical architecture diagram, 16:9 horizontal composition.
+Four rounded rectangular boxes arranged horizontally left to right,
+connected by bold forward arrows:
+
+1. Leftmost box: a clipboard glyph with a checkmark. Title "TASK" in
+   bold all-caps sans-serif. Monospace label ".tilth/tasks/" beneath.
+   Italic caption "next pending task".
+2. Second box: a circular loop-arrow glyph, with a small hand-drawn
+   brain icon perched on the box's top-left corner. Title "WORKER
+   AGENT". Monospace label "loop.py". Italic caption "tool-use loop".
+3. Third box: a balance-scale glyph, with a small hand-drawn brain icon
+   perched on the box's top-left corner. Title "EVALUATOR". Monospace
+   label "evaluator.md". Italic caption "fresh context · the only gate".
+4. Rightmost box: a git-branch glyph with a single new-commit dot.
+   Title "COMMIT". Monospace label "workspace.py". Italic caption
+   "atomic commit, session branch".
+
+Above the third and fourth boxes, a wide rounded rectangle floating at
+top right: title "PER-SESSION GIT WORKTREE" in bold all-caps, monospace
+label "session/<id>", italic caption "everything happens here". A thin
+charcoal connector line drops from this box down to the row of boxes.
+
+RELATIONSHIPS: Bold sage-green forward arrows (2.5x the weight of box
+outlines) connect box 1→2, 2→3, 3→4. One thinner dashed sage-green
+curve returns from box 3 (EVALUATOR) back to box 2 (WORKER AGENT),
+sweeping below the row, labelled "Rejects" in italic. A second, heavier
+sage-green curve sweeps from box 4 (COMMIT) all the way back to box 1
+(TASK) along the bottom, labelled "New Task" in italic — the Ralph
+loop.
+
+<<paste the STYLE block from docs/assets/IMAGE_STYLE.md verbatim>>
+-->
+![The harness loop — a task from .tilth/tasks/ to worker agent to evaluator to commit, with a Rejects feedback path and a New Task loop, all inside a per-session git worktree](assets/harness-loop.jpg)
 
 *The harness loop*
 {: .caption }
@@ -22,7 +61,7 @@ A minimal long-running agent harness against an **OpenAI-compatible** LLM endpoi
 
 A **harness** is the deterministic code wrapped around the model — it decides what the model sees, when it runs, and what happens to what it produces. The model is the *brain*; the harness is everything around it that turns a single model call into a loop that finishes work.
 
-The labels under each box in the diagram above are that harness, made literal: `loop.py`, `validators.py`, and `workspace.py` are Tilth's code; `prd.json` is the state it reads; `evaluator.md` is the prompt it hands to a second model. The harness owns the **arrows** — the forward path, the dashed `Fails` / `Rejects` feedback, and the green `New Task` loop. It picks the next task, runs the validators, routes the evaluator's verdict, commits to the session branch, and moves on. That green `New Task` arrow is the Ralph loop proper — the outer loop that carries a session from one task to the next.
+The labels under each box in the diagram above are that harness, made literal: `loop.py` and `workspace.py` are Tilth's code; `.tilth/tasks/` is the work you authored; `evaluator.md` is the prompt it hands to a second model. The harness owns the **arrows** — the forward path, the dashed `Rejects` feedback, and the green `New Task` loop. It picks the next task, routes the evaluator's verdict, commits to the session branch, and moves on. That green `New Task` arrow is the Ralph loop proper — the outer loop that carries a session from one task to the next.
 
 The model owns only what happens *inside* a box:
 
@@ -37,16 +76,16 @@ Tilth is informed by the minimal-harness lineage — small system prompt, a hand
 
 Almost everything distinctive about Tilth follows from that one difference. Each piece stands in for a call a watching human would otherwise make:
 
-- **The [evaluator](deep-dives/worker-evaluator-dialogue.md)** — a second model that judges whether a change is a *proper* solution, not just whether the tests are green. Passing the validators is table stakes; the evaluator is the reviewer who isn't in the room.
+- **The [evaluator](deep-dives/worker-evaluator-dialogue.md)** — a second model that judges whether a change is a *proper* solution against the task's acceptance criteria, not just whether the code runs. There is no codified test/lint gate in front of it; the evaluator is the reviewer who isn't in the room, and the only gate.
 - **[Between-task caps](deep-dives/caps.md)** — the budget ceiling (iterations, tokens, wall-clock) a human would otherwise impose by noticing a runaway and stopping it.
-- **[State kept out of the model](deep-dives/agent-visibility.md)** — the mutable plan/status machinery is hidden, so an unattended agent can't mark its own work done, skip ahead, or rewrite the queue.
+- **[State kept out of the model](deep-dives/agent-visibility.md)** — the mutable status machinery is hidden, so an unattended agent can't mark its own work done, skip ahead, or rewrite the queue.
 - **[Hyper-observability](deep-dives/hyper-observability.md)** — when no one is watching mid-run, the recording *is* the supervision. Every prompt the harness sends is recorded and every run replays end-to-end from its `events.jsonl` (`tilth visualize`). Offline-first by design: a finished run you inspect, not a live TUI to babysit.
 
 None of this is a knock on interactive agents; it's a different shape for a different job.
 
 ## What's in these docs
 
-- **[Getting started](getting-started/installation.md)** — install, seed a task list with `prep-feature`, run the demo, resume / reset / visualize a session.
+- **[Getting started](getting-started/installation.md)** — install, author a task list under `.tilth/tasks/`, run the demo, resume / reset / visualize a session.
 - **[Architecture](architecture/overview.md)** — the Brain / Hands / Session split, the memory channels.
-- **[Deep dives](deep-dives/index.md)** — the two loops, the worker↔evaluator dialogue, token recording and enforcement, what the agent sees (and doesn't), the caps story, resume / reset mechanics. Honest, code-level walk-throughs for extending, debugging, or reasoning about the safety story.
+- **[Deep dives](deep-dives/index.md)** — the two loops, the worker↔evaluator dialogue, token recording and enforcement, what the agent sees (and doesn't), the task format, the caps story, resume / reset mechanics. Honest, code-level walk-throughs for extending, debugging, or reasoning about the safety story.
 - **[Reference](reference/safety-guards.md)** — safety guards.
