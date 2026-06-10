@@ -15,43 +15,6 @@ A minimal long-running agent harness against an **OpenAI-compatible** LLM endpoi
 
 > **Status — prompt-driven core.** Tilth is deliberately small and currently being driven *down* to its essentials: a worker and an independent evaluator, the base file/search/bash tools, and full observability. There is **no codified test/lint gate** — the evaluator is the only gate — and **no interview step**: you author the work as markdown under `<repo>/.tilth/tasks/` and run it. Capabilities get added back only as testing shows they're needed.
 
-<!-- IMAGE NEEDS REGENERATION — harness-loop.jpg still shows the removed
-     VALIDATORS box and a "PRD TASK / prd.json" box. New prompt (per
-     docs/assets/IMAGE_STYLE.md — paste the STYLE block from that file
-     verbatim at the end):
-
-A clean technical architecture diagram, 16:9 horizontal composition.
-Four rounded rectangular boxes arranged horizontally left to right,
-connected by bold forward arrows:
-
-1. Leftmost box: a clipboard glyph with a checkmark. Title "TASK" in
-   bold all-caps sans-serif. Monospace label ".tilth/tasks/" beneath.
-   Italic caption "next pending task".
-2. Second box: a circular loop-arrow glyph, with a small hand-drawn
-   brain icon perched on the box's top-left corner. Title "WORKER
-   AGENT". Monospace label "loop.py". Italic caption "tool-use loop".
-3. Third box: a balance-scale glyph, with a small hand-drawn brain icon
-   perched on the box's top-left corner. Title "EVALUATOR". Monospace
-   label "evaluator.md". Italic caption "fresh context · the only gate".
-4. Rightmost box: a git-branch glyph with a single new-commit dot.
-   Title "COMMIT". Monospace label "workspace.py". Italic caption
-   "atomic commit, session branch".
-
-Above the third and fourth boxes, a wide rounded rectangle floating at
-top right: title "PER-SESSION GIT WORKTREE" in bold all-caps, monospace
-label "session/<id>", italic caption "everything happens here". A thin
-charcoal connector line drops from this box down to the row of boxes.
-
-RELATIONSHIPS: Bold sage-green forward arrows (2.5x the weight of box
-outlines) connect box 1→2, 2→3, 3→4. One thinner dashed sage-green
-curve returns from box 3 (EVALUATOR) back to box 2 (WORKER AGENT),
-sweeping below the row, labelled "Rejects" in italic. A second, heavier
-sage-green curve sweeps from box 4 (COMMIT) all the way back to box 1
-(TASK) along the bottom, labelled "New Task" in italic — the Ralph
-loop.
-
-<<paste the STYLE block from docs/assets/IMAGE_STYLE.md verbatim>>
--->
 ![The harness loop — a task from .tilth/tasks/ to worker agent to evaluator to commit, with a Rejects feedback path and a New Task loop, all inside a per-session git worktree](assets/harness-loop.jpg)
 
 *The harness loop*

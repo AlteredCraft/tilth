@@ -71,36 +71,6 @@ You can interrupt at any point with Ctrl-C. Ctrl-C and cap hits (iteration, wall
 
 The console streams every tool call as it happens. The per-task loop has the shape below:
 
-<!-- IMAGE NEEDS REGENERATION — per-task-lifecycle.jpg still shows the removed
-     VALIDATORS and SELF-IMPROVE boxes (and labels the evaluator "JUDGE").
-     New prompt (per docs/assets/IMAGE_STYLE.md — paste the STYLE block from
-     that file verbatim at the end):
-
-A clean technical architecture diagram, 16:9 horizontal composition.
-Four rounded rectangular boxes arranged left to right, depicting one
-task's lifecycle inside Tilth's harness:
-
-1. "PROMPT" — a stack of three document icons. Italic caption "fresh
-   context built from disk".
-2. "TOOL LOOP" — a wrench-and-file glyph encircled by a loop arrow,
-   with a monospace bullet list inside the box: "bash", "read_file",
-   "edit_file", "grep". Italic caption "worker iterates, then presents
-   its case".
-3. "EVALUATOR" — a balance-scale glyph. Italic caption "the only gate ·
-   fresh context".
-4. "COMMIT" — a git-branch glyph with a single new-commit dot. Italic
-   caption "one task = one commit".
-
-Two label-bars span the top, drawn as thin charcoal brackets: "WORKER
-SEES" over boxes 1 and 2; "HARNESS ONLY" over boxes 3 and 4.
-
-RELATIONSHIPS: Bold sage-green forward arrows (2.5x the weight of box
-outlines) connect each box to the next. One thinner sage-green feedback
-curve sweeps from box 3 (EVALUATOR) back under the row to box 2 (TOOL
-LOOP), labelled in monospace "evaluator_rejected".
-
-<<paste the STYLE block from docs/assets/IMAGE_STYLE.md verbatim>>
--->
 ![Four rounded boxes arranged left to right depicting one task's lifecycle inside Tilth's harness: PROMPT (a stack of document icons; caption "fresh context built from disk"); TOOL LOOP (a wrench-and-file glyph encircled by a loop arrow, with monospace tool labels bash, read_file, edit_file, grep; caption "worker iterates, then presents its case"); EVALUATOR (a balance scale; caption "the only gate, fresh context"); COMMIT (a git-branch glyph with a single new-commit dot; caption "one task = one commit"). Two label-bars span the top: "WORKER SEES" over PROMPT and TOOL LOOP, "HARNESS ONLY" over the remaining boxes. Sage-green forward arrows connect each box; a thinner sage-green feedback curve returns to TOOL LOOP from EVALUATOR (labelled evaluator_rejected).](../assets/per-task-lifecycle.jpg)
 
 *One task's lifecycle inside the harness. The worker sees the Prompt and the Tool Loop; the evaluation machinery stays harness-side. A rejected evaluator verdict feeds back into the Tool Loop for another iteration.*
@@ -115,39 +85,6 @@ A clean run ends with every task marked `done` and a commit-per-task on the `ses
 
 Once every task is `done`, the harness closes out the final task and prints `all tasks complete` followed by a run summary:
 
-<!-- IMAGE NEEDS REGENERATION — session-end.jpg still shows a
-     proposed-learnings.md chip (the self-improve step was removed).
-     New prompt (per docs/assets/IMAGE_STYLE.md — paste the STYLE block
-     from that file verbatim at the end):
-
-A clean technical diagram, 16:9 horizontal composition, three regions
-left to right.
-
-LEFT region, under a small dark label-bar reading "ON THE SESSION
-BRANCH": a vertical stack of five small rounded rectangles, each
-containing a monospace task id followed by a checkmark — "T-001 ✓"
-through "T-005 ✓". Italic caption beneath the stack: "tasks done · one
-commit each".
-
-CENTRE region: a larger rounded panel titled "RUN SUMMARY" in bold
-sans-serif all caps, containing four monospace key/value rows:
-"session   20260525-103149-3800ea", "duration  6m10s",
-"tokens    412,800", "tasks     total=5 done=5 failed=0 pending=0".
-Italic caption beneath the panel: "harness reports out".
-
-RIGHT region, under a small dark label-bar reading "WRITTEN UNDER
-sessions/<id>/": a vertical stack of three document-icon chips, each a
-monospace filename with a short italic role note to its right:
-"events.jsonl" ("full audit trail"), "summary.json" ("rolled-up
-snapshot"), "checkpoint.json" ("resume footing").
-
-RELATIONSHIPS: a sage-green arrow runs from the left task stack into
-the RUN SUMMARY panel; a second sage-green arrow curves from the panel
-up into the right-hand stack, labelled in italic "everything one run
-leaves on disk".
-
-<<paste the STYLE block from docs/assets/IMAGE_STYLE.md verbatim>>
--->
 ![A three-region diagram of Tilth's end-of-session state. Left region, under the label "ON THE SESSION BRANCH": a vertical stack of five rounded rectangles, each a monospace task id with a checkmark — T-001 through T-005 — with the italic caption "tasks done · one commit each". Centre region: a rounded panel titled "RUN SUMMARY" in bold sans-serif all caps, with four monospace key/value rows — session 20260525-103149-3800ea, duration 6m10s, tokens 412,800, tasks total=5 done=5 failed=0 pending=0 — and the italic caption "harness reports out". Right region, under the label "WRITTEN UNDER sessions/<id>/": a vertical stack of document-icon chips, each a monospace filename with a short italic role note — events.jsonl ("full audit trail"), summary.json ("rolled-up snapshot"), checkpoint.json ("resume footing"). A sage-green arrow runs from the task stack into the RUN SUMMARY panel; a second sage-green arrow curves from the panel up into the right-hand stack, labelled "everything one run leaves on disk".](../assets/session-end.jpg)
 
 *A clean ending. Every task is committed on the session branch (left); the run summary tallies what happened (centre); and the artifacts the run wrote under `sessions/<id>/` — the event log, the rolled-up summary, the resume checkpoint — sit on the right, outside the worktree for you to read or resume from. Your `AGENTS.md` and `.tilth/tasks/` are never touched by the run.*

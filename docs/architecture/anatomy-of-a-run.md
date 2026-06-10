@@ -4,40 +4,6 @@ The [overview](overview.md) tells you *who* does what — Brain reasons, Hands a
 
 A Tilth run is, in the end, a function over files. It reads a fixed set of inputs, turns the loop once per task, and writes a fixed set of outputs — and three of those outputs feed straight back in as the loop's working memory. Getting that shape in your head first makes the deep dives easier to place.
 
-<!-- IMAGE NEEDS REGENERATION — anatomy-of-a-run.jpg still shows the removed
-     seed-meta.json and tests/ input chips, the proposed-learnings.md output
-     chip, and prd.json in the working-memory row. New prompt (per
-     docs/assets/IMAGE_STYLE.md — paste the STYLE block from that file
-     verbatim at the end):
-
-A clean technical data-flow diagram, 16:9 horizontal composition, three
-zones. A bold all-caps title across the top: "ANATOMY OF A RUN".
-
-LEFT zone, under the label "INPUTS — WHAT THE LOOP READS" in bold
-sans-serif: a vertical stack of four rounded monospace chips:
-"system.md", "AGENTS.md / CLAUDE.md", ".tilth/tasks/",
-"repo @ worktree".
-
-CENTRE zone: a large circular loop-arrow glyph labelled "PER-TASK LOOP"
-in bold all-caps inside, with the italic caption "one task at a time"
-beneath.
-
-RIGHT zone, under the label "OUTPUTS — WHAT THE LOOP WRITES" in bold
-sans-serif: a vertical stack of four rounded monospace chips:
-"commits", "events.jsonl", "summary.json", "checkpoint.json".
-
-BOTTOM row, centred beneath the loop, under the label "WORKING MEMORY"
-in bold sans-serif: three rounded monospace chips side by side:
-"task-status.json", "progress.txt", "ledger/".
-
-RELATIONSHIPS: thin sage-green arrows flow left-to-right from each
-input chip into the loop, and from the loop out to each output chip. A
-heavier sage-green arc sweeps beneath the loop from the output side
-back round to the input side, passing through the WORKING MEMORY row,
-labelled in italic "written out, read back in".
-
-<<paste the STYLE block from docs/assets/IMAGE_STYLE.md verbatim>>
--->
 ![Three-zone data-flow diagram titled "ANATOMY OF A RUN". LEFT, under the label "INPUTS — WHAT THE LOOP READS", a vertical stack of monospace chips: system.md, AGENTS.md / CLAUDE.md, .tilth/tasks/, repo @ worktree. CENTRE, a large circular loop-arrow glyph labelled "PER-TASK LOOP" with the italic caption "one task at a time". RIGHT, under the label "OUTPUTS — WHAT THE LOOP WRITES", a vertical stack of monospace chips: commits, events.jsonl, summary.json, checkpoint.json. Sage-green arrows flow left-to-right from the input chips into the loop and out to the output chips. A heavier sage-green arc sweeps beneath the loop from the output side back round to the input side, labelled "written out, read back in", passing through a bottom row labelled "WORKING MEMORY" that holds three chips: task-status.json, progress.txt, ledger/.](../assets/anatomy-of-a-run.jpg)
 
 *A run as a function over files: the per-task loop reads its inputs (left), turns once per task, and writes its outputs (right). Three artifacts — `task-status.json`, `progress.txt`, and the evaluator `ledger/` — are written out and read back in as the loop's working memory (the lower arc).*
