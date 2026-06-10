@@ -203,7 +203,7 @@ That folder has `research-findings.md`, `research-links.md`, `mvp-spec.md`, and 
 A separate running notes file lives at:
 
 ```
-~/_PRIMARY_VAULT/AlteredCraft/Altered Craft Publications/Notes/tilth-learnings.md/notes.md
+~/_PRIMARY_VAULT/AlteredCraft/Altered Craft Publications/Notes/tilth-learnings/notes.md
 ```
 
 It's a bulleted, themed corpus of transferable lessons from Tilth development (provider quirks, robustness patterns, multi-agent failure modes, observability wins) with commit-SHA links into [`AlteredCraft/tilth`](https://github.com/AlteredCraft/tilth). At the start of a new session, spawn a general-purpose subagent to:
