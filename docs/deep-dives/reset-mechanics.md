@@ -1,6 +1,6 @@
 # Reset mechanics
 
-`tilth reset [<session_id>]` tears down a session's artifacts. It runs entirely outside the normal loop — no model calls, no validators, no evaluator. (The pre-Phase-3 `--reset` flag still works for one minor version.)
+`tilth reset [<session_id>]` tears down a session's artifacts. It runs entirely outside the normal loop — no model calls, no evaluator.
 
 ## The flow
 
