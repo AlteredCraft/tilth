@@ -5,7 +5,7 @@ Subcommands:
     tilth run       <workspace>
     tilth resume    [<session_id>]
     tilth reset     [<session_id>] [-y]
-    tilth visualize [<session_id>]
+    tilth visualize [<session_id>] [--port N]
 
 The feature is authored as markdown under `<workspace>/.tilth/tasks/` (an
 `overview.md` plus one `T-NNN-*.md` per task — see `tilth/tasks.py`). There is
@@ -88,16 +88,23 @@ def _build_parser():
 
     viz_p = sub.add_parser(
         "visualize",
-        help="Render a session's events.jsonl as a chat HTML page.",
+        help="Serve the live session viewer (reads sessions/ in near-realtime).",
         description=(
-            "Render sessions/<id>/events.jsonl as a single self-contained HTML "
-            "page at sessions/<id>/chat.html."
+            "Start a read-only local web app over the sessions/ directory: an "
+            "index of every run, and a per-session chat view that tails "
+            "events.jsonl while a run is active. Loopback-only."
         ),
     )
     viz_p.add_argument(
         "session_id",
         nargs="?",
-        help="Session ID to render; defaults to the latest session.",
+        help="Session ID to deep-link on startup; defaults to the latest session.",
+    )
+    viz_p.add_argument(
+        "--port",
+        type=int,
+        default=8765,
+        help="Port to bind on 127.0.0.1 (default: 8765).",
     )
 
     return parser
@@ -111,7 +118,7 @@ def _dispatch(args) -> int:
     if args.command == "reset":
         return loop.do_reset_cmd(args.session_id, args.yes)
     if args.command == "visualize":
-        return loop.do_visualize_cmd(args.session_id)
+        return loop.do_visualize_cmd(args.session_id, port=args.port)
     raise AssertionError(f"unknown subcommand {args.command!r}")
 
 

@@ -1,11 +1,14 @@
-"""Render a session's events.jsonl as an HTML chat conversation.
+"""Live session viewer over the sessions/ directory.
 
-Standalone — no harness coupling beyond the events.jsonl format documented in
-session.py. Output is a single self-contained HTML file (inline CSS, no JS).
+Standalone — no harness coupling beyond the events.jsonl / checkpoint.json
+formats documented in session.py. `serve()` runs a read-only stdlib HTTP app
+(see server.py); rendering is server-side Python (render.py), shared by every
+view, so there is exactly one renderer.
 """
 
 from __future__ import annotations
 
-from .render import render_html, write_session_html
+from .render import render_events
+from .server import serve
 
-__all__ = ["render_html", "write_session_html"]
+__all__ = ["render_events", "serve"]

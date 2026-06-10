@@ -37,8 +37,9 @@ nav:
       # `git branch -D session/<id>` + `rm -rf sessions/<id>/`. Idempotent,
       # destructive by design, gated by `[y/N]` (or `--yes`).
       - Resetting a session: getting-started/resetting.md
-      # `tilth visualize` renders `events.jsonl` as a self-contained
-      # `chat.html` grouped by task. Read-only, safe to invoke mid-run.
+      # `tilth visualize` serves a read-only local web app over sessions/:
+      # an index of runs + per-session chat views that tail an active run
+      # in near-realtime. Same renderer live or replayed.
       - Visualizing a session: getting-started/visualizing.md
       # The "honest version" of using Tilth on your own (non-demo) codebase:
       # what prep your repo actually needs (a clean git repo, optionally an

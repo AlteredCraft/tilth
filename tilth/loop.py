@@ -1271,19 +1271,32 @@ def do_reset_cmd(maybe_id: str | None, assume_yes: bool) -> int:
     return _do_reset(sid, assume_yes=assume_yes)
 
 
-def do_visualize_cmd(maybe_id: str | None) -> int:
+def do_visualize_cmd(maybe_id: str | None, port: int = 8765) -> int:
+    """Serve the live session viewer over sessions/.
+
+    Always serves the whole sessions directory (the index lists every run);
+    a session id argument is a typo guard + a printed deep link, not a scope.
+    Read-only, loopback-only — safe to leave running next to an active
+    `tilth run`; the page tails events.jsonl in near-realtime.
+    """
+    if maybe_id and not (SESSIONS_DIR / maybe_id).is_dir():
+        console.print(f"[red]no session at {SESSIONS_DIR / maybe_id}[/red]")
+        return 2
     sid = _resolve_session_id(maybe_id)
-    if not sid:
-        console.print(f"[red]no sessions found under {SESSIONS_DIR}[/red]")
+    url = f"http://127.0.0.1:{port}"
+    console.print(f"[bold]visualizer[/bold] {url}/")
+    if sid:
+        label = "session" if maybe_id else "latest session"
+        console.print(f"[bold]{label}[/bold] {url}/session/{sid}")
+    console.print("[dim]Ctrl-C to stop[/dim]")
+    try:
+        visualize.serve(SESSIONS_DIR, port=port)
+    except KeyboardInterrupt:
+        console.print("\n[dim]visualizer stopped[/dim]")
+    except OSError as exc:
+        console.print(f"[red]cannot bind 127.0.0.1:{port}: {exc.strerror or exc}[/red]")
+        console.print("[dim]another visualizer running? pick a port with --port[/dim]")
         return 2
-    if not maybe_id:
-        console.print(f"[dim]visualize: latest session is {sid}[/dim]")
-    session_dir = SESSIONS_DIR / sid
-    if not session_dir.is_dir():
-        console.print(f"[red]no session at {session_dir}[/red]")
-        return 2
-    out = visualize.write_session_html(session_dir)
-    console.print(f"[green]wrote[/green] {out}")
     return 0
 
 

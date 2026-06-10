@@ -3,54 +3,20 @@ from __future__ import annotations
 import html
 import json
 from collections.abc import Callable
-from pathlib import Path
 from typing import Any
 
-from .theme import CSS, PAGE
 
+def render_events(
+    events: list[dict[str, Any]], last_task: str | None = None
+) -> tuple[str, str | None]:
+    """Render events to HTML fragments, inserting a task divider on task change.
 
-def write_session_html(session_dir: Path) -> Path:
-    out = session_dir / "chat.html"
-    out.write_text(render_html(session_dir))
-    return out
-
-
-def render_html(session_dir: Path) -> str:
-    events = _read_events(session_dir / "events.jsonl")
-    session_id = session_dir.name
-
-    if events:
-        body = _render_body(events)
-    else:
-        body = '<div class="empty">No events recorded yet.</div>'
-
-    return PAGE.format(
-        session_id=html.escape(session_id),
-        body=body,
-        css=CSS,
-        count=len(events),
-    )
-
-
-def _read_events(path: Path) -> list[dict[str, Any]]:
-    events: list[dict[str, Any]] = []
-    if not path.is_file():
-        return events
-    with path.open() as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                events.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
-    return events
-
-
-def _render_body(events: list[dict[str, Any]]) -> str:
+    `last_task` carries the divider state across chunks so incremental
+    rendering (the live server polling new lines) produces output identical to
+    a one-shot render of the same events. Returns (html, last_task) — feed the
+    returned `last_task` into the next chunk's call.
+    """
     parts: list[str] = []
-    last_task: str | None = None
     for ev in events:
         payload = ev.get("payload") or {}
         task_id = payload.get("task_id")
@@ -58,7 +24,7 @@ def _render_body(events: list[dict[str, Any]]) -> str:
             parts.append(_task_divider(task_id))
             last_task = task_id
         parts.append(_render_event(ev))
-    return "\n".join(parts)
+    return "\n".join(parts), last_task
 
 
 def _render_event(ev: dict[str, Any]) -> str:

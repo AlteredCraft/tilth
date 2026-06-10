@@ -62,7 +62,7 @@ tilth/
 │   ├── tools/             # bash, files, search — registered in __init__.py
 │   ├── hooks/             # pre_tool
 │   ├── prompts/           # system.md, evaluator.md
-│   └── visualize/         # tilth visualize: events.jsonl → chat.html
+│   └── visualize/         # tilth visualize: live web viewer over sessions/
 └── sessions/              # per-run state (gitignored)
 ```
 

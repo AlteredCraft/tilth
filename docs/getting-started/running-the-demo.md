@@ -43,7 +43,7 @@ If the directory is missing (or malformed), `tilth run` fails fast *before* crea
 
 For the demo, try a feature like *"a minimal todo CLI with add, list, and done subcommands, on-disk format `- [ ] item` in `TODOS.md`"*, sliced into three or four tasks.
 
-![Filesystem trees for one Tilth run: HARNESS SIDE under ~/projects/tilth/sessions/<id>/ holds workspace/, events.jsonl, summary.json, checkpoint.json, chat.html; TARGET REPO SIDE under ~/projects/tilth-demo/.git/ holds refs/heads/session/<id> and worktrees/<id>/. A sage-green arrow labeled 'git worktree binds these' connects the workspace/ on the left to the worktrees/<id>/ admin entry on the right.](../assets/session-layout.png)
+![Filesystem trees for one Tilth run: HARNESS SIDE under ~/projects/tilth/sessions/<id>/ holds workspace/, events.jsonl, summary.json, checkpoint.json; TARGET REPO SIDE under ~/projects/tilth-demo/.git/ holds refs/heads/session/<id> and worktrees/<id>/. A sage-green arrow labeled 'git worktree binds these' connects the workspace/ on the left to the worktrees/<id>/ admin entry on the right.](../assets/session-layout.png)
 
 *Where a session's state lives. Everything the harness writes — the event log, the status overlay, the summary — sits under your **Tilth** clone (`sessions/<id>/`); only the `session/<id>` branch and its worktree admin entry live in the demo repo's `.git`. The task markdown you authored stays in your repo, where you put it. Full breakdown in [Session layout](../deep-dives/session-layout.md).*
 {: .caption }

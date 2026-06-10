@@ -6,7 +6,7 @@ Guidance for Claude Code (claude.ai/code) when working in this repo.
 
 A minimal long-running agent harness against any OpenAI-compatible LLM endpoint. It implements the Brain / Hands / Session split, the Ralph loop, and the four memory channels from Addy Osmani's posts on long-running agents (plus a fifth Tilth adds — the per-task evaluator ledger). Built as both a working tool and the practical centerpiece of an Altered Craft article.
 
-The ultimate goal is a minimal, productive agent harness with **hyper-observability**: every prompt the harness sends is accessible and adaptable, and every run is fully inspectable after the fact. The [Visualizing a session](docs/getting-started/visualizing.md) page is an early example of that extended observability — a finished run rendered end-to-end from its `events.jsonl`.
+The ultimate goal is a minimal, productive agent harness with **hyper-observability**: every prompt the harness sends is accessible and adaptable, and every run is fully inspectable after the fact. The [Visualizing a session](docs/getting-started/visualizing.md) page is an early example of that extended observability — every run browsable as a chat-style web app, tailing an active loop in near-realtime or replaying a finished one end-to-end from its `events.jsonl`.
 
 ## Where to look first
 
@@ -39,7 +39,7 @@ tilth/
 ├── docs/                  # MkDocs source (annotated nav in mkdocs.yml is the topic index)
 ├── pyproject.toml, .env.example, .gitignore
 ├── tilth/
-│   ├── cli.py             # verb-routed entry: prep-feature / run / resume / reset / visualize
+│   ├── cli.py             # verb-routed entry: run / resume / reset / visualize
 │   ├── loop.py            # Ralph loop + inner tool-use loop + subcommand handlers
 │   ├── client.py          # OpenAI-compat wrapper, dual-client routing (worker / evaluator / prep)
 │   ├── session.py         # events.jsonl + checkpoint.json + per-task ledger + wake()
@@ -53,7 +53,7 @@ tilth/
 │   ├── hooks/             # pre_tool, post_edit
 │   ├── prompts/           # system.md, evaluator.md, propose_learning.md
 │   ├── seed/              # tilth prep-feature: interview engine + frontend / sink protocols
-│   └── visualize/         # tilth visualize: events.jsonl + seed-meta.json → chat.html
+│   └── visualize/         # tilth visualize: live web viewer over sessions/ (stdlib http server)
 ├── examples/seed-reference/  # frozen example seeds (teaching artifacts, not runtime)
 └── sessions/              # per-run state (gitignored)
 ```
@@ -126,12 +126,10 @@ uv run tilth reset
 uv run tilth reset <session_id>
 uv run tilth reset --yes  # skip the confirmation prompt
 
-# Render a session's events.jsonl + seed-meta.json as chat-style HTML (sessions/<id>/chat.html)
+# Serve the live session viewer (read-only, 127.0.0.1:8765; --port to change).
+# Index of all sessions + per-session chat view that tails an active run.
 uv run tilth visualize
-uv run tilth visualize <session_id>
-
-# Legacy single-dash flag forms (--resume / --reset / --visualize / --prep-feature)
-# still work for one minor version; prefer the verbs above.
+uv run tilth visualize <session_id>   # deep-link this session on startup
 
 # Inspect a session log
 jq -c . sessions/<session_id>/events.jsonl | head -40

@@ -52,7 +52,7 @@ Written by the harness as the run proceeds. The worker writes none of them direc
 
 Where each lives on disk — and the full `events.jsonl` event taxonomy — is in [Session layout](../deep-dives/session-layout.md). The branch is [never auto-merged](overview.md#architecture-invariants-worth-preserving); you review and merge it like any feature branch.
 
-One artifact the loop *doesn't* write is `chat.html`: [`tilth visualize`](../getting-started/visualizing.md) renders it on demand from `events.jsonl` after a run. It's an out-of-band step, not part of the loop — which is why it sits outside both this table and the diagram.
+One thing the loop *doesn't* produce is the session view: [`tilth visualize`](../getting-started/visualizing.md) is a separate read-only web app rendering `events.jsonl` on demand (live during a run, or replayed after). It's an out-of-band observer, not part of the loop — which is why it sits outside both this table and the diagram.
 
 ## Working memory — the artifacts that are both
 

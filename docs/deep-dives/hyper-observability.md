@@ -50,11 +50,13 @@ observability-minded reading of it.
 
 ### Every run replays end-to-end
 
-- **`tilth visualize`** rolls `events.jsonl` into a single self-contained
-  `chat.html` — inline CSS, no JS — that renders the run as a conversation
-  grouped by task: model calls with collapsible reasoning, tool calls and
-  results, evaluator verdicts, commits, and stops. Read-only and safe to run
-  mid-flight. See [Visualizing a session](../getting-started/visualizing.md).
+- **`tilth visualize`** serves `events.jsonl` as a chat-style web app (a
+  read-only, loopback-only stdlib server over `sessions/`): every run listed,
+  each rendered as a conversation grouped by task — model calls with
+  collapsible reasoning, tool calls and results, evaluator verdicts, commits,
+  and stops. An active run streams in near-realtime; a finished one replays
+  end-to-end from the same renderer. See
+  [Visualizing a session](../getting-started/visualizing.md).
 - **`summary.json`** is the denormalised rollup of the same log — a
   machine-readable view for when you want the shape of a run without replaying
   every event.
@@ -73,11 +75,12 @@ some of these are deliberate non-goals.
 
 **By design — not coming:**
 
-- **No live TUI or mid-run dashboard.** Observability here is *offline-first*: a
-  finished run you inspect, not a process you babysit. The whole premise is that
-  no human is watching mid-task, so the effort goes into the replayable artifact
-  rather than a live view. `chat.html` regenerates on demand from the still-
-  growing log if you want to peek, but that's a snapshot, not a stream.
+- **No live TUI, and no run state that exists only on a screen.** Observability
+  here is *artifact-first*: the append-only log is the source of truth, and
+  every view is a rendering of it. The visualizer does tail an active run in
+  near-realtime, but it holds no state of its own — close it mid-run and
+  nothing is lost; reopen it and the same log replays to the same pixels. The
+  premise stands: no human *needs* to be watching mid-task.
 
 **On the roadmap:**
 
@@ -87,8 +90,6 @@ some of these are deliberate non-goals.
 - **Richer cost accounting.** Token counts are recorded, but there's no
   dollar-cost translation, no per-model split, and no headroom warning as a cap
   approaches. See the [gaps in Token recording](token-recording.md).
-- **A live tail.** A way to follow `events.jsonl` as it grows without
-  re-rendering, for the times you *do* want to watch.
 
 **An honest gap, not a feature:** the worker isn't fully walled off from harness
 state. The worktree is mounted under `sessions/<id>/workspace/`, so a determined
@@ -102,8 +103,8 @@ where that wall currently sits.
 Hyper-observability isn't only for reading your own runs — it has turned out to
 be one of the more useful moves while building Tilth *itself*.
 
-The practice: after a run, hand its `events.jsonl` (or the rendered
-`chat.html`) to the co-development agent and ask a single open question —
+The practice: after a run, hand its `events.jsonl` (or point at the rendered
+session view) to the co-development agent and ask a single open question —
 *"look through this run and flag anything anomalous."* Because the log records
 every prompt, every memory load, every token count, and every verdict in order,
 the agent can spot things a human skimming `jq` output tends to miss: a memory

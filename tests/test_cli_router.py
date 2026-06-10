@@ -82,12 +82,19 @@ def test_reset_without_id_or_yes(monkeypatch, patched_handlers):
 
 def test_visualize_with_id(monkeypatch, patched_handlers):
     _run(monkeypatch, ["visualize", "20260525-100000-aaa"])
-    assert patched_handlers == [("visualize", ("20260525-100000-aaa",), {})]
+    assert patched_handlers == [
+        ("visualize", ("20260525-100000-aaa",), {"port": 8765})
+    ]
 
 
 def test_visualize_without_id(monkeypatch, patched_handlers):
     _run(monkeypatch, ["visualize"])
-    assert patched_handlers == [("visualize", (None,), {})]
+    assert patched_handlers == [("visualize", (None,), {"port": 8765})]
+
+
+def test_visualize_custom_port(monkeypatch, patched_handlers):
+    _run(monkeypatch, ["visualize", "--port", "9000"])
+    assert patched_handlers == [("visualize", (None,), {"port": 9000})]
 
 
 def test_loop_main_shim_still_callable(monkeypatch, patched_handlers):

@@ -1,37 +1,46 @@
 # Visualizing a session
 
-Render `events.jsonl` as a chat-style HTML page. Easier to skim than `jq`-ing the raw log.
+Browse every run — and watch an active one in near-realtime — as a chat-style web app. Easier to skim than `jq`-ing the raw log.
 
 This page is the practical how-to; for the bigger picture — why a fully replayable run matters and what the wider observability surface gives you — see [Hyper-observability](../deep-dives/hyper-observability.md).
 
 ## How to visualize
 
 ```bash
-uv run tilth visualize                # most recent session
-uv run tilth visualize <session_id>   # or name one explicitly
+uv run tilth visualize                # serve the viewer; deep-links the latest session
+uv run tilth visualize <session_id>   # deep-link a specific session instead
+uv run tilth visualize --port 9000    # if the default port (8765) is taken
 ```
 
-Writes `sessions/<id>/chat.html` — a single self-contained file (inline CSS, no JS) that renders the log as a conversation:
+Starts a local web app (Python's built-in HTTP server — no extra dependencies) over the `sessions/` directory and prints the URLs:
 
-- model calls (with collapsible reasoning blocks where the model emitted any),
-- tool calls and results (including the worker's `submit_case`),
-- blocked tool calls (the `pre_tool` veto),
-- evaluator verdicts (accept / reject, with the rejection category, concern, evidence, and next-step on rejects),
-- commits,
-- and stops,
+- **`/`** — every session, newest first, with its status, task counts, and token spend.
+- **`/session/<id>`** — one run rendered as a conversation:
+    - model calls (with collapsible reasoning blocks where the model emitted any, and a health badge on provider-unhealthy attempts),
+    - tool calls and results (including the worker's `submit_case`),
+    - blocked tool calls (the `pre_tool` veto) and harness nudges,
+    - evaluator verdicts (accept / reject, with the rejection category, concern, evidence, and next-step on rejects),
+    - commits,
+    - and stops,
 
-…all grouped by task.
+    …all grouped by task, with live status / token / event-count chips in the header.
 
-The visualizer is read-only and runs over the saved `events.jsonl`, so it's safe to invoke against a finished or in-progress session.
+The viewer is **read-only and loopback-only** (it binds `127.0.0.1`; the log contains your full prompts and diffs, so it isn't meant for the LAN). It only ever reads `events.jsonl` and `checkpoint.json`, so it's safe to leave running next to an active `tilth run`.
 
-## What the output looks like
+## Watching a live run
 
-![Sample chat.html render: session header, task divider, model-call meta-strip with an expanded reasoning fold-out, tool call and result bubbles](../assets/session-render.png)
+The session page tails `events.jsonl` as the harness appends to it — new model calls, tool results, and verdicts stream in about a second after they happen, and the header chips track status and token spend from the checkpoint. The view follows the newest event automatically; scroll up to read history and a **↓ follow** button appears to jump back to the tail. When the run reaches a terminal state the page keeps polling slowly, so a later `tilth resume` picks up on screen without a reload.
 
-> **Diagram suggestion** — *annotated screenshot pointing to: (1) the session header strip, (2) per-task dividers, (3) a model-call meta strip with a collapsible reasoning block, (4) a tool-call/result pair, (5) an evaluator verdict card. Useful for orienting first-time readers of a long chat.html.*
+Rendering happens server-side from the same renderer for every view — what you see live is byte-identical to what you'd see replaying the finished log.
+
+## What it looks like
+
+![Live session view: header with status, token, and event-count chips; a session-started card; the T-001 task divider; context-reset and memory-load cards](../assets/session-render.png)
+
+> **Diagram suggestion** — *annotated screenshot pointing to: (1) the header chips (status / tokens / events), (2) per-task dividers, (3) a model-call meta strip with a collapsible reasoning block, (4) a tool-call/result pair, (5) an evaluator verdict card. Useful for orienting first-time readers of a long session.*
 
 ## When to use it
 
+- **During a run**, to watch the worker think, act, and get judged — without a TUI to babysit; close the tab and nothing is lost.
 - After a clean run, for a quick scan of how the agent solved each task.
 - After a failed run, to see exactly where the loop diverged before a cap or an error.
-- Mid-run, to peek without disturbing the live process — `chat.html` is regenerated on demand from the still-growing `events.jsonl`.
