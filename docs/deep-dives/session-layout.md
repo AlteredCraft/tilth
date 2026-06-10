@@ -28,13 +28,13 @@ The flip side: the target repo stays pristine. Tilth never asks you to add anyth
 
 | Event | Emitted when | Key payload | Visualizer |
 |---|---|---|---|
-| `session_start` | A session begins (worktree created) | `source`, `phase: "run"`, `worktree`, `branch` | card |
+| `session_start` | A session begins (worktree created) | `source`, `phase: "run"`, `worktree`, `branch`, `worker_model`, `evaluator_model`, `base_url` | card |
 | `session_resume` | `tilth resume` woke a session | `last_stop`, `retried`, `pending`, `unwound_commit` | card |
 | `context_reset` | A new task starts; messages rebuilt from disk | `task_id` | card |
 | `prompt_assembled` | A user message is assembled, pre-send | `role` (`worker` \| `evaluator`), `iter`, `content` (capped) | — |
 | `memory_load` | Memory channels loaded into a prompt | per-channel `present`/`chars`/`truncated`/`sha256_8` | — |
-| `model_call` | Any model call returns | `prompt_tokens`, `eval_tokens`, `phase` (`evaluator`; worker omits it), `attempt` (evaluator), `finish_reason`, reasoning | card |
-| `empty_model_response` | The provider returned an empty turn | `iter`, `streak`, `finish_reason`, token counts | — |
+| `model_call` | Any model call returns (one event per attempt) | `prompt_tokens`, `eval_tokens`, `phase` (`evaluator`; worker omits it), `attempt` (evaluator), `finish_reason`, reasoning, `health` (`ok` \| `provider_error` \| `empty`), `call_attempt`, and when present `model` / `provider` / `response_id` / `health_detail` / `retry_backoff_seconds` | card |
+| `nudge` | The harness injected a corrective user message | `iter`, `kind` (`no_case`), `streak`, `content` | card |
 | `tool_call` | The model invoked a tool (incl. `submit_case`) | `tool`, `args` | card |
 | `tool_result` | The harness answered a tool call | `tool`, result | card |
 | `pre_tool_block` | `pre_tool` vetoed a tool call | `tool`, `reason` | card (special) |
@@ -45,8 +45,8 @@ The flip side: the target repo stays pristine. Tilth never asks you to add anyth
 | `ledger_appended` | An entry was appended to a task's ledger | `task_id`, `iter`, `verdict_summary` | — |
 | `commit` | A task's work was committed to the branch | `task_id`, `sha` | card |
 | `task_done` | A task was accepted (the evaluator accepted the case + diff) | `task_id` | card |
-| `task_failed` | A task could not be completed | `reason` ∈ {`iter_cap`, `evaluator_cap`, `empty_responses`, `no_case`} | card |
-| `stop` | The run terminated | `reason` ∈ {`all_done`, `wall_clock`, `token_cap`, `iter_cap`, `evaluator_cap`, `empty_responses`, `no_case`, `interrupted`, `error`} | card |
+| `task_failed` | A task could not be completed | `reason` ∈ {`iter_cap`, `evaluator_cap`, `provider_failure`, `no_case`} | card |
+| `stop` | The run terminated | `reason` ∈ {`all_done`, `wall_clock`, `token_cap`, `iter_cap`, `evaluator_cap`, `provider_failure`, `no_case`, `interrupted`, `error`} | card |
 
 The full per-entry payload (including the OTel-shape `trace_id` / `span_id` fields every task event carries) is documented in `tilth/session.py`. Per-task **ledger** entries live in `ledger/<task_id>.jsonl`, *not* in `events.jsonl` — `ledger_appended` is only a pointer; see [The worker↔evaluator dialogue](worker-evaluator-dialogue.md).
 

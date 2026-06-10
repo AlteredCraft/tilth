@@ -100,13 +100,24 @@ def _render_model_call(_typ: str, ts: str, p: dict[str, Any]) -> str:
     pt = int(p.get("prompt_tokens", 0) or 0)
     et = int(p.get("eval_tokens", 0) or 0)
     total = int(p.get("tokens_used_total", 0) or 0)
+    health = p.get("health")
+    unhealthy = health is not None and health != "ok"
+    badges = f'<span class="badge">iter {html.escape(str(iter_n))}</span>'
+    if unhealthy:
+        attempt = p.get("call_attempt")
+        label = f"{health} · attempt {attempt}" if attempt else str(health)
+        badges += f'<span class="badge badge-bad">{html.escape(label)}</span>'
     strip = (
         '<div class="meta-strip">'
-        f'<span class="badge">iter {html.escape(str(iter_n))}</span>'
+        f'{badges}'
         f'<span class="meta">prompt {pt:,} · eval {et:,} · total {total:,}</span>'
         f'<span class="ts">{html.escape(ts)}</span>'
         '</div>'
     )
+    if unhealthy:
+        detail = (p.get("health_detail") or "").strip()
+        if detail:
+            strip += f'<div class="meta">{html.escape(detail)}</div>'
     reasoning = _reasoning_text(p)
     if not reasoning:
         return strip
@@ -115,6 +126,19 @@ def _render_model_call(_typ: str, ts: str, p: dict[str, Any]) -> str:
         '<summary>reasoning</summary>'
         f'<div class="reasoning-body">{html.escape(reasoning)}</div>'
         '</details>'
+    )
+
+
+def _render_nudge(_typ: str, ts: str, p: dict[str, Any]) -> str:
+    """A harness-injected corrective message — part of the conversation the
+    model actually saw, so it must appear in the chat view."""
+    content = (p.get("content") or "").strip()
+    title = f"nudge · {p.get('kind', '')}"
+    return _bubble(
+        side="tool",
+        title=title,
+        ts=ts,
+        body=f'<div class="prose">{html.escape(content)}</div>' if content else "",
     )
 
 
@@ -244,6 +268,7 @@ _RENDERERS: dict[str, Callable[[str, str, dict[str, Any]], str]] = {
     "session_resume": _render_session_resume,
     "context_reset": _render_context_reset,
     "model_call": _render_model_call,
+    "nudge": _render_nudge,
     "tool_call": _render_tool_call,
     "tool_result": _render_tool_result,
     "pre_tool_block": _render_pre_tool_block,

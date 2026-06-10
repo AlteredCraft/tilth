@@ -207,12 +207,73 @@ class LLMClient:
 
 
 def _normalise(resp: Any) -> dict[str, Any]:
-    """Flatten an OpenAI ChatCompletion to the dict shape the loop expects."""
+    """Flatten an OpenAI ChatCompletion to the dict shape the loop expects.
+
+    Provider-health evidence is retained, not flattened away: `error` (OpenRouter
+    surfaces upstream mid-generation failures as an error object on the choice
+    or at the top level, with HTTP 200), plus `provider` / `response_id` /
+    `model` for post-run forensics and support tickets. Omitted when absent so
+    events stay slim. The SDK's pydantic models carry these through as extras.
+    """
     d = resp.model_dump() if hasattr(resp, "model_dump") else dict(resp)
     choices = d.get("choices") or []
     choice = choices[0] if choices else {}
-    return {
+    out: dict[str, Any] = {
         "message": choice.get("message") or {},
         "usage": d.get("usage") or {},
         "finish_reason": choice.get("finish_reason"),
     }
+    error = choice.get("error") or d.get("error")
+    if error:
+        out["error"] = error
+    for src, dst in (("provider", "provider"), ("id", "response_id"), ("model", "model")):
+        if d.get(src):
+            out[dst] = d[src]
+    return out
+
+
+def response_health(resp: dict[str, Any]) -> tuple[str, str | None]:
+    """Classify a normalised response by the provider's own signals.
+
+    Returns (health, detail). Health:
+        "ok"             — a real turn; safe to append to history.
+        "provider_error" — the provider says generation failed (`error` object
+                           or `finish_reason: "error"`). Any partial payload
+                           (e.g. a truncated reasoning trace) is corrupt — it
+                           must not become a conversation turn.
+        "empty"          — nothing at all came back (no content, no tool calls,
+                           no reasoning). Observed as OpenRouter 200s with zero
+                           usage during warm-up/scale-up windows.
+
+    The provider signals are checked *before* any shape heuristic. The
+    2026-06-10 incident (session 20260610-100626-8c0142) is the cautionary
+    tale: a `finish_reason: "error"` turn carrying partial reasoning passed a
+    shape-only empty check, poisoned the history, and drew a false "you went
+    quiet" nudge. Health is the provider's word, not the message's silhouette.
+    """
+    error = resp.get("error")
+    if error:
+        msg = error.get("message") if isinstance(error, dict) else None
+        return "provider_error", str(msg or error)
+    if resp.get("finish_reason") == "error":
+        return "provider_error", "finish_reason=error (provider failed mid-generation)"
+    if _is_empty_message(resp.get("message") or {}):
+        return "empty", "no content, no tool calls, no reasoning"
+    return "ok", None
+
+
+def _is_empty_message(msg: dict[str, Any]) -> bool:
+    """A message with *nothing* in it — no tool calls, no content, no reasoning.
+
+    Distinct from a turn that goes quiet with prose (content present, no tool
+    call) — that is a real turn and routes to the loop's no-case nudge.
+    """
+    if msg.get("tool_calls"):
+        return False
+    if (msg.get("content") or "").strip():
+        return False
+    if msg.get("reasoning_details"):
+        return False
+    if isinstance(msg.get("reasoning"), str) and msg["reasoning"].strip():
+        return False
+    return True

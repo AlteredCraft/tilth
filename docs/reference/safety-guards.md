@@ -8,10 +8,10 @@ Tilth runs autonomously for an hour or two at a time, against a real workspace, 
 - **Wall-clock cap per run** (default `120` minutes, env: `TILTH_MAX_WALL_CLOCK_MINUTES`).
 - **Token cap per session** (default `2,000,000`, env: `TILTH_MAX_TOKENS`).
 - **Optional evaluator-call cap per task** (default `0` = off, env: `MAX_EVALUATOR_CALLS_PER_TASK`).
-- **Empty-response abort.** Three consecutive empty model responses (provider hiccup — no content, tool calls, or reasoning) abort the task with reason `empty_responses` and halt the run. Retried with backoff first. Worth a guard because empty turns cost no tokens, so the token cap never catches the spin. Fixed at 3; no env knob.
+- **Provider-health gate.** Every model call is checked against the provider's own health signals (`error` object, `finish_reason: "error"`, or a completely empty body). Unhealthy responses never enter the conversation — they're retried with the history untouched (exponential backoff, 8 attempts ≈ 3 minutes of patience). Exhaustion aborts the task with reason `provider_failure` and halts the run, but leaves the session resumable (`tilth resume` retries the task). Worth a guard because unhealthy turns can cost no tokens, so the token cap never catches a bad endpoint. Fixed policy; no env knob.
 - **No-case circuit breaker.** A worker that keeps going quiet without calling `submit_case` is nudged up to 3 times, then the task aborts with reason `no_case` and the run halts. Fixed at 3; no env knob.
 
-The full mental model — which cap operates at which layer, how they interact, and what happens on a hit — lives in [How the caps fit together](../deep-dives/caps.md). The empty-response and no-case backstops above are additional run-halting outcomes beyond the four caps.
+The full mental model — which cap operates at which layer, how they interact, and what happens on a hit — lives in [How the caps fit together](../deep-dives/caps.md). The provider-health and no-case backstops above are additional run-halting outcomes beyond the four caps.
 
 ## Pre-tool veto
 

@@ -27,6 +27,16 @@ Event types:
                          Every model-calling site emits this — evaluator calls
                          also carry `attempt` (1 or 2) to pair retries with their
                          `evaluator_parse_error`.
+                         Provider-health fields (every call routes through
+                         loop._chat_healthy): `health` ("ok" | "provider_error"
+                         | "empty" — see client.response_health), `call_attempt`
+                         (1..PROVIDER_RETRY_MAX_ATTEMPTS; >1 means the prior
+                         attempt was unhealthy and was retried with the history
+                         untouched), and, when present in the response: `model`,
+                         `provider`, `response_id`, `health_detail` (the
+                         provider's error message), `retry_backoff_seconds`
+                         (on unhealthy attempts that will be retried). Unhealthy
+                         calls never become conversation turns.
     tool_call          — a tool invocation by the model. Worktree tools route
                          through tools.dispatch; the worker's `submit_case`
                          (Phase 3) is a control-flow done-signal intercepted in
@@ -92,29 +102,36 @@ Event types:
                          ledger/<task_id>.jsonl, not in this event. The `case`
                          field is the worker's submitted case (Phase 3), or null
                          on the parse-failure fallback path.
-    empty_model_response
-                       — the model returned an empty turn (no content, no tool
-                         calls, no reasoning) — a provider hiccup, not the worker
-                         going quiet. Payload: {iter, streak, finish_reason,
-                         prompt_tokens, eval_tokens}. The loop retries with
-                         backoff; a sustained streak aborts the task with
-                         `task_failed` reason `empty_responses`.
+    nudge              — the harness injected a corrective user message into the
+                         worker's conversation. Payload: {iter, kind ("no_case"),
+                         streak, content}. Logged so the message history the
+                         model saw is reconstructable from this file — without
+                         it the next model_call looks like a reply to nothing.
     task_done          — task accepted (the evaluator accepted the case + diff)
     task_failed        — task could not be completed; payload.reason ∈
-                         {iter_cap, evaluator_cap, empty_responses, no_case}
+                         {iter_cap, evaluator_cap, provider_failure, no_case}.
+                         `provider_failure` carries `call_attempts` and means
+                         the endpoint never produced a healthy response within
+                         the retry budget — the session stays resumable.
     commit             — a completed task's work was committed to the session
                          branch (after task_done). Payload: {task_id, trace_id,
                          sha}. Emitted only on the success path; the FAILED
                          commit path does not log this.
     context_reset      — beginning of a new task; messages rebuilt from disk
     session_start      — fresh session began (worktree created). Payload carries
-                         {source, phase: "run", worktree, branch}; summary.py
-                         keys `started_at` off this.
+                         {source, phase: "run", worktree, branch, worker_model,
+                         evaluator_model, base_url}; summary.py keys
+                         `started_at` off this. The model/endpoint config is
+                         recorded so "what ran" is answerable from the log
+                         alone, not from whatever .env says later.
     session_resume     — resume woke a session; payload carries the resume plan
                          (which failed tasks were retried, FAILED commit unwound, etc.)
     stop               — run terminated; payload.reason ∈
                          {all_done, wall_clock, token_cap, iter_cap, evaluator_cap,
-                         empty_responses, no_case, interrupted, error}
+                         provider_failure, no_case, interrupted, error}.
+                         provider_failure leaves the session status `running`
+                         (resumable), like wall_clock/token_cap — see
+                         loop._stop_to_status.
 
 Per-task observability fields:
     trace_id           — 32-hex (OTel-shape), constant for the whole task. Lets

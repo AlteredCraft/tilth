@@ -34,15 +34,17 @@ Each iteration is **exactly one worker `client.chat()` call**, plus whatever the
 
 1. **Model calls worktree tools** (`bash`, `read_file`, `edit_file`, …). Harness executes them (with `pre_tool` hook gating), appends results as tool messages, `continue` to next iteration.
 2. **Model calls `submit_case`** (its done-signal — see [The worker↔evaluator dialogue](worker-evaluator-dialogue.md)). The worker presents a structured case (summary + AC→`file:symbol` mapping + work-arounds + uncertainties). The harness hands the case + diff straight to the evaluator — there is no codified validator step; **the evaluator is the only gate**. Evaluator accepts → `return "done"`. Evaluator rejects → the structured reject is returned as the `submit_case` tool_result, fall through to next iteration.
-3. **Model goes quiet without a case** — no tool calls and no `submit_case`. Not "done": the harness nudges it to submit one, and after `MAX_CONSECUTIVE_NO_CASE_NUDGES` (3) quiet turns in a row gives up → `return "no_case"`.
-4. **Provider returns an empty turn** — no content, no tool calls, no reasoning (a provider hiccup, not the worker stopping). Retried with backoff; after `EMPTY_RESPONSE_RETRY_LIMIT` (3) in a row → `return "empty_responses"`.
-5. **Loop falls off the end** — N iterations consumed, the worker still hasn't submitted a case the evaluator accepts → `return "iter_cap"`. The task is marked `failed` (in `task-status.json`), the run halts.
+3. **Model goes quiet without a case** — no tool calls and no `submit_case`. Not "done": the harness nudges it to submit one (each nudge logged as a `nudge` event), and after `MAX_CONSECUTIVE_NO_CASE_NUDGES` (3) quiet turns in a row gives up → `return "no_case"`.
+4. **Loop falls off the end** — N iterations consumed, the worker still hasn't submitted a case the evaluator accepts → `return "iter_cap"`. The task is marked `failed` (in `task-status.json`), the run halts.
+
+There's a step *before* the branches: every chat call (worker and evaluator) routes through a provider-health gate (`loop._chat_healthy`). A response the provider itself marks unhealthy — an `error` object, `finish_reason: "error"`, or a completely empty body — **never becomes a conversation turn**. It's retried with the message history untouched (exponential backoff, `PROVIDER_RETRY_MAX_ATTEMPTS` (8) attempts ≈ 3 minutes of patience), doesn't consume an iteration, and is never mistaken for the worker going quiet. If the budget is exhausted → `return "provider_failure"` — the task is marked `failed` but the session status stays `running`, so `tilth resume` retries it. Health is judged by the provider's signals, not by what the message happens to contain: a partial errored generation can still carry a truncated reasoning trace, and echoing that back as history is exactly the poisoning this gate exists to prevent.
 
 ## What does and doesn't count as an iteration
 
 | Action | Counts as an iteration? |
 |---|---|
 | Worker model call (any of the branches above) | **Yes** — one per iteration |
+| Provider-health retry (unhealthy response) | No — retried inside the same iteration; provider noise doesn't drain the budget |
 | Tool execution (bash, file ops, etc.) | No — runs as part of an iteration |
 | Evaluator model call | **No** — separate call, not an iteration |
 | Evaluator rejection feedback round | Yes — the next worker call to address it is iteration N+1 |
@@ -66,11 +68,12 @@ There is also an *optional* second cap that bounds the same failure mode from th
 
 ```mermaid
 flowchart TD
-  start([task starts: iter = 0, evaluator_calls = 0]) --> chat[worker chat call<br/>iter += 1]
-  chat --> empty{empty turn?}
-  empty -- yes, 3rd in a row --> efail([return empty_responses])
-  empty -- yes, retry w/ backoff --> chat
-  empty -- no --> kind{submit_case?}
+  start([task starts: iter = 0, evaluator_calls = 0]) --> iter[iter += 1]
+  iter --> chat[worker chat call]
+  chat --> health{provider says<br/>healthy?}
+  health -- "no: retry w/ backoff<br/>(history untouched, iter unchanged)" --> chat
+  health -- no, 8 attempts exhausted --> pfail([return provider_failure<br/>session stays resumable])
+  health -- yes --> kind{submit_case?}
   kind -- "no (worktree tools)" --> exec[execute tools<br/>append results]
   exec --> capcheck
   kind -- "no (quiet)" --> nudge{3rd quiet turn<br/>in a row?}
@@ -83,7 +86,7 @@ flowchart TD
   jcap -- yes --> jfail([return evaluator_cap])
   jcap -- no --> jfb[reject feedback →<br/>submit_case tool_result]
   jfb --> capcheck{iter ≥<br/>MAX_ITERATIONS_PER_TASK?}
-  capcheck -- no --> chat
+  capcheck -- no --> iter
   capcheck -- yes --> ifail([return iter_cap])
 ```
 
@@ -91,7 +94,7 @@ flowchart TD
 
 The verdict is a structured `submit_verdict` tool call — `accept`/`reject` plus, on reject, a `rejection_category` (one of six), a concern, evidence pointers, and a concrete `next_step` that becomes the worker-visible reject feedback. See [The worker↔evaluator dialogue](worker-evaluator-dialogue.md). (A `submit_case` that can't be parsed doesn't reach the evaluator at all — the parse error goes back as the tool_result and the worker retries; it costs an iteration but not an evaluator call.)
 
-Four halt-with-failure exits (`iter_cap`, `evaluator_cap`, `empty_responses`, `no_case`), one halt-with-success exit (`done`). All failure exits mark the task `failed`, log a `task_failed` event with the matching `reason`, and stop the Ralph loop — `tilth resume` flips them back to pending and unwinds the FAILED placeholder commit, so none is destructive.
+Four halt-with-failure exits (`iter_cap`, `evaluator_cap`, `provider_failure`, `no_case`), one halt-with-success exit (`done`). All failure exits mark the task `failed`, log a `task_failed` event with the matching `reason`, and stop the Ralph loop — `tilth resume` flips them back to pending and unwinds the FAILED placeholder commit, so none is destructive. They differ in what they say about the session: `iter_cap` / `evaluator_cap` / `no_case` mark the session status `failed` (the *work* got stuck), while `provider_failure` leaves it `running` (the *endpoint* had a bad window — nothing about the work is wrong, resume and retry).
 
 ## Worst-case tokens per task
 

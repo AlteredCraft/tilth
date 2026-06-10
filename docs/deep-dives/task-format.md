@@ -65,7 +65,7 @@ The authored files are **read-only inputs**; there is no `status` field in them 
 }
 ```
 
-A task absent from the map is `pending`. The loop overlays this map onto the static task list each pass (`loop.py:_overlay_status`) to get the runtime view; `_next_pending` picks the first `pending` entry — that's the whole scheduling algorithm. Two transitions: `pending → done` (evaluator accepted, commit landed) and `pending → failed` (a terminal task outcome: `iter_cap`, `evaluator_cap`, `empty_responses`, or `no_case`). Wall-clock and token caps and interrupts stop *between* tasks — they leave every task's status untouched and the session resumable.
+A task absent from the map is `pending`. The loop overlays this map onto the static task list each pass (`loop.py:_overlay_status`) to get the runtime view; `_next_pending` picks the first `pending` entry — that's the whole scheduling algorithm. Two transitions: `pending → done` (evaluator accepted, commit landed) and `pending → failed` (a task-halting outcome: `iter_cap`, `evaluator_cap`, `provider_failure`, or `no_case`). Wall-clock and token caps and interrupts stop *between* tasks — they leave every task's status untouched and the session resumable. (`provider_failure` marks the *task* failed but leaves the *session* status `running` — the endpoint misbehaved, not the work.)
 
 This split has a practical consequence: **the task content is re-read from your repo on every pass and on every resume.** You can sharpen a task description between a failed run and its `tilth resume`, and the retry sees the new text — the harness state only remembers *which* tasks are done, not what they said.
 

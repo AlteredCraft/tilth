@@ -41,6 +41,7 @@ from tilth.client import (
     LLMClient,
     TilthConfig,
     assistant_history_message,
+    response_health,
 )
 from tilth.session import Session, iter_events
 from tilth.tasks import TasksError
@@ -104,34 +105,25 @@ WORKER_NO_CASE_NUDGE = (
     "working with the other tools."
 )
 
-# Robustness backstops for the worker loop. A provider that returns empty
-# responses (no content, no tool calls — observed: OpenRouter 200s with zero
-# usage) must not be mistaken for a worker that went quiet, or the loop nudges a
-# dead endpoint until the iteration cap. And a worker that genuinely keeps going
-# quiet shouldn't burn the whole iteration budget either.
-EMPTY_RESPONSE_RETRY_LIMIT = 3  # consecutive empty responses before aborting the task
-EMPTY_RESPONSE_BACKOFF_SECONDS = 2  # base backoff between empty-response retries (scaled by streak)
+# Provider-health retry policy. A call whose response the provider itself marks
+# unhealthy (see client.response_health) is retried with the message history
+# untouched — an unhealthy response never becomes a conversation turn, never
+# burns an iteration, and never routes to the no-case nudge (which would be a
+# false accusation injected into the worker's context). Patience is sized to
+# the documented failure: OpenRouter describes empty/no-content 200s as
+# warm-up/scale-up transients lasting seconds-to-minutes, so the budget is
+# ~3 minutes per logical call (2,4,8,16,32,60,60s), not a handful of seconds.
+# Exhaustion stops the run with reason `provider_failure` — a *resumable* stop
+# (status stays `running`, like token_cap), because nothing about the work is
+# wrong; `tilth resume` retries the task.
+PROVIDER_RETRY_MAX_ATTEMPTS = 8
+PROVIDER_RETRY_BACKOFF_CAP_SECONDS = 60
+
 MAX_CONSECUTIVE_NO_CASE_NUDGES = 3  # consecutive no-case turns before aborting the task
 
 
-def _is_empty_response(msg: dict[str, Any]) -> bool:
-    """A model turn that produced *nothing* — no tool calls, no content, no
-    reasoning. The signature of a provider hiccup, not a deliberate stop.
-
-    Distinct from a worker that goes quiet *with* a prose summary (content
-    present, no tool call) — that still routes to the no-case nudge. Echoing an
-    empty turn back into the history appends a role-less `{}` message that
-    poisons every subsequent request, so the caller skips the append and retries.
-    """
-    if msg.get("tool_calls"):
-        return False
-    if (msg.get("content") or "").strip():
-        return False
-    if msg.get("reasoning_details"):
-        return False
-    if isinstance(msg.get("reasoning"), str) and msg["reasoning"].strip():
-        return False
-    return True
+def _provider_backoff(attempt: int) -> int:
+    return min(2 ** attempt, PROVIDER_RETRY_BACKOFF_CAP_SECONDS)
 
 
 def _partition_worker_tool_calls(
@@ -172,40 +164,75 @@ def _answer_case_calls(
         )
 
 
-def _log_model_call(
+def _chat_healthy(
+    client: LLMClient,
     session: Session,
+    messages: list[dict[str, Any]],
     *,
-    phase: str,
-    msg: dict[str, Any],
-    resp: dict[str, Any],
+    tools: list[dict[str, Any]] | None = None,
+    model: str | None = None,
     base: dict[str, Any],
-) -> None:
-    """Emit a `model_call` event for a non-worker model call.
+) -> dict[str, Any] | None:
+    """The single model-calling site: chat until the provider returns a healthy
+    turn, or exhaust the retry budget. Returns the healthy normalised response,
+    or None on exhaustion. Never mutates `messages` — an unhealthy response
+    must not leave a trace in the conversation.
 
-    Mirrors the worker loop's inline model_call payload (tokens, finish_reason,
-    reasoning round-trip) so every model-calling site in the system is
-    observable the same way. `phase` tags which actor made the call
-    (`evaluator`); the worker omits phase by convention.
-    Call AFTER `session.add_tokens` so `tokens_used_total` is post-increment,
-    matching the worker.
+    Health comes from `client.response_health` (the provider's own signals:
+    `error` object, `finish_reason` — shape-emptiness last), not from what the
+    message happens to contain. Every attempt emits a `model_call` event
+    carrying `health`, `call_attempt`, and the provider evidence (`model`,
+    `provider`, `response_id`, `error`) so a post-run reader can see exactly
+    what the endpoint did. Tokens are recorded per attempt, before the event,
+    so `tokens_used_total` is post-increment.
     """
-    usage = resp.get("usage") or {}
-    payload: dict[str, Any] = {
-        **base,
-        "phase": phase,
-        "prompt_tokens": int(usage.get("prompt_tokens") or 0),
-        "eval_tokens": int(usage.get("completion_tokens") or 0),
-        "tokens_used_total": session.tokens_used,
-    }
-    if finish_reason := resp.get("finish_reason"):
-        payload["finish_reason"] = finish_reason
-    if reasoning_details := msg.get("reasoning_details"):
-        payload["reasoning_details"] = reasoning_details
-    else:
-        reasoning = msg.get("reasoning")
-        if isinstance(reasoning, str) and reasoning.strip():
-            payload["reasoning"] = reasoning
-    session.log("model_call", payload)
+    for attempt in range(1, PROVIDER_RETRY_MAX_ATTEMPTS + 1):
+        resp = client.chat(messages, tools=tools, model=model)
+        usage = resp.get("usage") or {}
+        prompt_tokens = int(usage.get("prompt_tokens") or 0)
+        eval_tokens = int(usage.get("completion_tokens") or 0)
+        session.add_tokens(prompt_tokens + eval_tokens)
+
+        health, detail = response_health(resp)
+        msg = resp.get("message") or {}
+        payload: dict[str, Any] = {
+            **base,
+            "call_attempt": attempt,
+            "prompt_tokens": prompt_tokens,
+            "eval_tokens": eval_tokens,
+            "tokens_used_total": session.tokens_used,
+            "health": health,
+        }
+        if finish_reason := resp.get("finish_reason"):
+            payload["finish_reason"] = finish_reason
+        for key in ("model", "provider", "response_id"):
+            if resp.get(key):
+                payload[key] = resp[key]
+        if detail:
+            payload["health_detail"] = detail
+        if reasoning_details := msg.get("reasoning_details"):
+            payload["reasoning_details"] = reasoning_details
+        else:
+            reasoning = msg.get("reasoning")
+            if isinstance(reasoning, str) and reasoning.strip():
+                payload["reasoning"] = reasoning
+
+        if health == "ok":
+            session.log("model_call", payload)
+            return resp
+
+        backoff = _provider_backoff(attempt) if attempt < PROVIDER_RETRY_MAX_ATTEMPTS else None
+        if backoff is not None:
+            payload["retry_backoff_seconds"] = backoff
+        session.log("model_call", payload)
+        if backoff is None:
+            break
+        console.print(
+            f"[yellow]unhealthy model response ({health}: {detail}); "
+            f"retry {attempt}/{PROVIDER_RETRY_MAX_ATTEMPTS - 1} in {backoff}s[/yellow]"
+        )
+        time.sleep(backoff)
+    return None
 
 
 def _raw_tool_calls(msg: dict[str, Any], cap: int) -> list[dict[str, Any]]:
@@ -296,7 +323,7 @@ def _evaluator_task(
     span_id: str,
     case: dict[str, Any] | None = None,
     overview: str | None = None,
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
     """Call the evaluator in a fresh context. Returns a structured verdict.
 
     Shape: `{verdict, rejection_category, concern, evidence, next_step}`
@@ -304,6 +331,9 @@ def _evaluator_task(
     produced a parseable `submit_verdict` call. The fallback verdict is
     `reject` so the loop keeps moving (and the operator sees the parse
     failure via `evaluator_parse_error` events).
+
+    Returns None on provider failure — no verdict event, no ledger entry;
+    the caller aborts the task as `provider_failure` (resumable).
     """
     diff = ws.task_diff(worktree)
     if len(diff) > JUDGE_DIFF_MAX_CHARS:
@@ -378,6 +408,8 @@ def _evaluator_task(
         span_id=span_id,
         iter_n=iter_n,
     )
+    if verdict is None:
+        return None
 
     session.log(
         "evaluator_verdict",
@@ -430,7 +462,7 @@ def _call_evaluator_with_retry(
     trace_id: str,
     span_id: str,
     iter_n: int,
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
     """Two-attempt tool-call loop with parse-error feedback between attempts.
 
     Attempt 1: send the assembled prompt. Parse the assistant message via
@@ -441,34 +473,32 @@ def _call_evaluator_with_retry(
     content, and retry the call. If still bad → synthesise a fallback
     reject verdict so the loop survives; `parse_failed: True` makes the
     failure visible to summary/visualizer consumers.
+
+    Returns None on provider failure (no healthy response within the retry
+    budget) — distinct from the parse-failure fallback: a provider outage must
+    not be recorded as a reject verdict in the task's ledger.
     """
     last_err = ""
     for attempt in (1, 2):
-        resp = client.chat(
+        resp = _chat_healthy(
+            client,
+            session,
             messages,
             model=client.config.evaluator_model,
             tools=[SUBMIT_VERDICT_TOOL],
-        )
-        usage = resp.get("usage") or {}
-        prompt_tokens = int(usage.get("prompt_tokens") or 0)
-        eval_tokens = int(usage.get("completion_tokens") or 0)
-        session.add_tokens(prompt_tokens + eval_tokens)
-
-        msg = resp.get("message") or {}
-        _log_model_call(
-            session,
-            phase="evaluator",
-            msg=msg,
-            resp=resp,
             base={
                 "task_id": task_id,
                 "trace_id": trace_id,
                 "span_id": span_id,
                 "iter": iter_n + 1,
                 "attempt": attempt,
+                "phase": "evaluator",
             },
         )
+        if resp is None:
+            return None
 
+        msg = resp.get("message") or {}
         verdict, err = parse_verdict(msg)
         if err is None:
             assert verdict is not None
@@ -694,17 +724,18 @@ def _run_task(
     prd: list[dict[str, Any]],
     overview: str | None = None,
 ) -> str:
-    """Run one task. Returns 'done', 'iter_cap', 'evaluator_cap', 'empty_responses',
-    or 'no_case'.
+    """Run one task. Returns 'done', 'iter_cap', 'evaluator_cap',
+    'provider_failure', or 'no_case'.
 
     A task is 'done' only when the worker calls `submit_case` (its done-signal)
     AND the evaluator accepts. Rejects are fed back as the submit_case
     tool_result; the worker gets another iteration. There is no codified
     validator gate — the evaluator is the only gate. Stopping without a case
     nudges it to submit one — but only up to `MAX_CONSECUTIVE_NO_CASE_NUDGES` in
-    a row (→ 'no_case'). An empty model response (provider hiccup) is retried
-    with backoff up to `EMPTY_RESPONSE_RETRY_LIMIT` (→ 'empty_responses'); it is
-    not mistaken for the worker going quiet.
+    a row (→ 'no_case'). Provider-unhealthy responses (error finishes, empty
+    200s) are retried inside `_chat_healthy` with the history untouched; they
+    never become turns, never burn iterations, and are never mistaken for the
+    worker going quiet. Exhausting that budget → 'provider_failure' (resumable).
 
     `prd` is the full status-overlaid task list (built by `run()` from the
     static task set + the status store); the worker sees it as the feature plan.
@@ -755,83 +786,41 @@ def _run_task(
     ]
     tool_schemas = [*tools.schemas(), SUBMIT_CASE_TOOL]
     evaluator_calls = 0
-    empty_streak = 0
     no_case_streak = 0
 
     for iter_n in range(client.config.max_iterations_per_task):
         iter_span = _span_id()
         console.print(f"[dim]task {task['id']}  iter {iter_n + 1}[/dim]")
-        resp = client.chat(messages, tools=tool_schemas)
-
-        usage = resp.get("usage") or {}
-        prompt_tokens = int(usage.get("prompt_tokens") or 0)
-        eval_tokens = int(usage.get("completion_tokens") or 0)
-        session.add_tokens(prompt_tokens + eval_tokens)
-
-        msg = resp.get("message") or {}
-        model_call_payload: dict[str, Any] = {
-            "task_id": task["id"],
-            "trace_id": trace_id,
-            "span_id": iter_span,
-            "iter": iter_n + 1,
-            "prompt_tokens": prompt_tokens,
-            "eval_tokens": eval_tokens,
-            "tokens_used_total": session.tokens_used,
-        }
-        if finish_reason := resp.get("finish_reason"):
-            model_call_payload["finish_reason"] = finish_reason
-        if reasoning_details := msg.get("reasoning_details"):
-            model_call_payload["reasoning_details"] = reasoning_details
-        else:
-            reasoning = msg.get("reasoning")
-            if isinstance(reasoning, str) and reasoning.strip():
-                model_call_payload["reasoning"] = reasoning
-        session.log("model_call", model_call_payload)
-
-        # Empty model response (no content, no tool calls, no reasoning) — a
-        # provider hiccup, not the worker going quiet. Don't append it (a
-        # role-less `{}` message poisons every later request) and don't route it
-        # to the no-case nudge (which spins forever on a dead endpoint). Retry
-        # with backoff; abort the task with a clear reason if it persists.
-        if _is_empty_response(msg):
-            empty_streak += 1
+        resp = _chat_healthy(
+            client,
+            session,
+            messages,
+            tools=tool_schemas,
+            base={
+                "task_id": task["id"],
+                "trace_id": trace_id,
+                "span_id": iter_span,
+                "iter": iter_n + 1,
+            },
+        )
+        if resp is None:
+            console.print(
+                f"[red]task {task['id']} aborting: provider returned no healthy "
+                f"response in {PROVIDER_RETRY_MAX_ATTEMPTS} attempts[/red]"
+            )
             session.log(
-                "empty_model_response",
+                "task_failed",
                 {
                     "task_id": task["id"],
                     "trace_id": trace_id,
                     "span_id": iter_span,
-                    "iter": iter_n + 1,
-                    "streak": empty_streak,
-                    "finish_reason": resp.get("finish_reason"),
-                    "prompt_tokens": prompt_tokens,
-                    "eval_tokens": eval_tokens,
+                    "reason": "provider_failure",
+                    "call_attempts": PROVIDER_RETRY_MAX_ATTEMPTS,
                 },
             )
-            if empty_streak >= EMPTY_RESPONSE_RETRY_LIMIT:
-                console.print(
-                    f"[red]task {task['id']} aborting: {empty_streak} consecutive "
-                    f"empty model responses (provider issue?)[/red]"
-                )
-                session.log(
-                    "task_failed",
-                    {
-                        "task_id": task["id"],
-                        "trace_id": trace_id,
-                        "span_id": iter_span,
-                        "reason": "empty_responses",
-                        "streak": empty_streak,
-                    },
-                )
-                return "empty_responses"
-            console.print(
-                f"[yellow]task {task['id']} empty model response "
-                f"({empty_streak}/{EMPTY_RESPONSE_RETRY_LIMIT}); retrying[/yellow]"
-            )
-            time.sleep(EMPTY_RESPONSE_BACKOFF_SECONDS * empty_streak)
-            continue
-        empty_streak = 0
+            return "provider_failure"
 
+        msg = resp.get("message") or {}
         messages.append(assistant_history_message(msg))
 
         tool_calls = msg.get("tool_calls") or []
@@ -934,6 +923,21 @@ def _run_task(
                 f"[yellow]task {task['id']} stopped without submit_case; "
                 f"nudging ({no_case_streak}/{MAX_CONSECUTIVE_NO_CASE_NUDGES})[/yellow]"
             )
+            # Logged so events.jsonl can faithfully reconstruct the message
+            # history the worker saw — an unlogged injection makes the next
+            # model_call look like a spontaneous reply to nothing.
+            session.log(
+                "nudge",
+                {
+                    "task_id": task["id"],
+                    "trace_id": trace_id,
+                    "span_id": iter_span,
+                    "iter": iter_n + 1,
+                    "kind": "no_case",
+                    "streak": no_case_streak,
+                    "content": WORKER_NO_CASE_NUDGE,
+                },
+            )
             messages.append({"role": "user", "content": WORKER_NO_CASE_NUDGE})
             continue
 
@@ -976,6 +980,22 @@ def _run_task(
             task, worktree, client, session, iter_n, trace_id, iter_span,
             case=case, overview=overview,
         )
+        if verdict is None:
+            console.print(
+                f"[red]task {task['id']} aborting: provider returned no healthy "
+                f"response during evaluation[/red]"
+            )
+            session.log(
+                "task_failed",
+                {
+                    "task_id": task["id"],
+                    "trace_id": trace_id,
+                    "span_id": iter_span,
+                    "reason": "provider_failure",
+                    "call_attempts": PROVIDER_RETRY_MAX_ATTEMPTS,
+                },
+            )
+            return "provider_failure"
         evaluator_calls += 1
         concern = (verdict.get("concern") or "").strip()
         if verdict["verdict"] == "accept":
@@ -1032,17 +1052,20 @@ def _stop_reason(client: LLMClient, session: Session) -> str | None:
 
 
 _TERMINAL_FAILURE_STOPS = frozenset(
-    {"iter_cap", "evaluator_cap", "empty_responses", "no_case", "error"}
+    {"iter_cap", "evaluator_cap", "no_case", "error"}
 )
 
 
 def _stop_to_status(reason: str) -> str:
     """Map a `stop` reason to the resulting session status.
 
-    `all_done` is terminal-success; iter_cap / evaluator_cap / empty_responses /
-    no_case / error are terminal-failure; everything else (wall_clock,
-    token_cap, interrupted) leaves the session `running` — those are stops the
-    user can resume from.
+    `all_done` is terminal-success; iter_cap / evaluator_cap / no_case / error
+    are terminal-failure; everything else (wall_clock, token_cap,
+    provider_failure, interrupted) leaves the session `running` — those are
+    stops the user can resume from. provider_failure is deliberately in the
+    resumable bucket: it says nothing about the work, only that the endpoint
+    had a bad window — the most transient stop must not get the most terminal
+    label (the 2026-06-10 session was marked failed over a ~1-minute blip).
     """
     if reason == "all_done":
         return "all_done"
@@ -1108,11 +1131,13 @@ def run(
             elif outcome == "evaluator_cap":
                 cap = client.config.max_evaluator_calls_per_task
                 detail = f" [MAX_EVALUATOR_CALLS_PER_TASK={cap}]"
-            elif outcome == "empty_responses":
+            elif outcome == "provider_failure":
                 detail = (
-                    " — the model endpoint returned empty responses; this is "
-                    "usually a provider or rate-limit hiccup. Check your "
-                    "provider status and re-run."
+                    " — the model endpoint kept returning errors or empty "
+                    "responses (usually a provider or rate-limit window). "
+                    "The session stays resumable: `tilth resume` retries the "
+                    "task; the model_call events carry the provider's error "
+                    "details."
                 )
             elif outcome == "no_case":
                 detail = (
@@ -1311,7 +1336,17 @@ def do_run_cmd(workspace: Path) -> int:
     session.set_status("running")
     session.log(
         "session_start",
-        {"source": str(source), "phase": "run", "worktree": str(worktree), "branch": branch},
+        {
+            "source": str(source),
+            "phase": "run",
+            "worktree": str(worktree),
+            "branch": branch,
+            # Which models ran should be answerable from the log alone, not
+            # from whatever .env happens to say later.
+            "worker_model": config.worker_model,
+            "evaluator_model": config.evaluator_model,
+            "base_url": config.base_url,
+        },
     )
     console.print(
         f"[dim]loaded {len(static_tasks)} task(s) from {tasks.tasks_dir(source)}[/dim]"

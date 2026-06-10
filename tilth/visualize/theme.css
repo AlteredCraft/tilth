@@ -133,6 +133,10 @@ header.page-head .count {
   border-radius: 999px;
   font-weight: 600;
 }
+.meta-strip .badge-bad {
+  background: var(--bad-bg);
+  color: var(--bad);
+}
 .meta-strip .ts { margin-left: auto; }
 
 details.reasoning {
