@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from .render import render_events
+from .render import extract_facts, render_events
 from .theme import APP_PAGE, CSS, LIST_PAGE
 
 APP_JS_PATH = Path(__file__).parent / "app.js"
@@ -82,6 +82,49 @@ def read_new_events(path: Path, offset: int) -> tuple[list[dict[str, Any]], int]
     return events, offset + len(complete)
 
 
+def _read_last_event(path: Path) -> dict[str, Any] | None:
+    """The last complete event in the file, or None. Reads only the tail; a
+    partial trailing line (writer mid-append) or an over-long last line fails
+    the parse and yields None — callers treat that as "still flowing"."""
+    if not path.is_file():
+        return None
+    size = path.stat().st_size
+    if size == 0:
+        return None
+    start = max(0, size - 8192)
+    with path.open("rb") as f:
+        f.seek(start)
+        tail = f.read().decode("utf-8", errors="replace")
+    if start > 0:
+        nl = tail.find("\n")
+        if nl < 0:
+            return None
+        tail = tail[nl + 1:]
+    for line in reversed(tail.splitlines()):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            return None
+        return ev if isinstance(ev, dict) else None
+    return None
+
+
+def _status_label(session_dir: Path, status: str) -> str:
+    """Human-facing status. checkpoint.json keeps `running` for resumable
+    stops (interrupted, wall_clock, token_cap, provider_failure), so a session
+    whose log ends with a stop event is paused, not alive — say so."""
+    if status != "running":
+        return status
+    last = _read_last_event(session_dir / "events.jsonl")
+    if last and last.get("type") == "stop":
+        reason = (last.get("payload") or {}).get("reason") or "stopped"
+        return f"running ({reason})"
+    return "running"
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     if not path.is_file():
         return {}
@@ -95,17 +138,22 @@ def _read_json(path: Path) -> dict[str, Any]:
 def events_payload(
     session_dir: Path, offset: int, last_task: str | None
 ) -> dict[str, Any]:
-    """One polling response: new fragments + the cursor + live session state."""
+    """One polling response: new fragments + dashboard facts + the cursor +
+    live session state. `facts` (see render.extract_facts) cover exactly the
+    same events as `html`, so the client's charts and tail never drift."""
     events, new_offset = read_new_events(session_dir / "events.jsonl", offset)
     html_chunk, last_task = render_events(events, last_task or None)
     checkpoint = _read_json(session_dir / "checkpoint.json")
+    status = checkpoint.get("status") or "unknown"
     return {
         "session_id": session_dir.name,
         "html": html_chunk if events else "",
+        "facts": extract_facts(events),
         "n_new": len(events),
         "offset": new_offset,
         "last_task": last_task,
-        "status": checkpoint.get("status") or "unknown",
+        "status": status,
+        "status_label": _status_label(session_dir, status),
         "tokens_used": int(checkpoint.get("tokens_used") or 0),
     }
 
@@ -124,9 +172,11 @@ def list_sessions(root: Path) -> list[dict[str, Any]]:
         for t in (summary.get("tasks") or {}).values():
             status = t.get("status") if isinstance(t, dict) else None
             tasks[status if status in tasks else "pending"] += 1
+        row_status = checkpoint.get("status") or "unknown"
         rows.append({
             "id": d.name,
-            "status": checkpoint.get("status") or "unknown",
+            "status": row_status,
+            "status_label": _status_label(d, row_status),
             "tokens_used": int(checkpoint.get("tokens_used") or 0),
             "started_at": summary.get("started_at") or "",
             "last_event_at": summary.get("last_event_at") or "",
@@ -153,13 +203,14 @@ def _render_index(root: Path) -> str:
             cells.append(
                 '<a class="session-row" href="/session/{id}">'
                 '<span class="session-row-id">{id}</span>'
-                '<span class="chip chip-{status}">{status}</span>'
+                '<span class="chip chip-{status}">{label}</span>'
                 '<span class="meta">{tasks}</span>'
                 '<span class="meta">{tokens:,} tokens</span>'
                 '<span class="ts">{started}</span>'
                 "</a>".format(
                     id=html.escape(r["id"]),
                     status=html.escape(r["status"]),
+                    label=html.escape(r["status_label"]),
                     tasks=" · ".join(task_bits) or "—",
                     tokens=r["tokens_used"],
                     started=html.escape(r["started_at"]),

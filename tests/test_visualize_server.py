@@ -239,6 +239,45 @@ def test_events_payload_status_unknown_without_checkpoint(sessions_root: Path):
     assert p["status"] == "unknown" and p["n_new"] == 0
 
 
+# ---- status label: "running" in checkpoint.json means resumable, not alive --------
+#
+# The harness leaves status "running" for interrupted / wall_clock / token_cap /
+# provider_failure stops so the session can be resumed. The viewer must not
+# present those as live: when the log's last word is a stop event, the label
+# says so. The raw status still drives chip styling and poll cadence keys.
+
+
+def test_status_label_marks_paused_running_session(session_dir: Path):
+    _write_events(session_dir / "events.jsonl", [
+        {"ts": "2026-06-10T17:00:04Z", "type": "stop",
+         "payload": {"reason": "interrupted"}},
+    ])
+    p = events_payload(session_dir, 0, None)
+    assert p["status"] == "running"
+    assert p["status_label"] == "running (interrupted)"
+
+
+def test_status_label_plain_running_while_log_still_flowing(session_dir: Path):
+    # fixture's last event is task_done, not stop — the run is genuinely live
+    p = events_payload(session_dir, 0, None)
+    assert p["status_label"] == "running"
+
+
+def test_status_label_passes_terminal_status_through(session_dir: Path):
+    (session_dir / "checkpoint.json").write_text(json.dumps({"status": "all_done"}))
+    p = events_payload(session_dir, 0, None)
+    assert p["status_label"] == "all_done"
+
+
+def test_list_sessions_carries_status_label(sessions_root: Path, session_dir: Path):
+    _write_events(session_dir / "events.jsonl", [
+        {"ts": "2026-06-10T17:00:04Z", "type": "stop",
+         "payload": {"reason": "wall_clock"}},
+    ])
+    rows = list_sessions(sessions_root)
+    assert rows[0]["status_label"] == "running (wall_clock)"
+
+
 # ---- list_sessions -----------------------------------------------------------------
 
 def test_list_sessions_newest_first_with_state(sessions_root: Path):

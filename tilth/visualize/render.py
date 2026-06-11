@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import calendar
 import html
 import json
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -15,6 +17,10 @@ def render_events(
     rendering (the live server polling new lines) produces output identical to
     a one-shot render of the same events. Returns (html, last_task) — feed the
     returned `last_task` into the next chunk's call.
+
+    Each event fragment is wrapped in `<div class="msg" data-kind=…>` (see
+    `classify`) so the client can filter the tail without re-rendering. Task
+    dividers stay outside the wrappers — they survive every filter.
     """
     parts: list[str] = []
     for ev in events:
@@ -23,8 +29,113 @@ def render_events(
         if task_id and task_id != last_task:
             parts.append(_task_divider(task_id))
             last_task = task_id
-        parts.append(_render_event(ev))
+        kind, dialog, problem = classify(ev)
+        attrs = f' data-kind="{kind}"'
+        if dialog:
+            attrs += ' data-dialog="1"'
+        if problem:
+            attrs += ' data-problem="1"'
+        parts.append(f'<div class="msg"{attrs}>{_render_event(ev)}</div>')
     return "\n".join(parts), last_task
+
+
+def classify(ev: dict[str, Any]) -> tuple[str, bool, bool]:
+    """(kind, dialog, problem) for an event.
+
+    kind ∈ {worker, tool, evaluator, harness} — who authored the message:
+    worker actions (model calls, tool calls), environment responses (tool
+    results, blocks), the evaluator (its model calls and verdicts), or the
+    harness itself (cards, nudges, everything unrecognised). dialog marks the
+    worker↔evaluator case/verdict exchange; problem marks anything a "what
+    went wrong" view should surface.
+    """
+    typ = ev.get("type", "")
+    p = ev.get("payload") or {}
+    if typ == "model_call":
+        kind = "evaluator" if p.get("phase") == "evaluator" else "worker"
+        health = p.get("health")
+        return kind, False, health is not None and health != "ok"
+    if typ == "tool_call":
+        return "worker", p.get("tool") == "submit_case", False
+    if typ == "tool_result":
+        return "tool", False, False
+    if typ == "pre_tool_block":
+        return "tool", False, True
+    if typ == "evaluator_verdict":
+        return "evaluator", True, (p.get("verdict") or "").lower() != "accept"
+    if typ == "nudge":
+        return "harness", False, True
+    if typ == "task_failed":
+        return "harness", False, True
+    if typ == "stop":
+        return "harness", False, p.get("reason") != "all_done"
+    return "harness", False, False
+
+
+def extract_facts(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Compact dashboard facts for a chunk of events.
+
+    The client builds the stat band, timeline, and context-pressure chart
+    purely from these — same cursor, same chunks as the rendered HTML, so a
+    replayed dashboard is identical to a live-tailed one. Events that carry
+    nothing chartable (hook_run, prompt_assembled, …) or no parseable
+    timestamp produce no fact.
+    """
+    facts: list[dict[str, Any]] = []
+    for ev in events:
+        fact = _event_fact(ev)
+        if fact is not None:
+            facts.append(fact)
+    return facts
+
+
+def _epoch(ts: str) -> int | None:
+    try:
+        return calendar.timegm(time.strptime(ts, "%Y-%m-%dT%H:%M:%SZ"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _event_fact(ev: dict[str, Any]) -> dict[str, Any] | None:
+    t = _epoch(ev.get("ts") or "")
+    if t is None:
+        return None
+    typ = ev.get("type", "")
+    p = ev.get("payload") or {}
+    task = p.get("task_id")
+    if typ == "model_call":
+        return {
+            "e": "model", "t": t, "task": task, "iter": p.get("iter"),
+            "pt": int(p.get("prompt_tokens") or 0),
+            "et": int(p.get("eval_tokens") or 0),
+            "phase": "evaluator" if p.get("phase") == "evaluator" else "worker",
+            "health": p.get("health") or "ok",
+        }
+    if typ == "tool_call":
+        return {"e": "tool", "t": t, "task": task, "tool": p.get("tool") or ""}
+    if typ == "pre_tool_block":
+        return {"e": "block", "t": t, "task": task, "tool": p.get("tool") or ""}
+    if typ == "evaluator_verdict":
+        return {
+            "e": "verdict", "t": t, "task": task,
+            "verdict": (p.get("verdict") or "").lower(),
+            "category": p.get("rejection_category"),
+        }
+    if typ in ("task_done", "task_failed"):
+        fact = {
+            "e": "task_end", "t": t, "task": task,
+            "status": "done" if typ == "task_done" else "failed",
+        }
+        if typ == "task_failed":
+            fact["reason"] = p.get("reason") or ""
+        return fact
+    if typ == "commit":
+        return {"e": "commit", "t": t, "task": task}
+    if typ == "session_start":
+        return {"e": "start", "t": t}
+    if typ == "stop":
+        return {"e": "stop", "t": t, "reason": p.get("reason") or ""}
+    return None
 
 
 def _render_event(ev: dict[str, Any]) -> str:

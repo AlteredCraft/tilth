@@ -33,8 +33,73 @@ APP_PAGE = """<!DOCTYPE html>
       <span class="chip" id="chip-count"></span>
     </div>
   </header>
+  <section class="stat-band" id="stat-band" hidden>
+    <div class="stat">
+      <div class="stat-label">Tokens</div>
+      <div class="stat-value" id="stat-tokens">—</div>
+      <div class="split-bar" id="stat-tokens-bar"></div>
+      <div class="stat-sub" id="stat-tokens-sub"></div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Model calls</div>
+      <div class="stat-value" id="stat-calls">—</div>
+      <div class="stat-sub" id="stat-calls-sub"></div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Tool calls</div>
+      <div class="stat-value" id="stat-tools">—</div>
+      <div class="stat-sub" id="stat-tools-sub"></div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Verdicts</div>
+      <div class="stat-value" id="stat-verdicts">—</div>
+      <div class="stat-sub" id="stat-verdicts-sub"></div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Hook blocks</div>
+      <div class="stat-value" id="stat-blocks">—</div>
+      <div class="stat-sub" id="stat-blocks-sub"></div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Wall clock</div>
+      <div class="stat-value" id="stat-clock">—</div>
+      <div class="stat-sub" id="stat-clock-sub"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="timeline-panel" hidden>
+    <h2>Session timeline</h2>
+    <div class="panel-sub">task spans · iteration ticks · verdict markers</div>
+    <div class="gantt" id="gantt"></div>
+    <div class="gantt-axis" id="gantt-axis"></div>
+  </section>
+
+  <section class="panel" id="pressure-panel" hidden>
+    <h2>Context pressure</h2>
+    <div class="panel-sub">prompt tokens per model call · resets at task boundaries</div>
+    <div class="bars" id="bars"><span class="y-hint" id="bars-max"></span></div>
+    <div class="chart-legend" id="bars-legend"></div>
+  </section>
+
+  <div class="tail-head">
+    <div class="tail-head-row">
+      <h2>Communication</h2>
+      <span class="filter-count" id="filter-count"></span>
+    </div>
+    <div class="filters">
+      <button class="preset active" data-mode="everything">Everything</button>
+      <button class="preset" data-mode="dialogue">Worker ↔ Evaluator</button>
+      <button class="preset" data-mode="problems">Problems</button>
+      <span class="filter-div"></span>
+      <button class="fchip on" data-kind="worker">worker</button>
+      <button class="fchip on" data-kind="tool">tools</button>
+      <button class="fchip on" data-kind="evaluator">evaluator</button>
+      <button class="fchip on" data-kind="harness">harness</button>
+    </div>
+  </div>
+
   <main id="events"></main>
-  <button id="follow" class="follow-btn" hidden>↓ follow</button>
+  <button id="follow" class="follow-btn" hidden>↓ bottom</button>
 </div>
 <script src="/assets/app.js"></script>
 </body>
