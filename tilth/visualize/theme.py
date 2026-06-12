@@ -99,8 +99,13 @@ APP_PAGE = """<!DOCTYPE html>
   </div>
 
   <main id="events"></main>
-  <button id="follow" class="follow-btn" hidden>↓ bottom</button>
 </div>
+<nav class="float-nav">
+  <button id="jump-top" class="float-btn" title="Jump to the top">↑ top</button>
+  <button id="jump-bottom" class="float-btn" title="Jump to the newest event">↓ bottom</button>
+  <button id="follow-toggle" class="float-btn" aria-pressed="false"
+          title="Keep the view pinned to the newest event">follow</button>
+</nav>
 <script src="/assets/app.js"></script>
 </body>
 </html>

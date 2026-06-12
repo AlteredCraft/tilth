@@ -65,12 +65,16 @@ body {
 #events { max-width: 920px; }
 
 header.page-head {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--bg);
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 16px;
   border-bottom: 1px solid var(--line);
-  padding-bottom: 16px;
+  padding: 12px 0 16px;
   margin-bottom: 28px;
 }
 header.page-head h1 {
@@ -161,18 +165,37 @@ header.page-head .count {
 .chip-failed { border-color: var(--bad); background: var(--bad-bg); color: var(--bad); }
 .chip-disconnected { border-color: var(--bad); color: var(--bad); }
 
-.follow-btn {
+.float-nav {
   position: fixed;
   right: 24px;
   bottom: 24px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.float-btn {
   padding: 8px 14px;
   border-radius: 999px;
-  border: 1px solid var(--agent-line);
-  background: var(--agent);
-  color: var(--agent-fg);
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--muted);
   font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-align: center;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+.float-btn:hover { border-color: var(--muted); color: var(--fg); }
+#follow-toggle::before {
+  content: "●";
+  font-size: 8px;
+  vertical-align: 1px;
+  margin-right: 5px;
+}
+#follow-toggle.on {
+  background: var(--agent);
+  border-color: var(--agent-line);
+  color: var(--agent-fg);
 }
 
 .session-list { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
@@ -518,10 +541,11 @@ pre {
 }
 .chart-legend .swatch.round { border-radius: 50%; }
 
-/* tail filter bar */
+/* tail filter bar — sticks just below the sticky page header; the header's
+   measured height arrives via --page-head-h (set by app.js, chips can wrap) */
 .tail-head {
   position: sticky;
-  top: 0;
+  top: var(--page-head-h, 76px);
   z-index: 10;
   background: var(--bg);
   margin: 28px -8px 14px;

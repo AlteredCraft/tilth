@@ -22,15 +22,32 @@
   const chipStatus = document.getElementById("chip-status");
   const chipTokens = document.getElementById("chip-tokens");
   const chipCount = document.getElementById("chip-count");
-  const followBtn = document.getElementById("follow");
+  const followToggle = document.getElementById("follow-toggle");
 
   let offset = 0;
   let lastTask = "";
   let count = 0;
   let failures = 0;
-  // The page lands at the top (dashboard first); the "↓ bottom" button jumps
-  // to the tail's end and switches on follow-the-stream behaviour.
+  // Follow is an explicit user-set state (the floating "follow" toggle): on
+  // means the view stays pinned to the stream's end as new events land. A
+  // real scroll-away gesture switches it off — auto-scroll must never fight
+  // the user — but nothing switches it on except the toggle.
   let following = false;
+
+  // ------------------------------------------------------------ page chrome
+
+  // The sticky page header's height feeds the filter bar's `top` so the two
+  // stack instead of overlap; the chips wrap on narrow screens, so measure
+  // rather than hardcode. Set once synchronously — ResizeObserver delivery
+  // rides the rendering pipeline, which occluded tabs don't run.
+  const pageHead = document.querySelector("header.page-head");
+  function syncHeadHeight() {
+    document.documentElement.style.setProperty(
+      "--page-head-h", pageHead.offsetHeight + "px"
+    );
+  }
+  syncHeadHeight();
+  new ResizeObserver(syncHeadHeight).observe(pageHead);
 
   // ---------------------------------------------------------------- follow
 
@@ -55,32 +72,44 @@
     }
   }
 
+  function setFollowing(on) {
+    following = on;
+    followToggle.classList.toggle("on", on);
+    followToggle.setAttribute("aria-pressed", String(on));
+  }
+
   window.addEventListener("scroll", function () {
     if (atBottom()) {
       autoScrolling = false;
-      following = true;
-      followBtn.hidden = true;
     } else if (autoScrolling) {
       // our own smooth scroll in flight — not user intent
     } else if (following) {
-      following = false;
-      followBtn.hidden = false;
+      setFollowing(false);
     }
   });
 
   function userScrollGesture() {
     autoScrolling = false;
-    if (following && !atBottom()) {
-      following = false;
-      followBtn.hidden = false;
-    }
+    if (following && !atBottom()) setFollowing(false);
   }
   window.addEventListener("wheel", userScrollGesture, { passive: true });
   window.addEventListener("touchmove", userScrollGesture, { passive: true });
 
-  followBtn.addEventListener("click", function () {
-    following = true;
-    followBtn.hidden = true;
+  followToggle.addEventListener("click", function () {
+    if (following) {
+      setFollowing(false);
+    } else {
+      setFollowing(true);
+      scrollToBottom(false);
+    }
+  });
+
+  document.getElementById("jump-top").addEventListener("click", function () {
+    setFollowing(false);
+    window.scrollTo(0, 0);
+  });
+
+  document.getElementById("jump-bottom").addEventListener("click", function () {
     scrollToBottom(false);
   });
 
@@ -415,7 +444,6 @@
         renderDashboard();
         applyFilters();
         if (following) scrollToBottom(true);
-        followBtn.hidden = following || atBottom();
       }
       offset = data.offset;
       lastTask = data.last_task || "";

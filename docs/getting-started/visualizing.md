@@ -29,7 +29,7 @@ The viewer is **read-only and loopback-only** (it binds `127.0.0.1`; the log con
 
 ## Watching a live run
 
-The session page tails `events.jsonl` as the harness appends to it — new model calls, tool results, and verdicts stream in about a second after they happen, and the header chips track status and token spend from the checkpoint. The view follows the newest event automatically; scroll up to read history and a **↓ follow** button appears to jump back to the tail. When the run reaches a terminal state the page keeps polling slowly, so a later `tilth resume` picks up on screen without a reload.
+The session page tails `events.jsonl` as the harness appends to it — new model calls, tool results, and verdicts stream in about a second after they happen, and the header (which stays pinned as you scroll) tracks status and token spend from the checkpoint. A floating nav in the corner offers **↑ top** / **↓ bottom** jumps plus a **follow** toggle: switch it on to keep the view pinned to the newest event; scrolling up to read history switches it back off, and nothing but the toggle switches it on. When the run reaches a terminal state the page keeps polling slowly, so a later `tilth resume` picks up on screen without a reload.
 
 Rendering happens server-side from the same renderer for every view — what you see live is byte-identical to what you'd see replaying the finished log.
 

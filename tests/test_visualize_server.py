@@ -327,6 +327,15 @@ def test_session_page_serves_app_shell(http_server):
     assert "/assets/app.js" in body
 
 
+def test_session_page_has_floating_nav(http_server):
+    # The floating nav ids are the contract between the shell (theme.py) and
+    # the polling client (app.js) — renaming one side breaks the other.
+    _, _, body = _get(http_server, "/session/20260610-170000-aaaaaa")
+    for element_id in ("jump-top", "jump-bottom", "follow-toggle"):
+        assert f'id="{element_id}"' in body
+    assert 'id="follow"' not in body  # replaced by the follow toggle
+
+
 def test_events_api_round_trip(http_server):
     status, ctype, body = _get(
         http_server, "/api/session/20260610-170000-aaaaaa/events?offset=0"
