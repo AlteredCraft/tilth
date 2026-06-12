@@ -4,13 +4,21 @@ CSS lives in `theme.css` so the editor lints and highlights it. The shells stay
 inline because they're a handful of lines and share no contract with external
 tooling. Both pages inline the CSS (self-contained, no asset round-trip); the
 session page additionally loads `/assets/app.js`, the polling client.
+
+`load_css()` re-reads the file on each call so stylesheet edits hot-reload on
+the next page load, matching how the server serves `app.js`. The read is on the
+page-load path, not the 1s poll, so the cost is negligible.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-CSS = (Path(__file__).parent / "theme.css").read_text()
+CSS_PATH = Path(__file__).parent / "theme.css"
+
+
+def load_css() -> str:
+    return CSS_PATH.read_text()
 
 APP_PAGE = """<!DOCTYPE html>
 <html lang="en">
@@ -68,8 +76,19 @@ APP_PAGE = """<!DOCTYPE html>
   </section>
 
   <section class="panel" id="timeline-panel" hidden>
-    <h2>Session timeline</h2>
-    <div class="panel-sub">task spans · iteration ticks · verdict markers</div>
+    <div class="panel-head">
+      <div>
+        <h2>Session timeline</h2>
+        <div class="panel-sub">task spans · iteration ticks · verdict markers</div>
+      </div>
+      <span class="timeline-hint" id="timeline-hint">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path
+          d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6"/></svg>
+        drag to zoom
+      </span>
+      <button type="button" class="timeline-reset" id="timeline-reset" hidden>Reset view</button>
+    </div>
     <div class="gantt" id="gantt"></div>
     <div class="gantt-axis" id="gantt-axis"></div>
   </section>

@@ -32,7 +32,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from .render import extract_facts, render_events
-from .theme import APP_PAGE, CSS, LIST_PAGE
+from .theme import APP_PAGE, LIST_PAGE, load_css
 
 APP_JS_PATH = Path(__file__).parent / "app.js"
 
@@ -217,7 +217,9 @@ def _render_index(root: Path) -> str:
                 )
             )
         body = '<div class="session-list">' + "\n".join(cells) + "</div>"
-    return LIST_PAGE.format(css=CSS, root=html.escape(str(root)), count=len(rows), body=body)
+    return LIST_PAGE.format(
+        css=load_css(), root=html.escape(str(root)), count=len(rows), body=body
+    )
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -243,7 +245,7 @@ class _Handler(BaseHTTPRequestHandler):
             if session_dir is None:
                 self._send_404()
                 return
-            page = APP_PAGE.format(css=CSS, session_id=html.escape(session_dir.name))
+            page = APP_PAGE.format(css=load_css(), session_id=html.escape(session_dir.name))
             self._send(200, "text/html; charset=utf-8", page)
             return
         if (

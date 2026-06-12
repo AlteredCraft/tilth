@@ -150,6 +150,15 @@
     return S.tasks.get(id);
   }
 
+  // Timeline zoom: a drag-selected [viewStart, viewEnd] window over the gantt,
+  // in absolute event-time. null means "full span" — and on a live session the
+  // window then keeps tracking S.end as new events land; locking it takes an
+  // explicit drag. `zoomDragging` suppresses the per-poll rebuild so a 1s
+  // refresh can't wipe the rubber-band mid-gesture.
+  let viewStart = null;
+  let viewEnd = null;
+  let zoomDragging = false;
+
   function ingest(f) {
     if (S.start === null || f.t < S.start) S.start = f.t;
     if (S.end === null || f.t > S.end) S.end = f.t;
@@ -277,9 +286,14 @@
 
   function renderTimeline() {
     if (S.tasks.size === 0 || S.end === S.start) return;
+    // A live poll must not rebuild the gantt out from under an active drag.
+    if (zoomDragging) return;
     show("timeline-panel");
-    const totalSpan = Math.max(1, S.end - S.start);
-    const pct = (t) => ((t - S.start) / totalSpan) * 100;
+    const vs = viewStart === null ? S.start : viewStart;
+    const ve = viewEnd === null ? S.end : viewEnd;
+    const span = Math.max(1, ve - vs);
+    const pct = (t) => ((t - vs) / span) * 100;
+    const inView = (t) => t >= vs && t <= ve;
 
     const gantt = document.getElementById("gantt");
     gantt.replaceChildren();
@@ -287,17 +301,25 @@
       const row = el("div", "gantt-row");
       row.appendChild(el("span", "tid", id));
       const track = el("div", "track");
-      const span = el("div", "span");
-      span.style.left = pct(tk.first) + "%";
-      span.style.width = Math.max(0.5, pct(tk.last) - pct(tk.first)) + "%";
-      span.style.background = taskColor(id);
-      track.appendChild(span);
+      // The task span may start before or end after the window; clamp it to
+      // the visible edges and only draw it when it actually overlaps.
+      if (tk.first !== null && tk.last >= vs && tk.first <= ve) {
+        const left = Math.max(0, Math.min(100, pct(tk.first)));
+        const right = Math.max(0, Math.min(100, pct(tk.last)));
+        const span = el("div", "span");
+        span.style.left = left + "%";
+        span.style.width = Math.max(0.5, right - left) + "%";
+        span.style.background = taskColor(id);
+        track.appendChild(span);
+      }
       for (const t of tk.ticks) {
+        if (!inView(t)) continue;
         const tick = el("i", "tick");
         tick.style.left = pct(t) + "%";
         track.appendChild(tick);
       }
       for (const mark of tk.marks) {
+        if (!inView(mark.t)) continue;
         const m = el("span", "marker " + (mark.ok ? "ok" : "rej"), mark.ok ? "✓" : "✕");
         m.style.left = pct(mark.t) + "%";
         m.title = mark.ok ? "evaluator accepts" : "evaluator rejects";
@@ -307,12 +329,83 @@
       gantt.appendChild(row);
     }
 
+    // Axis reads as elapsed-from-session-start, so a zoomed window shows its
+    // true offset range (e.g. 12:30 → 18:45) rather than restarting at 0:00.
     const axis = document.getElementById("gantt-axis");
     axis.replaceChildren();
+    const base = vs - S.start;
     for (let i = 0; i <= 5; i++) {
-      axis.appendChild(el("span", "", mmss((totalSpan * i) / 5)));
+      axis.appendChild(el("span", "", mmss(base + (span * i) / 5)));
     }
+
+    const zoomed = viewStart !== null || viewEnd !== null;
+    document.getElementById("timeline-reset").hidden = !zoomed;
+    document.getElementById("timeline-hint").hidden = zoomed;
   }
+
+  // Drag a box across the gantt to set [viewStart, viewEnd]; the reset button
+  // (revealed once zoomed) clears it back to the full span. Pixel<->time math
+  // rides a live `.track` rect captured at mousedown, so it composes when
+  // already zoomed and needs no hardcoded label-gutter width.
+  function setupTimelineZoom() {
+    const gantt = document.getElementById("gantt");
+
+    gantt.addEventListener("mousedown", function (down) {
+      if (down.button !== 0) return;
+      const track = gantt.querySelector(".track");
+      if (!track) return;
+      const plot = track.getBoundingClientRect();
+      const gRect = gantt.getBoundingClientRect();
+      if (down.clientX < plot.left || down.clientX > plot.right) return;
+
+      const vs = viewStart === null ? S.start : viewStart;
+      const ve = viewEnd === null ? S.end : viewEnd;
+      const span = Math.max(1, ve - vs);
+      const x0 = down.clientX;
+      const clampX = (x) => Math.max(plot.left, Math.min(plot.right, x));
+
+      zoomDragging = true;
+      const sel = el("div", "zoom-select");
+      sel.style.top = "0";
+      sel.style.bottom = "0";
+      gantt.appendChild(sel);
+
+      function draw(x1) {
+        const a = clampX(Math.min(x0, x1));
+        const b = clampX(Math.max(x0, x1));
+        sel.style.left = a - gRect.left + "px";
+        sel.style.width = b - a + "px";
+      }
+      draw(x0);
+
+      function move(m) {
+        draw(m.clientX);
+      }
+      function up(u) {
+        document.removeEventListener("mousemove", move);
+        document.removeEventListener("mouseup", up);
+        sel.remove();
+        zoomDragging = false;
+        const a = clampX(Math.min(x0, u.clientX));
+        const b = clampX(Math.max(x0, u.clientX));
+        if (b - a >= 4) {
+          viewStart = vs + ((a - plot.left) / plot.width) * span;
+          viewEnd = vs + ((b - plot.left) / plot.width) * span;
+        }
+        renderTimeline();
+      }
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up);
+      down.preventDefault();
+    });
+
+    document.getElementById("timeline-reset").addEventListener("click", function () {
+      viewStart = null;
+      viewEnd = null;
+      renderTimeline();
+    });
+  }
+  setupTimelineZoom();
 
   function renderBars() {
     if (S.bars.length === 0) return;
