@@ -35,29 +35,12 @@ uv run tilth run /absolute/path/to/your/repo
 
 `tilth run` loads `.tilth/tasks/`, creates a fresh session + worktree, and starts the worker loop. The per-task lifecycle is identical to the demo — see [Running the demo → end-to-end flow](running-the-demo.md#run-a-session-against-the-demo) for the breakdown. Follow-on operations:
 
-- [Resuming a session](resuming.md) — `tilth resume` semantics, what survives across runs.
-- [Resetting a session](resetting.md) — `tilth reset` tears down a session's worktree, branch, and `sessions/<id>/`.
-- [Visualizing a session](visualizing.md) — `tilth visualize` renders `events.jsonl` as a chat-style HTML page.
+- [Resuming & resetting](resuming-and-resetting.md) — `tilth resume` to continue a stopped run; `tilth reset` to tear one down.
+- [Visualizing a session](visualizing.md) — `tilth visualize` renders `events.jsonl` as a chat-style web app, live or replayed.
 
 ## 4. Review
 
-```bash
-cd /path/to/your/repo
-git log session/<id> --oneline
-git diff main..session/<id>
-```
-
-Each task is one commit. If you like the work:
-
-```bash
-git checkout main
-git merge session/<id>
-# or open a PR if you push
-```
-
-If you don't like it: delete the branch. The harness never auto-merges.
-
-The session log lives at `<tilth-clone>/sessions/<id>/events.jsonl` — every model call, tool call, and evaluator verdict is recorded. Alongside it, `sessions/<id>/summary.json` carries a rolled-up snapshot (token totals, per-task iteration counts, tool histogram, hook outcomes, evaluator accept/reject plus a rejection-category histogram) refreshed at every task boundary — read that when you want a quick stat without `jq`-ing the full log. The schema is documented in `tilth/summary.py`'s module docstring.
+Each task is one commit on `session/<id>`. Inspect and merge exactly as in the demo — [Running the demo → After the run](running-the-demo.md#after-the-run) covers the `git log` / `git diff` / merge recipe and what the session's `events.jsonl` and `summary.json` hold. If you don't like the work, delete the branch; the harness never auto-merges. For a readable pass over the run, render it with [`tilth visualize`](visualizing.md).
 
 ## 5. Caveats worth being upfront about
 

@@ -37,8 +37,6 @@ Rendering happens server-side from the same renderer for every view — what you
 
 ![Live session view: header with status, token, and event-count chips; a session-started card; the T-001 task divider; context-reset and memory-load cards](../assets/session-render.png)
 
-> **Diagram suggestion** — *annotated screenshot pointing to: (1) the header chips (status / tokens / events), (2) per-task dividers, (3) a model-call meta strip with a collapsible reasoning block, (4) a tool-call/result pair, (5) an evaluator verdict card. Useful for orienting first-time readers of a long session.*
-
 ## When to use it
 
 - **During a run**, to watch the worker think, act, and get judged — without a TUI to babysit; close the tab and nothing is lost.

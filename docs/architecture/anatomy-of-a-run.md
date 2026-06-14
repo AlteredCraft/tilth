@@ -23,7 +23,7 @@ Read-only, from the loop's point of view. All are authored before the run — by
 | `.tilth/tasks/T-NNN-*.md` | the workspace (user-authored) | worker (its task + the full plan as context); evaluator (the task under review) | per-task description + acceptance criteria |
 | the source repo | the worktree | worker, via Hands | the code the run changes |
 
-The instructions (`system.md`, the context files) and the work (the overview, the task files) are assembled into each fresh task prompt. *What the worker actually sees, versus what stays harness-only, is its own subject* — see [Agent visibility](../deep-dives/agent-visibility.md). For the input channels in depth, see [Memory channels](memory-channels.md); for the authored format, see [The task format](../deep-dives/task-format.md).
+The instructions (`system.md`, the context files) and the work (the overview, the task files) are assembled into each fresh task prompt. *What the worker actually sees, versus what stays harness-only, is its own subject* — see [Agent visibility](agent-visibility.md). For the input channels in depth, see [Memory channels](memory-channels.md); for the authored format, see [The task format](../deep-dives/task-format.md).
 
 ## The loop — what turns
 
@@ -64,11 +64,11 @@ Three artifacts are written by the loop *and* read back by the next turn. They a
 | `progress.txt` | `sessions/<id>/` | one line per task outcome | the worker (last ~30 lines, next task) |
 | `ledger/<task_id>.jsonl` | `sessions/<id>/` | one entry per evaluator call | the evaluator (its prior verdicts, next iteration); the worker (on a retry) |
 
-This is the loop's durable working memory — the sage-green arc in the diagram. It is also why a run survives interruption: stop it at any point and the next process reads these three back and picks up where it left off. See [Resume mechanics](../deep-dives/resume-mechanics.md).
+This is the loop's durable working memory — the sage-green arc in the diagram. It is also why a run survives interruption: stop it at any point and the next process reads these three back and picks up where it left off. See [Resuming & resetting](../getting-started/resuming-and-resetting.md).
 
 Note the asymmetry with the task *content*: the descriptions and acceptance criteria stay in your repo's `.tilth/tasks/` and are re-read from there each task — the harness never mutates your authored files. Only the *status* lives (and changes) on the harness side.
 
-> The worker never reads `events.jsonl`, `summary.json`, `checkpoint.json`, or its own token counts. Those are outputs *about* the run, for the human — not inputs to it. Keeping them out of the loop is [invariant 2](overview.md#architecture-invariants-worth-preserving); the honest scope of that boundary (a determined worker with `bash` can still reach them via relative paths) is in [Agent visibility](../deep-dives/agent-visibility.md).
+> The worker never reads `events.jsonl`, `summary.json`, `checkpoint.json`, or its own token counts. Those are outputs *about* the run, for the human — not inputs to it. Keeping them out of the loop is [invariant 2](overview.md#architecture-invariants-worth-preserving); the honest scope of that boundary (a determined worker with `bash` can still reach them via relative paths) is in [Agent visibility](agent-visibility.md).
 
 ## See also
 

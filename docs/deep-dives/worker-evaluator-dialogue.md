@@ -4,22 +4,19 @@ The inner loop ends in a structured exchange: the worker presents a **case**, th
 evaluator returns a **verdict**, and a per-task **ledger** gives the evaluator
 memory across iterations of the same task. This page is the canonical description
 of that exchange; [The two loops](two-loops.md) shows where it sits in the loop,
-and [Agent visibility](agent-visibility.md) covers what each side does and doesn't
+and [Agent visibility](../architecture/agent-visibility.md) covers what each side does and doesn't
 see.
 
 **The evaluator is the only gate.** In the prompt-driven core there are no
 codified validators — no harness-run test suite, no linter — so nothing has
 checked the work before the evaluator reads it. Its prompt says exactly that:
 read the diff as ground truth, judge whether the code would actually produce the
-behaviour the acceptance criteria describe, assume nothing passed. The worker,
-for its part, is told to *verify* its work via `bash` before presenting it —
-"the code looks right" is not verification — but that's an instruction, not an
-enforcement step.
+behaviour the acceptance criteria describe, assume nothing passed. The worker is
+told to *verify* its work via `bash` before presenting it — "the code looks
+right" is not verification — but that's an instruction, not an enforcement step.
 
-## A note on the name
-
-The reviewing role is the **evaluator** — in prose, in events (`evaluator_verdict`),
-in the summary rollup, and on the visualizer card.
+> The reviewing role is the **evaluator** — in prose, in events
+> (`evaluator_verdict`), in the summary rollup, and on the visualizer card.
 
 ## The worker's case — `submit_case`
 
@@ -76,13 +73,12 @@ the task fails closed rather than silently passing.
 
 ## What the evaluator sees
 
-`_evaluator_task` assembles, into a context fresh-across-tasks: the task description +
-acceptance criteria, the feature overview (the why + scope boundaries, from
-`.tilth/tasks/overview.md`), the project-context files (`AGENTS.md`/`CLAUDE.md`)
-when present, the task **ledger** (below), the worker's structured case, and the
-diff of the working tree against the session branch's HEAD. It sees none of the
-worker's chain-of-thought or tool history — that isolation is the point; an
-evaluator that could read the worker's reasoning would tend to agree with it.
+`_evaluator_task` assembles a context that's fresh across tasks: the task
+description + acceptance criteria, the feature overview, the project-context
+files when present, the task **ledger** (below), the worker's structured case,
+and the diff of the working tree against the session branch's HEAD. It sees none
+of the worker's chain-of-thought or tool history — that isolation is the point;
+an evaluator that could read the worker's reasoning would tend to agree with it.
 
 ## The per-task ledger — memory across iterations
 

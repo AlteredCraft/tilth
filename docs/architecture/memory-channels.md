@@ -14,8 +14,6 @@ Five memory channels live *outside* the agent. Some are project files the user o
 
 The worker writes none of these. It writes code in the worktree, which the harness commits. The split is clean: **memory channels are inputs to the agents; session artifacts under `sessions/<id>/` (`events.jsonl`, `summary.json`, `checkpoint.json`, `task-status.json`) are outputs the harness produces during a run.** The full read-it-once picture — every input, every output, and the three artifacts that are *both* — is laid out in [Anatomy of a run](anatomy-of-a-run.md); this page zooms in on the input channels.
 
-> **Diagram suggestion** — *five labelled "channels" feeding into a worker bubble at the centre with arrows annotated with the cadence of each: AGENTS.md/CLAUDE.md ("at task start, one-way from user"), progress.txt ("last 30 lines, at task start"), git history ("via evaluator diff"), task markdown ("overview + plan visible to worker as context; status overlay harness-only"), and the evaluator ledger ("the evaluator's prior verdicts on this task"). Reinforces the asymmetry of what the agent sees and the one-way directionality of the user-owned files.*
-
 ## `AGENTS.md` — your project conventions
 
 Short markdown. **User-owned, user-maintained.** Tilth reads it into the worker's user-prompt on every task and into the evaluator's prompt on every evaluator call — but never writes to it. Use whatever section headings make sense for your project; we suggest the ones below as a starting template:
@@ -47,7 +45,7 @@ Where things live.
 **AGENTS.md should stay project-focused.** It's for *project* conventions, not harness mechanics:
 
 - **Belongs in AGENTS.md:** language version, test framework, file layout, style rules, project-specific gotchas, accumulated learnings.
-- **Does *not* belong in AGENTS.md:** "record token counts in `events.jsonl`" (agent doesn't write that file), "mark your task done when finished" (the harness manages status), "stop after 32 iterations" (handled by `max_iterations_per_task`), "don't run dangerous commands" (handled by `pre_tool` hook), "the evaluator will evaluate your work" (see [Agent visibility](../deep-dives/agent-visibility.md)).
+- **Does *not* belong in AGENTS.md:** "record token counts in `events.jsonl`" (agent doesn't write that file), "mark your task done when finished" (the harness manages status), "stop after 32 iterations" (handled by `max_iterations_per_task`), "don't run dangerous commands" (handled by `pre_tool` hook), "the evaluator will evaluate your work" (see [Agent visibility](agent-visibility.md)).
 
 The cleanest test: if you removed a rule from AGENTS.md and the harness still enforced the underlying behaviour, the rule shouldn't be there.
 
@@ -77,13 +75,7 @@ The files are **read-only inputs** to Tilth — the harness never mutates your a
 
 The agent **never sees the status store or the queue-management machinery.** It does see the *whole task list* as prose context (every task collapsed, the current one marked) plus the feature overview — framed as "context, not work to do" so it understands the shape of the feature without pre-empting later tasks. What stays hidden is the mutable state, not the plan.
 
-Hiding the mutable status *state* from the agent prevents three real failure modes seen in earlier hand-built loops:
-
-1. The agent marks its own task done.
-2. The agent skips ahead to a "more interesting" task.
-3. The agent rewrites the queue.
-
-State management belongs in code; the agent works on one task at a time and stops. (The worker is also told to treat `.tilth/` as read-only context, and the evaluator hard-rejects diffs that edit it.)
+Hiding the mutable status *state* from the agent prevents a cluster of real failure modes seen in earlier hand-built loops — the agent marking its own task done, skipping ahead, or rewriting the queue. State management belongs in code; the agent works on one task at a time and stops. (The worker is also told to treat `.tilth/` as read-only context, and the evaluator hard-rejects diffs that edit it.) The enumerated rationale is in [Agent visibility → why this separation is deliberate](agent-visibility.md#why-this-separation-is-deliberate).
 
 ## Evaluator ledger — the evaluator's per-task memory
 
@@ -98,4 +90,4 @@ You could imagine baking all of this into the system prompt and letting the agen
 - **Auditability.** The channels are flat files in the workspace or session directory. You can `git log` them, diff them, hand them to teammates, version them. Anything inside the model is opaque.
 - **Independence of the evaluator.** The evaluator runs in a fresh context across tasks (it carries per-task memory only via the ledger); without external memory channels, it would have nothing to look at except what the worker chose to expose.
 
-See [Agent visibility](../deep-dives/agent-visibility.md) for the full story of which artefacts the worker can and can't see.
+See [Agent visibility](agent-visibility.md) for the full story of which artefacts the worker can and can't see.

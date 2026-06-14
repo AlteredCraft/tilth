@@ -65,7 +65,7 @@ What happens, end-to-end:
     - On accept: commit on the worktree branch, append to `progress.txt`, mark the task `done` in the harness's status overlay.
 4. Stops on: all tasks done, iteration cap, wall-clock cap, token cap, evaluator-call cap, or a terminal failure (e.g. a provider returning empty responses, or the worker never presenting a case).
 
-You can interrupt at any point with Ctrl-C. Ctrl-C and cap hits (iteration, wall-clock, token) all leave the run in a resumable state — see [Resuming a session](resuming.md) to pick it back up. Of the three caps, only the **token** cap needs attention before you resume: the cumulative token total carries across resumes, so if `TILTH_MAX_TOKENS` is what stopped the run, raise it in `.env` first or `tilth resume` trips it again on the first check. The wall-clock budget resets per resume, and the iteration cap is per-task (a retried task starts counting from one), so neither blocks a resume unless the work genuinely needs a bigger budget — see [What resume does](resuming.md#what-resume-does).
+You can interrupt at any point with Ctrl-C. Ctrl-C and cap hits (iteration, wall-clock, token) all leave the run in a resumable state — see [Resuming & resetting](resuming-and-resetting.md) to pick it back up. Of the three caps, only the **token** cap needs attention before you resume: the cumulative token total carries across resumes, so if `TILTH_MAX_TOKENS` is what stopped the run, raise it in `.env` first or `tilth resume` trips it again on the first check. The wall-clock budget resets per resume, and the iteration cap is per-task (a retried task starts counting from one), so neither blocks a resume unless the work genuinely needs a bigger budget — see [What resume does](resuming-and-resetting.md#what-resume-does).
 
 ## What you should expect to see
 
@@ -98,7 +98,7 @@ git log session/<id> --oneline
 git diff main..session/<id>
 ```
 
-Each task is one commit. If you like the work, merge it into `main` like any other branch; if not, delete the branch. The harness never auto-merges. (You can also use [Resetting a session](resetting.md) to throw away the worktree, branch, and the harness's session directory in one shot.)
+Each task is one commit. If you like the work, merge it into `main` like any other branch; if not, delete the branch. The harness never auto-merges. (You can also use [`tilth reset`](resuming-and-resetting.md#resetting) to throw away the worktree, branch, and the harness's session directory in one shot.)
 
 The session log lives at `<tilth-clone>/sessions/<id>/events.jsonl` — every model call, tool call, and evaluator verdict is recorded (see [Session layout → Event types](../deep-dives/session-layout.md#event-types) for the full taxonomy). Alongside it, `sessions/<id>/summary.json` carries a rolled-up snapshot (token totals, per-task iteration counts, tool histogram, hook outcomes, evaluator accepts/rejects with rejection categories) refreshed at every task boundary — read that when you want a quick stat without `jq`-ing the full log.
 

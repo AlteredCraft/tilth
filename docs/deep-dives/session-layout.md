@@ -11,9 +11,9 @@ The agent's *working directory* sits inside Tilth's `sessions/`, but every `git`
 
 ## Why the working tree lives on Tilth's side, not in the target repo
 
-A session has more artifacts than just the worktree — the rest of `sessions/<id>/` (events log, summary, checkpoint, rendered chat, plus the run's durable state — `task-status.json`, `progress.txt`, and the per-task `ledger/<task_id>.jsonl` files) all belong to one run. Co-locating them under one directory means one logical container per run, and `tilth reset` only has to walk one tree on the harness side.
+A session has more artifacts than just the worktree — the rest of `sessions/<id>/` (events log, summary, checkpoint, plus the run's durable state — `task-status.json`, `progress.txt`, and the per-task `ledger/<task_id>.jsonl` files) all belong to one run. Co-locating them under one directory means one logical container per run, and `tilth reset` only has to walk one tree on the harness side.
 
-The flip side: the target repo stays pristine. Tilth never asks you to add anything to your `.gitignore`, and never drops a `.worktrees/` directory at the root of your project. The only thing it writes into the target repo is the branch and the worktree admin entry — both reversible with one `git worktree remove --force` + one `git branch -D`. If you delete your Tilth clone entirely, no harness directories are left behind in your project. `tilth reset` handles both halves cleanly in one command; see [Reset mechanics](reset-mechanics.md).
+The flip side: the target repo stays pristine. Tilth never asks you to add anything to your `.gitignore`, and never drops a `.worktrees/` directory at the root of your project. The only thing it writes into the target repo is the branch and the worktree admin entry — both reversible with one `git worktree remove --force` + one `git branch -D`. If you delete your Tilth clone entirely, no harness directories are left behind in your project. `tilth reset` handles both halves cleanly in one command; see [Resuming & resetting](../getting-started/resuming-and-resetting.md#resetting).
 
 ## Implications worth knowing
 
@@ -52,6 +52,5 @@ The full per-entry payload (including the OTel-shape `trace_id` / `span_id` fiel
 
 ## See also
 
-- [Resetting a session](../getting-started/resetting.md) — the operator-facing teardown command.
-- [Reset mechanics](reset-mechanics.md) — implementation walk-through, idempotency contract.
+- [Resuming & resetting](../getting-started/resuming-and-resetting.md) — the operator-facing resume / teardown commands and what each mutates.
 - [Safety guards → Worktree isolation](../reference/safety-guards.md#worktree-isolation) — the safety story this layout supports.

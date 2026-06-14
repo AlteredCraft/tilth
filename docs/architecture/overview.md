@@ -31,15 +31,11 @@ Session is the durable record. Everything that happens — every model call, too
 
 This page is the *who*; for the *what flows through* — the artifacts the loop reads, the artifacts it writes, and the three that do both — see [Anatomy of a run](anatomy-of-a-run.md).
 
-> **Diagram suggestion** — *three labelled boxes (Brain, Hands, Session) with arrows showing the flow per iteration: Brain emits tool calls → Hands executes → Session logs. A separate dashed arrow shows Session feeding `tilth resume` on a fresh process.*
-
 ## Generator/evaluator separation
 
 The Worker/Evaluator split above is a deliberate generator/evaluator separation. The Evaluator Brain (`tilth/prompts/evaluator.md`) sees none of the worker's chain-of-thought or tool history — only what's *about the work*: the task and its acceptance criteria, the feature overview, the project-context files, the worker's structured case, the diff, and its own prior verdicts on this task (the ledger). That isolation from the worker's reasoning is what makes the verdict useful; if the evaluator could see the worker's chain-of-thought, it would tend to agree with it.
 
 You can route the evaluator to a *different* provider than the worker via `TILTH_EVALUATOR_BASE_URL` / `TILTH_EVALUATOR_API_KEY`. Cross-family evaluation (e.g. open worker model + frontier closed evaluator) catches failure modes that same-family evaluation shares as blind spots.
-
-> **Diagram suggestion** — *split-frame: top half shows the worker's tool-use loop with full history; bottom half shows the evaluator invocation with only "diff + case + acceptance criteria + overview" coming in. Emphasises the context isolation between the two roles.*
 
 ## Repo layout
 
@@ -73,7 +69,7 @@ The demo workspace is a separate repo (`AlteredCraft/tilth-demo-todo-cli`) — n
 These are load-bearing. Read [Deep dives](../deep-dives/index.md) before breaking any of them.
 
 1. **Brain / Hands / Session split.** Don't blur the three. New code goes in the module whose job it is — model calls in `client.py`, sandbox/tool ops in `workspace.py` and `tools/`, durable state in `session.py`.
-2. **The agent doesn't see harness mechanics.** No `task-status.json`, no `events.jsonl`, no `summary.json`, no token counts, no checkpoints. Hiding these prevents gaming, shortcutting, and self-managed state. The visibility expansion softened this deliberately: the worker now sees the feature overview and the whole task list *as prose context* (not the mutable status store), and the evaluator's prior verdicts on its current task — so it can act on review feedback. It still never sees the harness files, token counts, checkpoints, or the queue-management machinery. **Honest scope:** even the hidden part is a *design goal*, not an enforcement guarantee in default mode — the worker has `bash` and could reach harness state via relative paths from the worktree (`sessions/<id>/workspace/`). Real enforcement is opt-in process isolation, planned in [#13](https://github.com/AlteredCraft/tilth/issues/13). See [Agent visibility](../deep-dives/agent-visibility.md).
+2. **The agent doesn't see harness mechanics.** No `task-status.json`, no `events.jsonl`, no `summary.json`, no token counts, no checkpoints. Hiding these prevents gaming, shortcutting, and self-managed state. The visibility expansion softened this deliberately: the worker now sees the feature overview and the whole task list *as prose context* (not the mutable status store), and the evaluator's prior verdicts on its current task — so it can act on review feedback. It still never sees the harness files, token counts, checkpoints, or the queue-management machinery. **Honest scope:** even the hidden part is a *design goal*, not an enforcement guarantee in default mode — the worker has `bash` and could reach harness state via relative paths from the worktree (`sessions/<id>/workspace/`). Real enforcement is opt-in process isolation, planned in [#13](https://github.com/AlteredCraft/tilth/issues/13). See [Agent visibility](agent-visibility.md).
 3. **Tool registry is the canonical source for "what tools exist".** `tilth/tools/__init__.py` defines the registry; the system prompt should *not* enumerate tools (it gets stale).
 4. **Hook contract: "success silent, failures verbose" — to the *agent*.** Pass states inject nothing into the loop's message history; failures inject a feedback message that the next worker iteration sees. **Telemetry is separate.** Every hook invocation should emit a `hook_run` event regardless of outcome — observability is for the developer reading `events.jsonl`, not the agent.
 5. **The worktree branch is never auto-merged.** `commit_task` commits to the session branch; humans review and merge.

@@ -31,7 +31,7 @@ The model owns only what happens *inside* a box:
 - the **worker agent's** tool use — which tools to call, and when to `submit_case`;
 - the **evaluator's** verdict — `accept` or `reject` (the model decides it; the harness routes it onto an arrow).
 
-That boundary is the point of an autonomous harness: the agent acts within a step, the harness orchestrates the steps, and the agent never steers the loop or sees the machinery driving it. For the code-level version — the two nested loops, the caps, and what the agent can and can't see — see [The two loops](deep-dives/two-loops.md) and [Agent visibility](deep-dives/agent-visibility.md).
+That boundary is the point of an autonomous harness: the agent acts within a step, the harness orchestrates the steps, and the agent never steers the loop or sees the machinery driving it. For the code-level version — the two nested loops, the caps, and what the agent can and can't see — see [The two loops](deep-dives/two-loops.md) and [Agent visibility](architecture/agent-visibility.md).
 
 ## How Tilth differs from other harnesses
 
@@ -40,15 +40,20 @@ Tilth is informed by the minimal-harness lineage — small system prompt, a hand
 Almost everything distinctive about Tilth follows from that one difference. Each piece stands in for a call a watching human would otherwise make:
 
 - **The [evaluator](deep-dives/worker-evaluator-dialogue.md)** — a second model that judges whether a change is a *proper* solution against the task's acceptance criteria, not just whether the code runs. There is no codified test/lint gate in front of it; the evaluator is the reviewer who isn't in the room, and the only gate.
-- **[Between-task caps](deep-dives/caps.md)** — the budget ceiling (iterations, tokens, wall-clock) a human would otherwise impose by noticing a runaway and stopping it.
-- **[State kept out of the model](deep-dives/agent-visibility.md)** — the mutable status machinery is hidden, so an unattended agent can't mark its own work done, skip ahead, or rewrite the queue.
+- **[Between-task caps](deep-dives/two-loops.md#what-can-stop-a-run)** — the budget ceiling (iterations, tokens, wall-clock) a human would otherwise impose by noticing a runaway and stopping it.
+- **[State kept out of the model](architecture/agent-visibility.md)** — the mutable status machinery is hidden, so an unattended agent can't mark its own work done, skip ahead, or rewrite the queue.
 - **[Hyper-observability](deep-dives/hyper-observability.md)** — when no one is watching mid-run, the recording *is* the supervision. Every prompt the harness sends is recorded and every run replays end-to-end from its `events.jsonl` (`tilth visualize`). Offline-first by design: a finished run you inspect, not a live TUI to babysit.
 
 None of this is a knock on interactive agents; it's a different shape for a different job.
 
+![A Tilth run rendered by `tilth visualize`: a header with status, token, and event-count chips; a session-started card; the T-001 task divider; context-reset and memory-load cards, all grouped by task.](assets/session-render.png)
+
+*Every run — streaming live or replayed after the fact — is browsable as a chat-style web app with [`tilth visualize`](getting-started/visualizing.md). When no one is watching mid-run, the recording **is** the supervision.*
+{: .caption }
+
 ## What's in these docs
 
-- **[Getting started](getting-started/installation.md)** — install, author a task list under `.tilth/tasks/`, run the demo, resume / reset / visualize a session.
-- **[Architecture](architecture/overview.md)** — the Brain / Hands / Session split, the memory channels.
-- **[Deep dives](deep-dives/index.md)** — the two loops, the worker↔evaluator dialogue, token recording and enforcement, what the agent sees (and doesn't), the task format, the caps story, resume / reset mechanics. Honest, code-level walk-throughs for extending, debugging, or reasoning about the safety story.
+- **[Getting started](getting-started/installation.md)** — install, author a task list under `.tilth/tasks/`, run the demo, [visualize](getting-started/visualizing.md) / resume / reset a session.
+- **[Architecture](architecture/overview.md)** — the Brain / Hands / Session split, the memory channels, and what the agent sees (and doesn't).
+- **[Deep dives](deep-dives/index.md)** — [hyper-observability](deep-dives/hyper-observability.md) and `tilth visualize`, the two loops and what can stop a run, the worker↔evaluator dialogue, token recording, the task format, session layout. Honest, code-level walk-throughs for extending, debugging, or reasoning about the safety story.
 - **[Reference](reference/safety-guards.md)** — safety guards.
