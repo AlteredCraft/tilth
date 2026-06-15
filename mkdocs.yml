@@ -14,9 +14,10 @@ docs_dir: docs
 # linked `.md` for the full story.
 
 nav:
-  # Landing page: project pitch, Brain/Hands/Session at a glance, the memory
-  # channels, quickstart, and links into every other section. Start here if
-  # you're new to the codebase.
+  # Landing page: project pitch, Brain/Hands/Session at a glance, the
+  # differentiators (autonomy → evaluator / caps / hidden state / observability),
+  # a `tilth visualize` screenshot, and links into every other section. Start
+  # here if you're new to the codebase.
   - Home: index.md
 
   - Getting started:
@@ -30,17 +31,18 @@ nav:
       # submit_case → evaluator verdict → commit), what the console streams,
       # and where to look in `sessions/<id>/` after the run.
       - Running the demo: getting-started/running-the-demo.md
-      # `tilth resume` semantics: skips `done` tasks, retries the trailing
-      # `failed` one, resets wall-clock budget, preserves cumulative tokens.
-      - Resuming a session: getting-started/resuming.md
-      # `tilth reset` tears down a session: `git worktree remove --force` +
-      # `git branch -D session/<id>` + `rm -rf sessions/<id>/`. Idempotent,
-      # destructive by design, gated by `[y/N]` (or `--yes`).
-      - Resetting a session: getting-started/resetting.md
       # `tilth visualize` serves a read-only local web app over sessions/:
       # an index of runs + per-session chat views that tail an active run
-      # in near-realtime. Same renderer live or replayed.
+      # in near-realtime. Same renderer live or replayed. Tilth's flagship
+      # observability surface — reach for it during or after any run.
       - Visualizing a session: getting-started/visualizing.md
+      # The two session-lifecycle commands. `tilth resume`: re-reads the
+      # feature, retries the trailing `failed` task (unwinding its FAILED
+      # placeholder), resets wall-clock, preserves cumulative tokens.
+      # `tilth reset`: tears a session down (worktree + branch + sessions/<id>/),
+      # idempotent, gated by `[y/N]`/`--yes`. Includes the under-the-hood
+      # src pointers for each.
+      - Resuming & resetting a session: getting-started/resuming-and-resetting.md
       # The "honest version" of using Tilth on your own (non-demo) codebase:
       # what prep your repo actually needs (a clean git repo, optionally an
       # AGENTS.md/CLAUDE.md), authoring `.tilth/tasks/`, the caveats list,
@@ -51,7 +53,7 @@ nav:
   - Architecture:
       # The Brain / Hands / Session split, generator/evaluator separation
       # (the evaluator in a fresh context across tasks, with per-task ledger
-      # memory), repo layout, and the six load-bearing invariants. Read this
+      # memory), repo layout, and the seven load-bearing invariants. Read this
       # before extending the harness.
       - Overview: architecture/overview.md
       # The data-flow view of a run: what the per-task loop reads (system.md,
@@ -64,25 +66,33 @@ nav:
       # The memory channels that live *outside* the agent — the project-context
       # files (AGENTS.md/CLAUDE.md), git history, `progress.txt`, the authored
       # task markdown, and the per-task evaluator ledger — with a
-      # who-reads/who-writes table and the rationale for keeping state out of
-      # the model's context.
+      # who-reads/who-writes table. Canonical home for the AGENTS.md scope rule.
       - Memory channels: architecture/memory-channels.md
+      # The visibility table (invariant 2 made concrete): what the worker sees
+      # (its task, the overview, the whole plan as context, its own task's
+      # evaluator verdicts, project-context files, progress tail, tool schemas)
+      # vs. what the harness hides (task-status.json, events.jsonl, token
+      # counts, the worktree branch), the three failure modes hiding prevents,
+      # and the system.md contract. Design rationale, not a code walk-through.
+      - Agent visibility: architecture/agent-visibility.md
 
   - Deep dives:
-      # Index page for the code-level walk-throughs below. Reach for these
-      # when extending, debugging, or reasoning about the safety story —
-      # not needed just to *use* the harness.
+      # Index page for the code-level walk-throughs below — each explains a
+      # mechanic at a high level and points to the file.py:function that
+      # implements it. Reach for these when extending, debugging, or reasoning
+      # about the safety story — not needed just to *use* the harness.
       - Overview: deep-dives/index.md
-      # The flagship differentiator page: Tilth's "hyper-observability" goal —
-      # every prompt the harness sends is recorded (prompt_assembled /
-      # memory_load / model_call) and every run replays end-to-end (events.jsonl
-      # → visualize, summary.json). Covers what exists now, the by-design and
-      # roadmap gaps, and the dev practice of feeding a run's log to a co-dev
-      # agent to hunt anomalies. Start here for the "why observability" story.
+      # The flagship feature page: Tilth's "hyper-observability" goal — every
+      # run replays end-to-end via `tilth visualize`, and every prompt the
+      # harness sends is recorded (prompt_assembled / memory_load / model_call).
+      # Covers what exists now, the by-design and roadmap gaps, and the dev
+      # practice of feeding a run's log to a co-dev agent to hunt anomalies.
       - Hyper-observability: deep-dives/hyper-observability.md
       # Ralph (outer) vs. tool-use (inner) loops; what does and doesn't count
       # as an iteration; the inner-loop flowchart; why evaluator rejections eat
-      # iterations; worst-case tokens-per-task formula.
+      # iterations; and "What can stop a run" — the session- and task-level
+      # caps plus the provider_failure / no_case backstops, with the cap-hit
+      # screenshot. (Absorbs the former standalone caps page.)
       - The two loops: deep-dives/two-loops.md
       # The structured exchange the inner loop ends in: the worker presents a
       # `case` (submit_case), the evaluator returns a typed `verdict`
@@ -91,35 +101,17 @@ nav:
       # case / verdict / ledger; other pages link here.
       - The worker↔evaluator dialogue: deep-dives/worker-evaluator-dialogue.md
       # Where the token cap is set (`client.py`), where the running counter
-      # lives (`Session.tokens_used` + `checkpoint.json`), the three call
-      # sites that record tokens, why enforcement is between-task only, and
-      # the known gaps (no $-cost, no per-model split, no headroom warning).
+      # lives (`Session.tokens_used` + `checkpoint.json`), the single call site
+      # that records tokens (`loop._chat_healthy`), why enforcement is
+      # between-task only, and the known gaps (no $-cost, no per-model split,
+      # no headroom warning).
       - Token recording: deep-dives/token-recording.md
-      # The visibility table: what the worker agent sees (its task, the
-      # feature overview, the whole plan as context, its own task's evaluator
-      # verdicts, the project-context files, progress tail, tool schemas) vs.
-      # what the harness still hides (task-status.json, `events.jsonl`, token
-      # counts, the worktree branch).
-      - Agent visibility: deep-dives/agent-visibility.md
       # The authored task format — `<workspace>/.tilth/tasks/` (overview.md +
       # one T-NNN-*.md per task): frontmatter and section parsing rules, the
       # templates `tilth run` prints when the directory is missing, the
       # harness-owned task-status.json overlay, and who reads each field.
       # Reach for this when authoring a feature or extending the task shape.
       - The task format: deep-dives/task-format.md
-      # The run-stopping outcomes (the four caps plus the empty-response /
-      # no-case backstops) and which layer each operates at (session-level vs.
-      # task-level). Cross-references the loops, token recording, and resume.
-      - How the caps fit together: deep-dives/caps.md
-      # What `tilth resume` actually mutates on wake: `wake()` reads checkpoint,
-      # `_prepare_resume()` flips trailing `failed` tasks back to `pending` and
-      # soft-unwinds the FAILED placeholder commit so the evaluator sees the
-      # full cumulative diff on retry; per-task ledgers survive on disk.
-      - Resume mechanics: deep-dives/resume-mechanics.md
-      # Step-by-step of `tilth reset`: resolve session id → recover paths from
-      # checkpoint + `session_start` event → confirm → tear down. Idempotency
-      # contract (already-missing pieces are skipped, not errored).
-      - Reset mechanics: deep-dives/reset-mechanics.md
       # Where a run lives on disk: working tree under Tilth's
       # `sessions/<id>/workspace/`, the session's durable state
       # (`task-status.json`, `progress.txt`, `ledger/`), branch + worktree
@@ -128,9 +120,10 @@ nav:
       - Session layout: deep-dives/session-layout.md
 
   - Reference:
-      # Compact summary of the safety story: hard stops (the caps plus the
-      # empty-response / no-case backstops), the `pre_tool` veto pattern list
-      # (force pushes, `sudo`, `curl|wget ... | sh`, etc.), worktree file-tool
+      # Compact summary of the safety story: hard stops (the caps table plus
+      # the provider-health / no-case backstops, pointing to "What can stop a
+      # run" for the full model), the `pre_tool` veto pattern list (force
+      # pushes, `sudo`, `curl|wget ... | sh`, etc.), worktree file-tool
       # isolation, and an honest list of what is *not* guarded (no dollar cap,
       # no mid-task cutoff, no network allowlist).
       - Safety guards: reference/safety-guards.md
@@ -184,7 +177,13 @@ markdown_extensions:
   - tables
   - attr_list
   - md_in_html
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      # Render ```mermaid fences as diagrams (Material ships mermaid.js when this
+      # custom fence is declared) instead of plain code blocks.
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.inlinehilite

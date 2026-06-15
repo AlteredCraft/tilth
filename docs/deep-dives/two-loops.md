@@ -20,13 +20,11 @@ The tool-use / ReAct loop *inside* a single task. Bounded by `TILTH_MAX_ITERATIO
 
 ```python
 for iter_n in range(client.config.max_iterations_per_task):
-    resp = client.chat(messages, tools=tool_schemas)
+    resp = _chat_healthy(client, session, messages, tools=tool_schemas, ...)
     ...
 ```
 
-So: "Ralph loop = outer, tool-use loop = inner, the iterations env var caps the inner."
-
-> **Diagram suggestion** — *two nested boxes: an outer "Ralph loop" labelled with `MAX_WALL_CLOCK_MINUTES` and `MAX_TOKENS`, containing an inner "tool-use loop" labelled with `MAX_ITERATIONS_PER_TASK`. Arrows on the outer loop iterate over tasks; arrows on the inner iterate over model calls within one task. Annotate where each cap fires.*
+So: "Ralph loop = outer, tool-use loop = inner, the iterations env var caps the inner." (`_chat_healthy` is the provider-health gate — every model call routes through it; see [below](#what-one-inner-iteration-actually-is).)
 
 ## What one inner iteration actually is
 
@@ -90,8 +88,6 @@ flowchart TD
   capcheck -- yes --> ifail([return iter_cap])
 ```
 
-> **Diagram suggestion** — *the mermaid block above renders directly on GitHub and on mkdocs themes that ship Mermaid (e.g. mkdocs-material with `pymdownx.superfences`). With the vanilla `mkdocs` theme it falls back to a code block. If we ever publish a static SVG of this flowchart, swap it in here as the canonical version.*
-
 The verdict is a structured `submit_verdict` tool call — `accept`/`reject` plus, on reject, a `rejection_category` (one of six), a concern, evidence pointers, and a concrete `next_step` that becomes the worker-visible reject feedback. See [The worker↔evaluator dialogue](worker-evaluator-dialogue.md). (A `submit_case` that can't be parsed doesn't reach the evaluator at all — the parse error goes back as the tool_result and the worker retries; it costs an iteration but not an evaluator call.)
 
 Four halt-with-failure exits (`iter_cap`, `evaluator_cap`, `provider_failure`, `no_case`), one halt-with-success exit (`done`). All failure exits mark the task `failed`, log a `task_failed` event with the matching `reason`, and stop the Ralph loop — `tilth resume` flips them back to pending and unwinds the FAILED placeholder commit, so none is destructive. They differ in what they say about the session: `iter_cap` / `evaluator_cap` / `no_case` mark the session status `failed` (the *work* got stuck), while `provider_failure` leaves it `running` (the *endpoint* had a bad window — nothing about the work is wrong, resume and retry).
@@ -110,10 +106,31 @@ worker_tokens × MAX_ITERATIONS_PER_TASK       (32 by default)
 
 The evaluator is called once per parseable `submit_case` (with one internal retry if its own `submit_verdict` doesn't parse). With `MAX_EVALUATOR_CALLS_PER_TASK=0` (default) there is no separate cap; the iteration budget is the only ceiling. With it set, that's the tighter of the two bounds on evaluator spend.
 
-## Mental model
+## What can stop a run
 
-- **`MAX_WALL_CLOCK_MINUTES`** and **`MAX_TOKENS`** stop the Ralph loop.
-- **`MAX_ITERATIONS_PER_TASK`** stops a task that's spinning. Bounds worker effort *within* a task. Caps tokens per task *indirectly* (no direct per-task token cap exists).
-- **`MAX_EVALUATOR_CALLS_PER_TASK`** (optional, off by default) stops a task that's worker↔evaluator ping-ponging. Bounds evaluator spend on a single task.
+The caps exist because Tilth runs unattended. An interactive agent doesn't need a hard ceiling — a human watching the scrollback notices a runaway and stops it. Tilth has no such human for the length of a run, so the caps *are* that human: a budget the harness enforces on its behalf. They're set deliberately loose (a stuck task should be the exception), and a hit is always loud and resumable, never silent.
 
-Default `MAX_ITERATIONS_PER_TASK=32` means: each task gets at most 32 worker turns to explore → edit → verify → respond to the evaluator → finally submit an accepted case. For tightly-scoped tasks with sharp acceptance criteria, that's usually 3–5 in practice. Bumping it gives the agent more room on harder tasks; lowering it forces tighter task files.
+Two operate at the **session level**, stopping the Ralph loop between tasks:
+
+- **`MAX_WALL_CLOCK_MINUTES`** and **`MAX_TOKENS`** — checked at the top of each task, so the current task finishes first. Where the token cap is read and why enforcement is between-task is in [Token recording](token-recording.md).
+
+The rest operate at the **task level** — they mark the task `failed`, log `task_failed`, and halt the run; the next `tilth resume` retries with a fresh budget, so none is destructive:
+
+- **`MAX_ITERATIONS_PER_TASK`** — the task spun out its iteration budget (the `iter_cap` exit above). Bounds worker effort within a task, and caps per-task tokens *indirectly* — there is no direct per-task token cap.
+- **`MAX_EVALUATOR_CALLS_PER_TASK`** *(optional; `0` = off, the default)* — stops a worker↔evaluator ping-pong before it burns the whole iteration budget on a task the evaluator won't accept.
+- **`provider_failure`** and **`no_case`** — the two fixed backstops from the flowchart (a misbehaving endpoint; a worker that never presents its case). Not env-tunable.
+
+There's no per-call cap. `provider_failure` is the one task-level stop that leaves the *session* status `running` — the endpoint had a bad window, nothing about the work is wrong — so it's resumable like a session-level cap.
+
+Default `MAX_ITERATIONS_PER_TASK=32` means each task gets at most 32 worker turns to explore → edit → verify → answer the evaluator → submit an accepted case. For tightly-scoped tasks with sharp acceptance criteria, that's usually 3–5 in practice. Bumping it gives harder tasks more room; lowering it forces tighter task files.
+
+### What hitting a cap looks like
+
+An `iter_cap` hit, with the post-run summary the harness prints on the way out:
+
+![Terminal capture: task T-003 reaches iter 8, the harness logs "task T-003 hit iteration cap [TILTH_MAX_ITERATIONS_PER_TASK=8]" and then "× T-003 failed (iter_cap); halting run". A run summary block follows: session 20260523-082151-45f0a5, branch session/20260523-082151-45f0a5, duration 2m27s (2.0% of TILTH_MAX_WALL_CLOCK_MINUTES=120), tokens 75,387 (3.8% of TILTH_MAX_TOKENS=2,000,000), tasks done=2 failed=1 pending=2.](../assets/iter-cap-and-summary.png)
+
+*The cap fires and the run halts mid-task list (T-003 of five). The summary surfaces every cap as a percentage, so it's obvious which one bit — duration and tokens are both well under, only iterations were tight. (This capture predates the default bump — the cap was `8` here, below today's `32` — which is why it halts this early.)*
+{: .caption }
+
+The `failed=1 pending=2` line is what `tilth resume` reads to plan its retry — see [Resuming & resetting](../getting-started/resuming-and-resetting.md) for what picks up from this exact point (same session id).

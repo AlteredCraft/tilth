@@ -48,7 +48,7 @@ All three of `TILTH_BASE_URL`, `TILTH_API_KEY`, and `TILTH_WORKER_MODEL` are **r
 | `TILTH_MAX_TOKENS` | `2000000` | Cumulative session token cap. |
 | `MAX_EVALUATOR_CALLS_PER_TASK` | `0` (off) | Optional cap on worker↔evaluator ping-pong. |
 
-See [How the caps fit together](../deep-dives/caps.md) for the safety story behind the caps.
+See [What can stop a run](../deep-dives/two-loops.md#what-can-stop-a-run) for the safety story behind the caps.
 
 ## Provider notes
 

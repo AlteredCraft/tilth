@@ -435,6 +435,7 @@ pre {
 }
 
 /* session timeline (gantt) */
+.gantt { position: relative; }
 .gantt-row { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
 .gantt-row .tid {
   flex: 0 0 52px;
@@ -486,6 +487,46 @@ pre {
   margin-top: 6px;
   font: 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
   color: var(--muted);
+}
+/* rubber-band drawn over the gantt during a zoom drag */
+.zoom-select {
+  position: absolute;
+  background: color-mix(in srgb, var(--agent-fg) 16%, transparent);
+  border-left: 1px solid var(--agent-fg);
+  border-right: 1px solid var(--agent-fg);
+  pointer-events: none;
+  z-index: 3;
+}
+.panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.timeline-hint {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--muted);
+  user-select: none;
+}
+.timeline-hint svg { width: 13px; height: 13px; opacity: 0.85; }
+.timeline-hint[hidden] { display: none; }
+.timeline-reset {
+  flex: 0 0 auto;
+  font: 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+.timeline-reset:hover {
+  color: var(--fg);
+  border-color: var(--agent-line);
 }
 
 /* context pressure (bars) */

@@ -1,16 +1,14 @@
 # Deep dives
 
-Honest, code-level walk-throughs of mechanics that aren't load-bearing for *using* the harness, but matter when you want to extend, debug, or reason about the safety story.
+Honest, code-level walk-throughs of the mechanics that matter when you want to extend, debug, or reason about the safety story — not needed just to *use* the harness. Each page explains a mechanic at a high level and points to the `file.py:function` that implements it, so you can read the source for the rest.
 
-The [Getting started](../getting-started/installation.md) and [Architecture](../architecture/overview.md) sections cover "how do I run this." This section covers "how does it actually work inside."
+The [Getting started](../getting-started/installation.md) and [Architecture](../architecture/overview.md) sections cover "how do I run this" and "who does what." This section covers "how does it actually work inside."
 
-- **[Hyper-observability](hyper-observability.md)** — Tilth's standing goal: every prompt the harness sends is recorded and every run replays end-to-end from its `events.jsonl`. What the observability surface gives you today, what it doesn't yet, and why feeding a run's log to a co-dev agent to hunt anomalies has been one of the more useful debugging moves.
-- **[The two loops](two-loops.md)** — Ralph (outer) vs. tool-use (inner), iteration accounting, the inner-loop flowchart, the worker↔evaluator dialogue (the worker submits a *case*, the evaluator returns a structured *verdict*), evaluator-rejection accounting, worst-case tokens per task.
+- **[Hyper-observability](hyper-observability.md)** — Tilth's standing goal and headline feature: every prompt the harness sends is recorded, and every run replays end-to-end from its `events.jsonl` via [`tilth visualize`](../getting-started/visualizing.md). What the observability surface gives you today, what it doesn't yet, and why feeding a run's log to a co-dev agent to hunt anomalies has been one of the more useful debugging moves.
+- **[The two loops](two-loops.md)** — Ralph (outer) vs. tool-use (inner), iteration accounting, the inner-loop flowchart, the worker↔evaluator dialogue in loop position, and **what can stop a run** (the session- and task-level caps plus the provider-failure / no-case backstops).
 - **[The worker↔evaluator dialogue](worker-evaluator-dialogue.md)** — the structured `case` / `verdict` exchange the inner loop ends in: `submit_case`, `submit_verdict`, the six rejection categories, and the per-task ledger that gives the evaluator memory across iterations.
-- **[Token recording and enforcement](token-recording.md)** — where the cap is set, where the running counter lives, the call sites that record tokens, where enforcement happens, and the gaps worth knowing.
-- **[Agent visibility](agent-visibility.md)** — the visibility table: what the worker sees (its task, the overview, the plan as context, its own task's verdicts) and what it doesn't, why the separation is deliberate, and when you'd break the rule.
+- **[Token recording and enforcement](token-recording.md)** — where the cap is set, the single call site that records tokens, where enforcement happens (between tasks), and the cost-accounting gaps worth knowing.
 - **[The task format](task-format.md)** — the authored markdown under `.tilth/tasks/`: frontmatter and section parsing, the templates, the harness-owned status overlay, and who reads each field.
-- **[How the caps fit together](caps.md)** — the things that can stop a run (the four caps plus the empty-response / no-case backstops), and which level (session vs. task) each one operates at.
-- **[Resume mechanics](resume-mechanics.md)** — what `tilth resume` actually mutates on wake; how per-task ledgers survive.
-- **[Reset mechanics](reset-mechanics.md)** — what `tilth reset` tears down, idempotency, the manual fallback.
-- **[Session layout](session-layout.md)** — where a run lives on disk: working tree under Tilth's `sessions/<id>/`, the session's durable state, branch in the source repo's `.git`, and a reference table of every event type.
+- **[Session layout](session-layout.md)** — where a run lives on disk: working tree under Tilth's `sessions/<id>/`, the session's durable state, the branch in the source repo's `.git`, and a reference table of every `events.jsonl` event type.
+
+The design-rationale companion — **what the worker can and can't see** — lives in Architecture as [Agent visibility](../architecture/agent-visibility.md).

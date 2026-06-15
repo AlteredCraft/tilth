@@ -29,6 +29,21 @@ audit trail. The full event catalogue lives in
 [Session layout → Event types](session-layout.md#event-types); this is the
 observability-minded reading of it.
 
+### Every run replays end-to-end — `tilth visualize`
+
+The headline payoff. **[`tilth visualize`](../getting-started/visualizing.md)**
+serves `events.jsonl` as a chat-style web app (a read-only, loopback-only stdlib
+server over `sessions/`): every run listed, each rendered as a conversation
+grouped by task — model calls with collapsible reasoning, tool calls and
+results, evaluator verdicts, commits, and stops. An active run streams in
+near-realtime; a finished one replays end-to-end from the same renderer —
+byte-identical live or replayed, with no live process to attach to and nothing
+to babysit.
+
+Its machine-readable sibling, **`summary.json`**, is the denormalised rollup of
+the same log — for when you want the shape of a run without replaying every
+event.
+
 ### Every prompt the harness sends is recorded
 
 - **`prompt_assembled`** — emitted for every user message *before it is sent*,
@@ -47,19 +62,6 @@ observability-minded reading of it.
   reasoning when it emitted any. Grep `events.jsonl` for `model_call` and you
   can reconstruct exactly when tokens were spent and why a turn ended. See
   [Token recording](token-recording.md).
-
-### Every run replays end-to-end
-
-- **`tilth visualize`** serves `events.jsonl` as a chat-style web app (a
-  read-only, loopback-only stdlib server over `sessions/`): every run listed,
-  each rendered as a conversation grouped by task — model calls with
-  collapsible reasoning, tool calls and results, evaluator verdicts, commits,
-  and stops. An active run streams in near-realtime; a finished one replays
-  end-to-end from the same renderer. See
-  [Visualizing a session](../getting-started/visualizing.md).
-- **`summary.json`** is the denormalised rollup of the same log — a
-  machine-readable view for when you want the shape of a run without replaying
-  every event.
 
 ### The prompts are plain, editable files
 
@@ -95,7 +97,7 @@ some of these are deliberate non-goals.
 state. The worktree is mounted under `sessions/<id>/workspace/`, so a determined
 model with `bash` can reach `events.jsonl`, `summary.json`, and the rest via
 relative `../` paths. Full inspectability for *you* and full opacity to the
-*agent* are different problems; see [Agent visibility](agent-visibility.md) for
+*agent* are different problems; see [Agent visibility](../architecture/agent-visibility.md) for
 where that wall currently sits.
 
 ## Observability that pays off in development
@@ -127,5 +129,5 @@ sharper the anomaly hunt.
   event catalogue behind everything above.
 - [Token recording](token-recording.md) — how tokens are recorded, and the
   cost-accounting gaps.
-- [Agent visibility](agent-visibility.md) — what the worker sees vs. what the
+- [Agent visibility](../architecture/agent-visibility.md) — what the worker sees vs. what the
   harness hides, and where the `../` wall sits.
