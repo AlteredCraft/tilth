@@ -26,11 +26,19 @@ import sys
 from dotenv import load_dotenv
 from rich.console import Console
 
-from tilth import loop
+from tilth import loop, paths
 
 console = Console()
 
-SUBCOMMANDS = frozenset({"run", "resume", "reset", "visualize"})
+SUBCOMMANDS = frozenset({"init", "run", "resume", "reset", "visualize"})
+
+
+def _load_env() -> None:
+    """Load the resolved .env (first hit in the search order), if any. No file is
+    not an error — `tilth init` and `tilth visualize` don't need provider config."""
+    env_file = paths.resolve_env_file()
+    if env_file is not None:
+        load_dotenv(env_file, override=False)
 
 
 def _build_parser():
@@ -42,6 +50,16 @@ def _build_parser():
         description="Tilth — a minimal long-running agent harness.",
     )
     sub = parser.add_subparsers(dest="command", metavar="<command>")
+
+    sub.add_parser(
+        "init",
+        help="Scaffold ~/.tilth so the installed tool runs from anywhere.",
+        description=(
+            "Create the Tilth home directory ($TILTH_HOME, default ~/.tilth) with "
+            "a sessions/ dir and a .env from the template. Does not overwrite an "
+            "existing .env. Run once after `uv tool install`."
+        ),
+    )
 
     run_p = sub.add_parser(
         "run",
@@ -111,6 +129,8 @@ def _build_parser():
 
 
 def _dispatch(args) -> int:
+    if args.command == "init":
+        return loop.do_init_cmd()
     if args.command == "run":
         return loop.do_run_cmd(args.workspace)
     if args.command == "resume":
@@ -123,7 +143,10 @@ def _dispatch(args) -> int:
 
 
 def main() -> int:
-    load_dotenv()
+    _load_env()
+    # Re-resolve after the .env is loaded so a .env-provided $TILTH_SESSIONS_DIR
+    # (or $TILTH_HOME) takes effect; loop.SESSIONS_DIR was set at import time.
+    loop.SESSIONS_DIR = paths.sessions_dir()
     argv = sys.argv[1:]
 
     if not argv:

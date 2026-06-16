@@ -114,10 +114,7 @@ class TilthConfig:
         ]
         if missing:
             raise RuntimeError(
-                f"Missing required environment variable(s): {', '.join(missing)}. "
-                "Copy .env.example to .env and fill them in (see "
-                "docs/getting-started/installation.md for known-good "
-                "provider/model combinations)."
+                f"Missing required configuration: {', '.join(missing)}."
             )
         evaluator_model = os.environ.get("TILTH_EVALUATOR_MODEL", "").strip() or worker_model
         evaluator_base_url = os.environ.get("TILTH_EVALUATOR_BASE_URL", "").strip() or base_url
