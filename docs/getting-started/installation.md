@@ -11,21 +11,38 @@ Tilth is a small Python package; setup is straight `uv` plumbing plus a `.env`.
 
 ## Clone and install
 
-> **Install-from-source, for now.** Tilth is early research, so the supported install path today is cloning the repo and running it through `uv` (below). There's no `pip install tilth` or prebuilt binary yet — a packaged install story is on the roadmap, not here.
+> **Install-from-source, for now.** Tilth is early research, so the supported install path today is cloning the repo and installing it as a `uv` tool (below). There's no `pip install tilth` or prebuilt binary yet — publishing to PyPI is on the roadmap, not here.
 
-Tilth and the project you point it at are **independent checkouts** — Tilth lives in its own directory, and the codebase it works on lives somewhere else. Clone Tilth wherever you keep code; the `tilth` command takes the target repo as a plain path argument (`uv run tilth run <path>`), so any layout works.
+Tilth and the project you point it at are **independent checkouts** — Tilth lives in its own directory, and the codebase it works on lives somewhere else. Installing Tilth as a tool puts `tilth` on your PATH so it runs from any directory; the command takes the target repo as a plain path argument (`tilth run <path>`), so any layout works.
 
 ```bash
 git clone git@github.com:AlteredCraft/tilth.git
 cd tilth
-uv sync
-cp .env.example .env
-# edit .env, set TILTH_BASE_URL, TILTH_API_KEY, and TILTH_WORKER_MODEL
+uv tool install --editable .   # `tilth` on your PATH; --editable tracks the clone
+
+tilth init                     # scaffolds ~/.tilth/.env from the template
+# edit ~/.tilth/.env, set TILTH_BASE_URL, TILTH_API_KEY, and TILTH_WORKER_MODEL
 ```
 
-> **About the example paths in these docs.** Later pages show commands like `uv run tilth ~/projects/project-x` and reference paths such as `~/projects/tilth/sessions/<id>/`. That layout — Tilth and the target repo sitting side-by-side under `~/projects/` — is just one illustrative choice for the worked examples. Substitute whatever paths match your own setup.
+`tilth init` creates the per-user home (`~/.tilth/`) with a `sessions/` directory and a `.env` you fill in. It never overwrites an existing `.env`.
+
+> **Contributor path.** If you're working *on* the harness rather than using it, skip the tool install: `uv sync` for the dev env, then run the CLI from the clone with `uv run tilth …`. Either way, state lands under `~/.tilth/` unless you override it (below).
+
+> **About the example paths in these docs.** Later pages show commands like `tilth run ~/projects/project-x` and reference paths such as `~/.tilth/sessions/<id>/`. The target-repo path is just one illustrative choice — substitute whatever matches your own setup.
 
 All three of `TILTH_BASE_URL`, `TILTH_API_KEY`, and `TILTH_WORKER_MODEL` are **required** — Tilth refuses to start without them so a misconfigured run can't silently fall back to a provider/model your account doesn't have. The example `.env` points at OpenRouter.
+
+## Where Tilth stores things
+
+Everything Tilth writes for a user lives under one home directory, resolved at startup. Each location has an environment override:
+
+| Path | Default | Override |
+|---|---|---|
+| Home directory | `~/.tilth/` | `$TILTH_HOME` |
+| Sessions (one dir per run, including its worktree) | `<home>/sessions/` | `$TILTH_SESSIONS_DIR` |
+| Provider config | `<home>/.env` | `$TILTH_ENV_FILE` |
+
+The `.env` is discovered in order — `$TILTH_ENV_FILE`, then `~/.tilth/.env`, then a `.env` in the current directory (a convenience for running from a clone before `~/.tilth` is set up). The first one found wins; Tilth doesn't merge an unrelated project's `.env` just because you're standing in it. `$TILTH_HOME` and `$TILTH_SESSIONS_DIR` must be real shell variables to relocate the tree, since they decide where the `.env` itself is read from.
 
 ## Required environment variables
 

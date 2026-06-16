@@ -7,12 +7,12 @@ This page is the practical how-to; for the bigger picture — why a fully replay
 ## How to visualize
 
 ```bash
-uv run tilth visualize                # serve the viewer; deep-links the latest session
-uv run tilth visualize <session_id>   # deep-link a specific session instead
-uv run tilth visualize --port 9000    # if the default port (8765) is taken
+tilth visualize                # serve the viewer; deep-links the latest session
+tilth visualize <session_id>   # deep-link a specific session instead
+tilth visualize --port 9000    # if the default port (8765) is taken
 ```
 
-Starts a local web app (Python's built-in HTTP server — no extra dependencies) over the `sessions/` directory and prints the URLs:
+Starts a local web app (Python's built-in HTTP server — no extra dependencies) over the `~/.tilth/sessions/` directory and prints the URLs:
 
 - **`/`** — every session, newest first, with its status, task counts, and token spend.
 - **`/session/<id>`** — one run rendered as a conversation:

@@ -43,21 +43,21 @@ If the directory is missing (or malformed), `tilth run` fails fast *before* crea
 
 For the demo, try a feature like *"a minimal todo CLI with add, list, and done subcommands, on-disk format `- [ ] item` in `TODOS.md`"*, sliced into three or four tasks.
 
-![Filesystem trees for one Tilth run: HARNESS SIDE under ~/projects/tilth/sessions/<id>/ holds workspace/, events.jsonl, summary.json, checkpoint.json; TARGET REPO SIDE under ~/projects/tilth-demo/.git/ holds refs/heads/session/<id> and worktrees/<id>/. A sage-green arrow labeled 'git worktree binds these' connects the workspace/ on the left to the worktrees/<id>/ admin entry on the right.](../assets/session-layout.png)
+![Filesystem trees for one Tilth run: HARNESS SIDE under ~/.tilth/sessions/<id>/ holds workspace/, events.jsonl, summary.json, checkpoint.json; TARGET REPO SIDE under ~/projects/tilth-demo/.git/ holds refs/heads/session/<id> and worktrees/<id>/. A sage-green arrow labeled 'git worktree binds these' connects the workspace/ on the left to the worktrees/<id>/ admin entry on the right.](../assets/session-layout.png)
 
-*Where a session's state lives. Everything the harness writes — the event log, the status overlay, the summary — sits under your **Tilth** clone (`sessions/<id>/`); only the `session/<id>` branch and its worktree admin entry live in the demo repo's `.git`. The task markdown you authored stays in your repo, where you put it. Full breakdown in [Session layout](../deep-dives/session-layout.md).*
+*Where a session's state lives. Everything the harness writes — the event log, the status overlay, the summary — sits under Tilth's per-user data dir (`~/.tilth/sessions/<id>/`); only the `session/<id>` branch and its worktree admin entry live in the demo repo's `.git`. The task markdown you authored stays in your repo, where you put it. Full breakdown in [Session layout](../deep-dives/session-layout.md).*
 {: .caption }
 
 ## Run a session against the demo
 
 ```bash
-uv run tilth run ~/projects/tilth-demo
+tilth run ~/projects/tilth-demo
 ```
 
 What happens, end-to-end:
 
 1. Tilth verifies the path is a git repo and loads `.tilth/tasks/` (failing fast with templates if it's missing).
-2. Creates a fresh session and a worktree of the demo repo. The working tree lives at `<tilth-clone>/sessions/<id>/workspace/` (inside Tilth, gitignored); the new branch `session/<id>` is registered in the demo repo's `.git`. The two halves live in different places by design — see [Session layout](../deep-dives/session-layout.md) for the why.
+2. Creates a fresh session and a worktree of the demo repo. The working tree lives at `~/.tilth/sessions/<id>/workspace/` (in Tilth's per-user data dir, outside the demo repo); the new branch `session/<id>` is registered in the demo repo's `.git`. The two halves live in different places by design — see [Session layout](../deep-dives/session-layout.md) for the why.
 3. Loops through pending tasks in order. For each task:
     - Reset context. Prompt = system + project context (`AGENTS.md`/`CLAUDE.md`) + recent progress + the feature overview + the full plan (as context) + this task (and, on a retry, the evaluator's prior verdicts on it).
     - Tool-loop with the worker model (bash, file ops, search) until it calls `submit_case` to present its finished work.
@@ -65,7 +65,7 @@ What happens, end-to-end:
     - On accept: commit on the worktree branch, append to `progress.txt`, mark the task `done` in the harness's status overlay.
 4. Stops on: all tasks done, iteration cap, wall-clock cap, token cap, evaluator-call cap, or a terminal failure (e.g. a provider returning empty responses, or the worker never presenting a case).
 
-You can interrupt at any point with Ctrl-C. Ctrl-C and cap hits (iteration, wall-clock, token) all leave the run in a resumable state — see [Resuming & resetting](resuming-and-resetting.md) to pick it back up. Of the three caps, only the **token** cap needs attention before you resume: the cumulative token total carries across resumes, so if `TILTH_MAX_TOKENS` is what stopped the run, raise it in `.env` first or `tilth resume` trips it again on the first check. The wall-clock budget resets per resume, and the iteration cap is per-task (a retried task starts counting from one), so neither blocks a resume unless the work genuinely needs a bigger budget — see [What resume does](resuming-and-resetting.md#what-resume-does).
+You can interrupt at any point with Ctrl-C. Ctrl-C and cap hits (iteration, wall-clock, token) all leave the run in a resumable state — see [Resuming & resetting](resuming-and-resetting.md) to pick it back up. Of the three caps, only the **token** cap needs attention before you resume: the cumulative token total carries across resumes, so if `TILTH_MAX_TOKENS` is what stopped the run, raise it in `~/.tilth/.env` first or `tilth resume` trips it again on the first check. The wall-clock budget resets per resume, and the iteration cap is per-task (a retried task starts counting from one), so neither blocks a resume unless the work genuinely needs a bigger budget — see [What resume does](resuming-and-resetting.md#what-resume-does).
 
 ## What you should expect to see
 
@@ -87,7 +87,7 @@ Once every task is `done`, the harness closes out the final task and prints `all
 
 ![A three-region diagram of Tilth's end-of-session state. Left region, under the label "ON THE SESSION BRANCH": a vertical stack of five rounded rectangles, each a monospace task id with a checkmark — T-001 through T-005 — with the italic caption "tasks done · one commit each". Centre region: a rounded panel titled "RUN SUMMARY" in bold sans-serif all caps, with four monospace key/value rows — session 20260525-103149-3800ea, duration 6m10s, tokens 412,800, tasks total=5 done=5 failed=0 pending=0 — and the italic caption "harness reports out". Right region, under the label "WRITTEN UNDER sessions/<id>/": a vertical stack of document-icon chips, each a monospace filename with a short italic role note — events.jsonl ("full audit trail"), summary.json ("rolled-up snapshot"), checkpoint.json ("resume footing"). A sage-green arrow runs from the task stack into the RUN SUMMARY panel; a second sage-green arrow curves from the panel up into the right-hand stack, labelled "everything one run leaves on disk".](../assets/session-end.png)
 
-*A clean ending. Every task is committed on the session branch (left); the run summary tallies what happened (centre); and the artifacts the run wrote under `sessions/<id>/` — the event log, the rolled-up summary, the resume checkpoint — sit on the right, outside the worktree for you to read or resume from. Your `AGENTS.md` and `.tilth/tasks/` are never touched by the run.*
+*A clean ending. Every task is committed on the session branch (left); the run summary tallies what happened (centre); and the artifacts the run wrote under `~/.tilth/sessions/<id>/` — the event log, the rolled-up summary, the resume checkpoint — sit on the right, outside the worktree for you to read or resume from. Your `AGENTS.md` and `.tilth/tasks/` are never touched by the run.*
 {: .caption }
 
 To inspect what just got committed:
@@ -100,6 +100,6 @@ git diff main..session/<id>
 
 Each task is one commit. If you like the work, merge it into `main` like any other branch; if not, delete the branch. The harness never auto-merges. (You can also use [`tilth reset`](resuming-and-resetting.md#resetting) to throw away the worktree, branch, and the harness's session directory in one shot.)
 
-The session log lives at `<tilth-clone>/sessions/<id>/events.jsonl` — every model call, tool call, and evaluator verdict is recorded (see [Session layout → Event types](../deep-dives/session-layout.md#event-types) for the full taxonomy). Alongside it, `sessions/<id>/summary.json` carries a rolled-up snapshot (token totals, per-task iteration counts, tool histogram, hook outcomes, evaluator accepts/rejects with rejection categories) refreshed at every task boundary — read that when you want a quick stat without `jq`-ing the full log.
+The session log lives at `~/.tilth/sessions/<id>/events.jsonl` — every model call, tool call, and evaluator verdict is recorded (see [Session layout → Event types](../deep-dives/session-layout.md#event-types) for the full taxonomy). Alongside it, `~/.tilth/sessions/<id>/summary.json` carries a rolled-up snapshot (token totals, per-task iteration counts, tool histogram, hook outcomes, evaluator accepts/rejects with rejection categories) refreshed at every task boundary — read that when you want a quick stat without `jq`-ing the full log.
 
 For a more readable view of a finished run, see [Visualizing a session](visualizing.md).

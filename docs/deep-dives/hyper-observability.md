@@ -94,9 +94,9 @@ some of these are deliberate non-goals.
   approaches. See the [gaps in Token recording](token-recording.md).
 
 **An honest gap, not a feature:** the worker isn't fully walled off from harness
-state. The worktree is mounted under `sessions/<id>/workspace/`, so a determined
-model with `bash` can reach `events.jsonl`, `summary.json`, and the rest via
-relative `../` paths. Full inspectability for *you* and full opacity to the
+state. The worktree is mounted under `~/.tilth/sessions/<id>/workspace/`, so a
+determined model with `bash` can reach `events.jsonl`, `summary.json`, and the
+rest via relative `../` paths. Full inspectability for *you* and full opacity to the
 *agent* are different problems; see [Agent visibility](../architecture/agent-visibility.md) for
 where that wall currently sits.
 

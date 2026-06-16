@@ -33,7 +33,7 @@ A blocked call surfaces as a tool-error feedback message to the agent on the nex
 
 ## Worktree isolation
 
-Every run creates a per-session git worktree on a `session/<id>` branch in *your* repo's git database. The working tree itself lives under Tilth's `sessions/<id>/workspace/` — see [Session layout](../deep-dives/session-layout.md) for the split. The file tools (`read_file` / `write_file` / `edit_file`) refuse paths that escape the worktree (`tools/files.py:_resolve`). The `bash` tool is **not** path-sandboxed, so treat the worktree boundary as a guard on the file tools, not on shell access — a determined `cd ..` reaches harness state (see the network/shell note below, and [Agent visibility](../architecture/agent-visibility.md) on the honest scope of the boundary).
+Every run creates a per-session git worktree on a `session/<id>` branch in *your* repo's git database. The working tree itself lives under `~/.tilth/sessions/<id>/workspace/` — see [Session layout](../deep-dives/session-layout.md) for the split. The file tools (`read_file` / `write_file` / `edit_file`) refuse paths that escape the worktree (`tools/files.py:_resolve`). The `bash` tool is **not** path-sandboxed, so treat the worktree boundary as a guard on the file tools, not on shell access — a determined `cd ..` reaches harness state (see the network/shell note below, and [Agent visibility](../architecture/agent-visibility.md) on the honest scope of the boundary).
 
 The branch is **never auto-merged**. Open a PR and review like any other branch.
 

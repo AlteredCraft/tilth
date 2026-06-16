@@ -10,7 +10,7 @@ Your project must be a **git repo with at least one commit**. That's it for hard
 
 - **`AGENTS.md` (or `CLAUDE.md`) at the repo root.** User-owned, user-maintained — Tilth reads it as project context for the worker and the evaluator but never writes to it. Even a short one helps the worker understand your conventions. By default Tilth reads both `AGENTS.md` and `CLAUDE.md` (in that order, concatenated); override the list with `TILTH_CONTEXT_FILES`. A starting template lives at [Memory channels → `AGENTS.md`](../architecture/memory-channels.md#agentsmd-your-project-conventions); the same page covers what does and doesn't belong there.
 
-You do **not** hand-manage any harness state. Per-task status, the progress journal, and the evaluator ledgers are harness-owned and live under `sessions/<id>/` — they never enter your repo's working tree. The only artifacts in your source repo are the `.tilth/tasks/` directory you author (below) and the `session/<id>` branch in `.git`.
+You do **not** hand-manage any harness state. Per-task status, the progress journal, and the evaluator ledgers are harness-owned and live under `~/.tilth/sessions/<id>/` — they never enter your repo's working tree. The only artifacts in your source repo are the `.tilth/tasks/` directory you author (below) and the `session/<id>` branch in `.git`.
 
 ## 2. Author the feature
 
@@ -29,11 +29,10 @@ You can draft the files with any agent you like (the templates are designed to b
 ## 3. Run it
 
 ```bash
-cd <your-tilth-clone>
-uv run tilth run /absolute/path/to/your/repo
+tilth run /absolute/path/to/your/repo
 ```
 
-`tilth run` loads `.tilth/tasks/`, creates a fresh session + worktree, and starts the worker loop. The per-task lifecycle is identical to the demo — see [Running the demo → end-to-end flow](running-the-demo.md#run-a-session-against-the-demo) for the breakdown. Follow-on operations:
+`tilth run` loads `.tilth/tasks/`, creates a fresh session + worktree, and starts the worker loop. With Tilth installed as a tool, run it from anywhere — no `cd` into a clone. (Working from a clone instead? `uv run tilth run …`.) The per-task lifecycle is identical to the demo — see [Running the demo → end-to-end flow](running-the-demo.md#run-a-session-against-the-demo) for the breakdown. Follow-on operations:
 
 - [Resuming & resetting](resuming-and-resetting.md) — `tilth resume` to continue a stopped run; `tilth reset` to tear one down.
 - [Visualizing a session](visualizing.md) — `tilth visualize` renders `events.jsonl` as a chat-style web app, live or replayed.
@@ -48,7 +47,7 @@ Each task is one commit on `session/<id>`. Inspect and merge exactly as in the d
 - **Costs are real.** A run spends hundreds of thousands of tokens across worker + evaluator. The `TILTH_MAX_TOKENS` cap exists for a reason — set it on first run. If you set it too low, you can simply raise it and `tilth resume` the session. Cost per token varies wildly across providers; pick your worker accordingly. Be careful about reaching for a smaller evaluator model to cut costs — see [Picking an evaluator model](#6-picking-an-evaluator-model) below.
 - **AGENTS.md is yours.** Tilth reads it, never writes it. It only grows when you decide it should.
 - **Tools are intentionally narrow.** No web fetch, no MCP, no curl-based downloads. If your tasks require external API access, you add a tool to `tilth/tools/` and register it. Keep tools focused — every tool description ships in the prompt every turn.
-- **The harness commits to your repo's git db.** Tilth keeps the working tree under `sessions/<id>/workspace/` on its own side, but the branch `session/<id>` lives in *your* repo's `.git`. So if you delete your Tilth clone without resetting first, those branches remain in your project. Clean up branches the same way you would for a normal feature branch — or run `tilth reset` before you blow Tilth away. See [Session layout](../deep-dives/session-layout.md) for the full split.
+- **The harness commits to your repo's git db.** Tilth keeps the working tree under `~/.tilth/sessions/<id>/workspace/` on its own side, but the branch `session/<id>` lives in *your* repo's `.git`. So if you uninstall Tilth (or wipe `~/.tilth/`) without resetting first, those branches remain in your project. Clean up branches the same way you would for a normal feature branch — or run `tilth reset` before you blow Tilth away. See [Session layout](../deep-dives/session-layout.md) for the full split.
 
 ## 6. Picking an evaluator model
 
@@ -79,4 +78,4 @@ The `TILTH_EVALUATOR_BASE_URL` / `TILTH_EVALUATOR_API_KEY` feature is genuinely 
 1. Scope the feature **narrowly**. Two or three tasks' worth of work — a feature with a clear contract, not an open-ended refactor. "Add `--format json` to the export CLI" beats "improve the export system."
 2. Write the acceptance criteria as if you were the evaluator. For each one, ask: *could a reviewer check this against a diff?* If not, sharpen it. The contract compounds — early vagueness means later iterations.
 3. Watch the console during `tilth run` — it streams every tool call. If the agent thrashes on one task, kill the run, reset, rewrite the task file with a sharper description.
-4. Inspect `sessions/<id>/events.jsonl` after the run. Look for unexpected patterns: tasks that took many iterations, strings of evaluator rejections on the same category, the worker re-reading the same files. Each is a signal — usually about the task file, sometimes about the harness. For a readable pass over the same data, render the run with [`tilth visualize`](visualizing.md).
+4. Inspect `~/.tilth/sessions/<id>/events.jsonl` after the run. Look for unexpected patterns: tasks that took many iterations, strings of evaluator rejections on the same category, the worker re-reading the same files. Each is a signal — usually about the task file, sometimes about the harness. For a readable pass over the same data, render the run with [`tilth visualize`](visualizing.md).
