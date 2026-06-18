@@ -32,8 +32,8 @@ APP_PAGE = """<!DOCTYPE html>
 <div class="container">
   <header class="page-head">
     <div>
-      <h1><a class="home-link" href="/">Tilth</a> session</h1>
-      <span class="session-id">{session_id}</span>
+      <h1><a class="home-link" href="/">Tilth</a></h1>
+      <span class="session-id">session: {session_id}</span>
     </div>
     <div class="live-chips">
       <span class="chip" id="chip-status">…</span>
@@ -41,6 +41,18 @@ APP_PAGE = """<!DOCTYPE html>
       <span class="chip" id="chip-count"></span>
     </div>
   </header>
+  <section class="panel limits-panel" id="limits-panel" hidden>
+    <h2>Limit utilization</h2>
+    <div class="panel-sub">how close this run is to its configured caps</div>
+    <div class="limit-group">
+      <div class="limit-group-label">Per session</div>
+      <div class="meters" id="session-meters"></div>
+    </div>
+    <div class="limit-group" id="task-limit-group" hidden>
+      <div class="limit-group-label" id="task-limit-label">Per task</div>
+      <div class="meters" id="task-meters"></div>
+    </div>
+  </section>
   <section class="stat-band" id="stat-band" hidden>
     <div class="stat">
       <div class="stat-label">Tokens</div>

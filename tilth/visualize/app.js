@@ -2,8 +2,10 @@
  *
  * Rendering of the chat tail happens server-side (one renderer to maintain);
  * this script appends HTML chunks, keeps the header chips fresh, and builds
- * the dashboard (stat band, session timeline, context pressure) from the
- * compact `facts` the server ships alongside each chunk. Facts cover exactly
+ * the dashboard (limit utilization, stat band, session timeline, context
+ * pressure) from the compact `facts` the server ships alongside each chunk.
+ * Limit meters read the caps recorded in the session_start fact. Facts cover
+ * exactly
  * the same events as the HTML, so a replayed dashboard is identical to a
  * live-tailed one. State that must round-trip with the server: `offset`
  * (byte cursor into events.jsonl) and `lastTask` (task-divider state).
@@ -138,14 +140,18 @@
     accepts: 0,
     rejects: 0,
     categories: {},
-    tasks: new Map(), // id -> {first, last, status, ticks: [], marks: []}
+    tasks: new Map(), // id -> {first, last, status, ticks, marks, iters}
     bars: [],         // {task, pt, phase, flag} in arrival order
     maxPt: 0,
+    limits: null,     // configured caps from session_start (or null on old logs)
+    taskTotal: null,  // feature's full task count (may exceed tasks seen so far)
   };
 
   function task(id) {
     if (!S.tasks.has(id)) {
-      S.tasks.set(id, { first: null, last: null, status: null, ticks: [], marks: [] });
+      S.tasks.set(id, {
+        first: null, last: null, status: null, ticks: [], marks: [], iters: 0,
+      });
     }
     return S.tasks.get(id);
   }
@@ -167,11 +173,20 @@
       if (tk.first === null) tk.first = f.t;
       tk.last = f.t;
     }
-    if (f.e === "model") {
+    if (f.e === "start") {
+      if (f.limits) S.limits = f.limits;
+      if (typeof f.task_count === "number") S.taskTotal = f.task_count;
+    } else if (f.e === "model") {
       if (f.phase === "evaluator") S.evalCalls += 1;
       else {
         S.workerCalls += 1;
-        if (f.task) task(f.task).ticks.push(f.t);
+        if (f.task) {
+          const tk = task(f.task);
+          tk.ticks.push(f.t);
+          // `iter` is 1-indexed (loop sends iter_n + 1), so the max seen is the
+          // iteration count used — the number the per-task iteration cap bounds.
+          if (f.iter) tk.iters = Math.max(tk.iters, f.iter);
+        }
       }
       S.pt += f.pt;
       S.et += f.et;
@@ -230,6 +245,112 @@
 
   function show(id) {
     document.getElementById(id).hidden = false;
+  }
+
+  // Tokens read better in millions once a budget gets large; mmss/fmtK stay
+  // for the per-task and clock numbers.
+  function fmtBig(n) {
+    if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + "M";
+    if (n >= 1e4) return (n / 1e3).toFixed(0) + "k";
+    return Math.round(n).toLocaleString();
+  }
+
+  function fmtInt(n) {
+    return String(Math.round(n));
+  }
+
+  // Utilization band → severity. Low use is healthy headroom (green), the run
+  // only deserves attention as it nears a cap.
+  function meterTone(pct) {
+    if (pct >= 90) return "bad";
+    if (pct >= 75) return "warn";
+    return "ok";
+  }
+
+  // o: {name, used, max, fmt, dot?, status?}. A 0/absent max means "no finite
+  // cap" and the caller is expected to skip it — every meter shown here has one.
+  // `status` ("done" | "failed") adds a completion glyph after the name.
+  function meterEl(o) {
+    const max = o.max || 0;
+    const pct = max > 0 ? Math.min(100, (o.used / max) * 100) : 0;
+    const m = el("div", "meter meter-" + meterTone(pct));
+    const head = el("div", "meter-head");
+    const name = el("span", "meter-name");
+    if (o.dot) {
+      const dot = el("span", "meter-dot");
+      dot.style.background = o.dot;
+      name.appendChild(dot);
+    }
+    name.appendChild(document.createTextNode(o.name));
+    if (o.status === "done" || o.status === "failed") {
+      const done = o.status === "done";
+      name.appendChild(el(
+        "span", "meter-status " + (done ? "done" : "failed"), done ? "✓" : "✕"));
+      name.title = done ? "task complete" : "task failed";
+    }
+    head.append(
+      name,
+      el("span", "meter-val",
+        o.fmt(o.used) + " / " + o.fmt(max) + " · " + Math.round(pct) + "%"),
+    );
+    const track = el("div", "meter-track");
+    const fill = el("i", "meter-fill");
+    fill.style.width = pct + "%";
+    track.appendChild(fill);
+    m.append(head, track);
+    return m;
+  }
+
+  function renderLimits() {
+    const L = S.limits;
+    if (!L) return; // pre-limits session log — degrade to no panel
+    show("limits-panel");
+
+    const session = document.getElementById("session-meters");
+    session.replaceChildren();
+    if (L.max_tokens > 0) {
+      session.appendChild(meterEl({
+        name: "Token budget", used: S.pt + S.et, max: L.max_tokens, fmt: fmtBig,
+      }));
+    }
+    if (L.max_wall_clock_minutes > 0) {
+      const wall = Math.max(0, (S.end || 0) - (S.start || 0)); // seconds
+      session.appendChild(meterEl({
+        name: "Wall clock", used: wall, max: L.max_wall_clock_minutes * 60,
+        fmt: mmss,
+      }));
+    }
+
+    // Per-task: iterations always (the iter_cap is the usual failure mode);
+    // evaluator calls only when that cap is set (0 means unlimited).
+    const taskMeters = document.getElementById("task-meters");
+    taskMeters.replaceChildren();
+    let rows = 0;
+    for (const [id, tk] of S.tasks) {
+      if (L.max_iterations_per_task > 0) {
+        taskMeters.appendChild(meterEl({
+          name: id + " · iterations", used: tk.iters,
+          max: L.max_iterations_per_task, fmt: fmtInt, dot: taskColor(id),
+          status: tk.status,
+        }));
+        rows += 1;
+      }
+      if (L.max_evaluator_calls_per_task > 0) {
+        taskMeters.appendChild(meterEl({
+          name: id + " · evaluator calls", used: tk.marks.length,
+          max: L.max_evaluator_calls_per_task, fmt: fmtInt, dot: taskColor(id),
+          status: tk.status,
+        }));
+        rows += 1;
+      }
+    }
+    document.getElementById("task-limit-group").hidden = rows === 0;
+
+    // "Per task · N tasks" — prefer the recorded feature total (known up front)
+    // and fall back to tasks seen so far on pre-task_count logs.
+    const total = S.taskTotal != null ? S.taskTotal : S.tasks.size;
+    document.getElementById("task-limit-label").textContent =
+      "Per task · " + total + (total === 1 ? " task" : " tasks");
   }
 
   function renderStats() {
@@ -459,6 +580,7 @@
   }
 
   function renderDashboard() {
+    renderLimits();
     renderStats();
     renderTimeline();
     renderBars();

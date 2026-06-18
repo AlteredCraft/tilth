@@ -132,7 +132,14 @@ def _event_fact(ev: dict[str, Any]) -> dict[str, Any] | None:
     if typ == "commit":
         return {"e": "commit", "t": t, "task": task}
     if typ == "session_start":
-        return {"e": "start", "t": t}
+        fact: dict[str, Any] = {"e": "start", "t": t}
+        limits = p.get("limits")
+        if isinstance(limits, dict):
+            fact["limits"] = limits
+        count = p.get("task_count")
+        if isinstance(count, int):
+            fact["task_count"] = count
+        return fact
     if typ == "stop":
         return {"e": "stop", "t": t, "reason": p.get("reason") or ""}
     return None

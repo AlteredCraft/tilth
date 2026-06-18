@@ -31,6 +31,8 @@ It's an early example of the goal, not a finished product. For the full product 
 ```bash
 git clone git@github.com:AlteredCraft/tilth.git
 cd tilth
+# This will put `tilth` on your PATH, runnable from anywhere, but point to the local code
+#   here. This enalbes you to iterate on the codebase without having to reinstall the tool.
 uv tool install --editable .   # puts `tilth` on your PATH, runnable from anywhere
 
 tilth init                     # scaffolds ~/.tilth/.env

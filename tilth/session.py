@@ -120,10 +120,17 @@ Event types:
     context_reset      — beginning of a new task; messages rebuilt from disk
     session_start      — fresh session began (worktree created). Payload carries
                          {source, phase: "run", worktree, branch, worker_model,
-                         evaluator_model, base_url}; summary.py keys
+                         evaluator_model, base_url, limits, task_count};
+                         summary.py keys
                          `started_at` off this. The model/endpoint config is
                          recorded so "what ran" is answerable from the log
-                         alone, not from whatever .env says later.
+                         alone, not from whatever .env says later. `limits` is
+                         the configured cap dict (see TilthConfig.limits:
+                         max_tokens, max_wall_clock_minutes,
+                         max_iterations_per_task, max_evaluator_calls_per_task)
+                         — the visualizer shows utilization against it.
+                         `task_count` is the feature's full task count (the
+                         viewer shows "N tasks" before every task has an event).
     session_resume     — resume woke a session; payload carries the resume plan
                          (which failed tasks were retried, FAILED commit unwound, etc.)
     stop               — run terminated; payload.reason ∈

@@ -70,7 +70,7 @@ header.page-head {
   z-index: 30;
   background: var(--bg);
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
   border-bottom: 1px solid var(--line);
@@ -79,15 +79,16 @@ header.page-head {
 }
 header.page-head h1 {
   margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
 }
 header.page-head .session-id {
   display: block;
   color: var(--muted);
   font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
-  margin-top: 2px;
+  margin-top: 6px;
 }
 header.page-head .count {
   color: var(--muted);
@@ -298,6 +299,45 @@ details.reasoning[open] summary::before {
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
+/* Kind glyph on each log entry's header — the same icons as the filter chips,
+   painted in the header's own colour (which already encodes kind/state). The
+   --ic-* vars are defined alongside the filter chips. */
+.msg[data-kind] .bubble-title::before,
+.msg[data-kind] .card-title::before {
+  content: "";
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  vertical-align: -2px;
+  margin-right: 6px;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+.msg[data-kind="worker"] .bubble-title::before,
+.msg[data-kind="worker"] .card-title::before {
+  -webkit-mask-image: var(--ic-worker);
+  mask-image: var(--ic-worker);
+}
+.msg[data-kind="tool"] .bubble-title::before,
+.msg[data-kind="tool"] .card-title::before {
+  -webkit-mask-image: var(--ic-tool);
+  mask-image: var(--ic-tool);
+}
+.msg[data-kind="evaluator"] .bubble-title::before,
+.msg[data-kind="evaluator"] .card-title::before {
+  -webkit-mask-image: var(--ic-evaluator);
+  mask-image: var(--ic-evaluator);
+}
+.msg[data-kind="harness"] .bubble-title::before,
+.msg[data-kind="harness"] .card-title::before {
+  -webkit-mask-image: var(--ic-harness);
+  mask-image: var(--ic-harness);
+}
 .bubble-body { font-size: 13px; }
 
 .ts {
@@ -414,6 +454,75 @@ pre {
   background: var(--line);
 }
 .split-bar i { display: block; }
+
+/* limit utilization (meters) */
+.limits-panel .limit-group + .limit-group { margin-top: 16px; }
+.limit-group-label {
+  font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.meters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(248px, 1fr));
+  gap: 12px 28px;
+}
+.meter { min-width: 0; }
+.meter-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 5px;
+}
+.meter-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--fg);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.meter-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.meter-status {
+  flex: 0 0 auto;
+  font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.meter-status.done { color: var(--ok); }
+.meter-status.failed { color: var(--bad); }
+.meter-val {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.meter-track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--line);
+  overflow: hidden;
+}
+.meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+.meter-ok .meter-fill { background: var(--ok); }
+.meter-warn .meter-fill { background: var(--eval-bar); }
+.meter-bad .meter-fill { background: var(--bad); }
+.meter-bad .meter-val { color: var(--bad); font-weight: 600; }
 
 .panel {
   background: var(--card);
@@ -623,12 +732,53 @@ pre {
 .preset:hover, .fchip:hover { border-color: var(--muted); }
 .preset.active { background: var(--fg); border-color: var(--fg); color: var(--bg); }
 .filter-div { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
+/* Per-kind glyphs (terminal / wrench / check-circle / box), as SVG mask
+   images so the shape stays crisp and gets painted in the kind's colour via
+   background-color — keeping the colour coding while adding an icon. */
+:root {
+  /* MDI robot-industrial-outline — an articulated robot arm for the worker. */
+  --ic-worker: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23000' d='M4 19H8.6L2.62 8.64C2.23 8 2 7.29 2 6.5C2 4.29 3.79 2.5 6 2.5C7.86 2.5 9.43 3.78 9.87 5.5H14V3C14 1.9 14.9 1 16 1V3.59L17.59 2H22V4H18.41L16 6.41V6.59L18.41 9H22V11H17.59L16 9.41V12C14.9 12 14 11.11 14 10V7.5H9.87C9.77 7.89 9.61 8.26 9.41 8.6L15.41 19H20C21.11 19 22 19.9 22 21V22H2V21C2 19.9 2.9 19 4 19M7.91 10C7.35 10.32 6.7 10.5 6 10.5L10.91 19H13.1L7.91 10M6 4.5C4.89 4.5 4 5.4 4 6.5C4 7.61 4.89 8.5 6 8.5C7.11 8.5 8 7.61 8 6.5C8 5.4 7.11 4.5 6 4.5Z'/%3E%3C/svg%3E");
+  --ic-tool: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z'/%3E%3C/svg%3E");
+  --ic-evaluator: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 11.08V12a10 10 0 1 1-5.93-9.14'/%3E%3Cpolyline points='22 4 12 14.01 9 11.01'/%3E%3C/svg%3E");
+  --ic-harness: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z'/%3E%3Cpolyline points='3.27 6.96 12 12.01 20.73 6.96'/%3E%3Cline x1='12' y1='22.08' x2='12' y2='12'/%3E%3C/svg%3E");
+}
+
 .fchip { padding-left: 9px; }
-.fchip::before { content: "●"; font-size: 8px; vertical-align: 1px; margin-right: 5px; }
-.fchip[data-kind="worker"]::before { color: var(--agent-fg); }
-.fchip[data-kind="tool"]::before { color: var(--tool-fg); }
-.fchip[data-kind="evaluator"]::before { color: var(--evaluator-fg); }
-.fchip[data-kind="harness"]::before { color: var(--muted); }
+.fchip::before {
+  content: "";
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  vertical-align: -2px;
+  margin-right: 5px;
+  background-color: var(--muted);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+.fchip[data-kind="worker"]::before {
+  background-color: var(--agent-fg);
+  -webkit-mask-image: var(--ic-worker);
+  mask-image: var(--ic-worker);
+}
+.fchip[data-kind="tool"]::before {
+  background-color: var(--tool-fg);
+  -webkit-mask-image: var(--ic-tool);
+  mask-image: var(--ic-tool);
+}
+.fchip[data-kind="evaluator"]::before {
+  background-color: var(--evaluator-fg);
+  -webkit-mask-image: var(--ic-evaluator);
+  mask-image: var(--ic-evaluator);
+}
+.fchip[data-kind="harness"]::before {
+  background-color: var(--muted);
+  -webkit-mask-image: var(--ic-harness);
+  mask-image: var(--ic-harness);
+}
 .fchip.on { color: var(--fg); }
 .fchip.off { opacity: 0.45; text-decoration: line-through; }
 

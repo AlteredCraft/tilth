@@ -1452,6 +1452,12 @@ def do_run_cmd(workspace: Path) -> int:
             "worker_model": config.worker_model,
             "evaluator_model": config.evaluator_model,
             "base_url": config.base_url,
+            # The caps this run enforces — recorded so the viewer can show
+            # utilization against them without reading the (mutable) config.
+            "limits": config.limits(),
+            # The feature's full task count, so the viewer can show "N tasks"
+            # before every task has produced an event.
+            "task_count": len(static_tasks),
         },
     )
     console.print(
