@@ -29,7 +29,7 @@ from typing import Any
 
 from rich.console import Console
 
-from tilth import memory, summary, tasks, tools, visualize
+from tilth import memory, paths, summary, tasks, tools, visualize
 from tilth import workspace as ws
 from tilth.case import (
     NAME_SUBMIT_CASE,
@@ -55,9 +55,12 @@ from tilth.verdict import (
 
 console = Console()
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
-SESSIONS_DIR = REPO_ROOT / "sessions"
+DATA_DIR = Path(__file__).resolve().parent / "data"
+# Resolved at import from $TILTH_HOME / $TILTH_SESSIONS_DIR (default ~/.tilth).
+# cli.main() re-resolves it after loading the .env, so a .env-provided override
+# still takes effect.
+SESSIONS_DIR = paths.sessions_dir()
 
 
 def _trace_id() -> str:
@@ -1251,6 +1254,90 @@ def _do_reset(session_id: str, assume_yes: bool) -> int:
     return 0
 
 
+# --- onboarding + config ----------------------------------------------------
+
+def _env_template() -> str:
+    return (DATA_DIR / "env.example").read_text()
+
+
+def _legacy_sessions_dir() -> Path | None:
+    """The pre-#8 clone-local `sessions/`, when running from a source checkout
+    and it still holds runs. Returns None for an installed tool (the package
+    lives under site-packages, with no sessions beside it) or when it resolves
+    to the active sessions dir anyway."""
+    old = Path(__file__).resolve().parent.parent / "sessions"
+    if old.resolve() == SESSIONS_DIR.resolve():
+        return None
+    if old.is_dir() and any(p.is_dir() for p in old.iterdir()):
+        return old
+    return None
+
+
+def _print_migration_hint() -> None:
+    old = _legacy_sessions_dir()
+    if old is None:
+        return
+    count = sum(1 for p in old.iterdir() if p.is_dir())
+    console.print(
+        f"[yellow]note:[/yellow] {count} session(s) live in a previous location:\n"
+        f"  {old}\n"
+        "move them into the current one with:\n"
+        f"  mkdir -p {SESSIONS_DIR} && mv {old}/* {SESSIONS_DIR}/",
+        soft_wrap=True,  # keep the path + command copy-pasteable in narrow terminals
+    )
+
+
+def _load_config() -> TilthConfig | None:
+    """Build the provider config, or print an actionable message and return None.
+
+    Keeps the *what's wrong* (missing keys, from client) separate from the *how
+    to fix it* (run `tilth init`, or edit the resolved .env) — which only the CLI
+    knows, since it owns path resolution."""
+    try:
+        return TilthConfig.from_env()
+    except RuntimeError as exc:
+        env_file = paths.resolve_env_file()
+        if env_file is None:
+            target = paths.env_file_write_target()
+            console.print(
+                "[red]No provider configuration found.[/red]\n"
+                f"Run [bold]tilth init[/bold] to create [bold]{target}[/bold], "
+                "then set your API key and model.",
+                soft_wrap=True,
+            )
+        else:
+            console.print(
+                f"[red]{exc}[/red]\n"
+                f"Edit [bold]{env_file}[/bold] and set the missing value(s).",
+                soft_wrap=True,
+            )
+        return None
+
+
+def do_init_cmd() -> int:
+    """Scaffold the per-user home: <home>/.env (from the template) and
+    <home>/sessions/. Idempotent — never overwrites an existing .env."""
+    target = paths.env_file_write_target()
+    SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        console.print(f"[yellow]config already exists[/yellow] at {target}", soft_wrap=True)
+        console.print(
+            "[dim]edit it to change provider/model, or delete it to re-scaffold[/dim]"
+        )
+        _print_migration_hint()
+        return 0
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(_env_template())
+    console.print(f"[green]wrote[/green] {target}", soft_wrap=True)
+    console.print(f"[dim]sessions are stored under {SESSIONS_DIR}[/dim]", soft_wrap=True)
+    console.print(
+        "[bold]next:[/bold] set TILTH_API_KEY and TILTH_WORKER_MODEL, "
+        "then run [bold]tilth run <path>[/bold]"
+    )
+    _print_migration_hint()
+    return 0
+
+
 # --- per-subcommand handlers ------------------------------------------------
 
 def _resolve_session_id(maybe_id: str | None) -> str | None:
@@ -1264,7 +1351,8 @@ def _resolve_session_id(maybe_id: str | None) -> str | None:
 def do_reset_cmd(maybe_id: str | None, assume_yes: bool) -> int:
     sid = _resolve_session_id(maybe_id)
     if not sid:
-        console.print(f"[red]no sessions found under {SESSIONS_DIR}[/red]")
+        console.print(f"[red]no sessions found under {SESSIONS_DIR}[/red]", soft_wrap=True)
+        _print_migration_hint()
         return 2
     if not maybe_id:
         console.print(f"[dim]reset: latest session is {sid}[/dim]")
@@ -1303,11 +1391,14 @@ def do_visualize_cmd(maybe_id: str | None, port: int = 8765) -> int:
 def do_resume_cmd(maybe_id: str | None) -> int:
     sid = _resolve_session_id(maybe_id)
     if not sid:
-        console.print(f"[red]no sessions found under {SESSIONS_DIR}[/red]")
+        console.print(f"[red]no sessions found under {SESSIONS_DIR}[/red]", soft_wrap=True)
+        _print_migration_hint()
         return 2
     if not maybe_id:
         console.print(f"[dim]resume: latest session is {sid}[/dim]")
-    config = TilthConfig.from_env()
+    config = _load_config()
+    if config is None:
+        return 2
     client = LLMClient(config)
     session = Session.wake(SESSIONS_DIR, sid)
     if session.workspace is None or session.source is None:
@@ -1336,7 +1427,9 @@ def do_run_cmd(workspace: Path) -> int:
         console.print(f"[red]cannot start run:[/red]\n{exc}")
         return 2
 
-    config = TilthConfig.from_env()
+    config = _load_config()
+    if config is None:
+        return 2
     client = LLMClient(config)
 
     session = Session.new(SESSIONS_DIR)

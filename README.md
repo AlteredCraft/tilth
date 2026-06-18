@@ -31,12 +31,15 @@ It's an early example of the goal, not a finished product. For the full product 
 ```bash
 git clone git@github.com:AlteredCraft/tilth.git
 cd tilth
-uv sync
-cp .env.example .env
-# edit .env — TILTH_BASE_URL, TILTH_API_KEY, TILTH_WORKER_MODEL are all required
-# (Tilth refuses to start without them so a misconfigured run can't silently
-# fall back to a provider/model your account doesn't have)
+uv tool install --editable .   # puts `tilth` on your PATH, runnable from anywhere
+
+tilth init                     # scaffolds ~/.tilth/.env
+# edit ~/.tilth/.env — TILTH_BASE_URL, TILTH_API_KEY, TILTH_WORKER_MODEL are all
+# required (Tilth refuses to start without them so a misconfigured run can't
+# silently fall back to a provider/model your account doesn't have)
 ```
+
+Tilth keeps all per-user state under `~/.tilth/` — the `.env` above and every run's `sessions/<id>/`. Relocate it with `$TILTH_HOME` (whole tree) or `$TILTH_SESSIONS_DIR` (just the runs).
 
 You author the feature as markdown in the target repo, then run it — there's no interview step. The work lives under `<repo>/.tilth/tasks/`:
 
@@ -70,20 +73,22 @@ Then point Tilth at the repo:
 ```bash
 git clone git@github.com:AlteredCraft/tilth-demo-todo-cli.git tilth-demo
 # author tilth-demo/.tilth/tasks/  (run prints ready-to-fill templates if it's missing)
-uv run tilth run ./tilth-demo
+tilth run ./tilth-demo
 ```
 
 For each pending task, Tilth resets context from disk, lets the worker work with the file/search/bash tools until it calls `submit_case`, hands the case + diff to the evaluator in a fresh context, and on `accept` commits one task = one commit on the `session/<id>` branch (humans review and merge — Tilth never auto-merges). A run stops on all-tasks-done or a cap (iterations / wall-clock / tokens / evaluator calls). Interrupt with Ctrl-C; resume with `tilth resume`.
 
 ```bash
-uv run tilth resume                 # continue the latest session
-uv run tilth reset                  # tear down a session's worktree + branch + dir
-uv run tilth visualize              # serve the live session viewer (127.0.0.1:8765)
+tilth resume                 # continue the latest session
+tilth reset                  # tear down a session's worktree + branch + dir
+tilth visualize              # serve the live session viewer (127.0.0.1:8765)
 ```
 
-The `TILTH_*` env-var table (caps, evaluator routing, context-file selection) is documented in `.env.example`.
+The `TILTH_*` env-var table (caps, evaluator routing, context-file selection) is documented in the generated `~/.tilth/.env` (copied from `.env.example`).
 
 ## Working with the codebase
+
+Working *on* Tilth itself rather than using it? `uv sync` for the dev env, then run the CLI straight from the clone with `uv run tilth …` (no install needed — sessions still land in `~/.tilth/` unless you set `$TILTH_HOME`).
 
 ```bash
 # Lint

@@ -12,7 +12,7 @@ Five memory channels live *outside* the agent. Some are project files the user o
 
 > The reviewing role is the **evaluator**.
 
-The worker writes none of these. It writes code in the worktree, which the harness commits. The split is clean: **memory channels are inputs to the agents; session artifacts under `sessions/<id>/` (`events.jsonl`, `summary.json`, `checkpoint.json`, `task-status.json`) are outputs the harness produces during a run.** The full read-it-once picture — every input, every output, and the three artifacts that are *both* — is laid out in [Anatomy of a run](anatomy-of-a-run.md); this page zooms in on the input channels.
+The worker writes none of these. It writes code in the worktree, which the harness commits. The split is clean: **memory channels are inputs to the agents; session artifacts under `~/.tilth/sessions/<id>/` (`events.jsonl`, `summary.json`, `checkpoint.json`, `task-status.json`) are outputs the harness produces during a run.** The full read-it-once picture — every input, every output, and the three artifacts that are *both* — is laid out in [Anatomy of a run](anatomy-of-a-run.md); this page zooms in on the input channels.
 
 ## `AGENTS.md` — your project conventions
 

@@ -9,6 +9,6 @@ The [Getting started](../getting-started/installation.md) and [Architecture](../
 - **[The worker↔evaluator dialogue](worker-evaluator-dialogue.md)** — the structured `case` / `verdict` exchange the inner loop ends in: `submit_case`, `submit_verdict`, the six rejection categories, and the per-task ledger that gives the evaluator memory across iterations.
 - **[Token recording and enforcement](token-recording.md)** — where the cap is set, the single call site that records tokens, where enforcement happens (between tasks), and the cost-accounting gaps worth knowing.
 - **[The task format](task-format.md)** — the authored markdown under `.tilth/tasks/`: frontmatter and section parsing, the templates, the harness-owned status overlay, and who reads each field.
-- **[Session layout](session-layout.md)** — where a run lives on disk: working tree under Tilth's `sessions/<id>/`, the session's durable state, the branch in the source repo's `.git`, and a reference table of every `events.jsonl` event type.
+- **[Session layout](session-layout.md)** — where a run lives on disk: working tree under `~/.tilth/sessions/<id>/`, the session's durable state, the branch in the source repo's `.git`, and a reference table of every `events.jsonl` event type.
 
 The design-rationale companion — **what the worker can and can't see** — lives in Architecture as [Agent visibility](../architecture/agent-visibility.md).

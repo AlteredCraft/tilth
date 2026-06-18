@@ -25,7 +25,7 @@ Today only the Worker Brain has Hands; the Evaluator runs without tools by desig
 
 ### Session
 
-`tilth/session.py`. Append-only `events.jsonl` + `checkpoint.json`, enough to `wake(session_id)` on a fresh process. A `summary.json` is rebuilt at every task boundary (`tilth/summary.py`) as a denormalised view for the visualizer and any external consumers. Per-task evaluator ledgers live alongside it under `sessions/<id>/ledger/` and are re-read on resume.
+`tilth/session.py`. Append-only `events.jsonl` + `checkpoint.json`, enough to `wake(session_id)` on a fresh process. A `summary.json` is rebuilt at every task boundary (`tilth/summary.py`) as a denormalised view for the visualizer and any external consumers. Per-task evaluator ledgers live alongside it under `~/.tilth/sessions/<id>/ledger/` and are re-read on resume.
 
 Session is the durable record. Everything that happens — every model call, tool call, evaluator verdict — is logged here. The agent never sees this layer; it exists for the human reading the run afterwards (and for `tilth resume` to find its footing). What that durable record buys you — every prompt recorded, every run replayable — is the subject of [Hyper-observability](../deep-dives/hyper-observability.md).
 
@@ -45,7 +45,8 @@ tilth/
 ├── docs/                  # MkDocs source — annotated nav in mkdocs.yml is the topic index
 ├── pyproject.toml, .env.example, .gitignore
 ├── tilth/
-│   ├── cli.py             # verb-routed entry: run / resume / reset / visualize
+│   ├── cli.py             # verb-routed entry: init / run / resume / reset / visualize
+│   ├── paths.py           # ~/.tilth resolution: sessions dir + .env search order
 │   ├── loop.py            # Ralph loop + inner tool-use loop + subcommand handlers
 │   ├── client.py          # OpenAI-compat wrapper, dual-client routing (worker / evaluator)
 │   ├── session.py         # events.jsonl + checkpoint.json + ledger + wake()
@@ -69,9 +70,9 @@ The demo workspace is a separate repo (`AlteredCraft/tilth-demo-todo-cli`) — n
 These are load-bearing. Read [Deep dives](../deep-dives/index.md) before breaking any of them.
 
 1. **Brain / Hands / Session split.** Don't blur the three. New code goes in the module whose job it is — model calls in `client.py`, sandbox/tool ops in `workspace.py` and `tools/`, durable state in `session.py`.
-2. **The agent doesn't see harness mechanics.** No `task-status.json`, no `events.jsonl`, no `summary.json`, no token counts, no checkpoints. Hiding these prevents gaming, shortcutting, and self-managed state. The visibility expansion softened this deliberately: the worker now sees the feature overview and the whole task list *as prose context* (not the mutable status store), and the evaluator's prior verdicts on its current task — so it can act on review feedback. It still never sees the harness files, token counts, checkpoints, or the queue-management machinery. **Honest scope:** even the hidden part is a *design goal*, not an enforcement guarantee in default mode — the worker has `bash` and could reach harness state via relative paths from the worktree (`sessions/<id>/workspace/`). Real enforcement is opt-in process isolation, planned in [#13](https://github.com/AlteredCraft/tilth/issues/13). See [Agent visibility](agent-visibility.md).
+2. **The agent doesn't see harness mechanics.** No `task-status.json`, no `events.jsonl`, no `summary.json`, no token counts, no checkpoints. Hiding these prevents gaming, shortcutting, and self-managed state. The visibility expansion softened this deliberately: the worker now sees the feature overview and the whole task list *as prose context* (not the mutable status store), and the evaluator's prior verdicts on its current task — so it can act on review feedback. It still never sees the harness files, token counts, checkpoints, or the queue-management machinery. **Honest scope:** even the hidden part is a *design goal*, not an enforcement guarantee in default mode — the worker has `bash` and could reach harness state via relative paths from the worktree (`~/.tilth/sessions/<id>/workspace/`). Real enforcement is opt-in process isolation, planned in [#13](https://github.com/AlteredCraft/tilth/issues/13). See [Agent visibility](agent-visibility.md).
 3. **Tool registry is the canonical source for "what tools exist".** `tilth/tools/__init__.py` defines the registry; the system prompt should *not* enumerate tools (it gets stale).
 4. **Hook contract: "success silent, failures verbose" — to the *agent*.** Pass states inject nothing into the loop's message history; failures inject a feedback message that the next worker iteration sees. **Telemetry is separate.** Every hook invocation should emit a `hook_run` event regardless of outcome — observability is for the developer reading `events.jsonl`, not the agent.
 5. **The worktree branch is never auto-merged.** `commit_task` commits to the session branch; humans review and merge.
 6. **Token cap enforcement is between tasks, not mid-task.** The "always finish the current task cleanly" property matters; preserve it. See [Token recording](../deep-dives/token-recording.md).
-7. **Session state belongs to the harness, not the source repo.** The working tree for a run lives at `sessions/<id>/workspace/` *inside Tilth* (gitignored); only the branch `session/<id>` and its worktree admin entry land in the source repo's `.git`. The source repo stays pristine — the only thing you add to it is the `.tilth/tasks/` directory you author. See [Session layout](../deep-dives/session-layout.md).
+7. **Session state belongs to the harness, not the source repo.** The working tree for a run lives at `~/.tilth/sessions/<id>/workspace/` (Tilth's per-user data dir, `$TILTH_HOME`); only the branch `session/<id>` and its worktree admin entry land in the source repo's `.git`. The source repo stays pristine — the only thing you add to it is the `.tilth/tasks/` directory you author. See [Session layout](../deep-dives/session-layout.md).
