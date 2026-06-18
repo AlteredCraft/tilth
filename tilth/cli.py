@@ -13,8 +13,8 @@ no separate prep step: `tilth run` reads that directory, creates a fresh session
 + worktree, and runs the Ralph loop.
 
 Dispatch:
-  1. No args at all     → print top-level help, exit 1.
-  2. First arg is `-h`  → print help, exit 0.
+  1. No args at all     → print config locations + top-level help, exit 1.
+  2. First arg is `-h`  → print config locations + help, exit 0.
   3. A known subcommand → parse with the subparser and dispatch.
   4. Anything else      → argparse usage error.
 """
@@ -39,6 +39,38 @@ def _load_env() -> None:
     env_file = paths.resolve_env_file()
     if env_file is not None:
         load_dotenv(env_file, override=False)
+
+
+def _print_config_locations() -> None:
+    """Show resolved Tilth home and .env on top-level help."""
+    home = paths.tilth_home()
+    env_file = paths.resolve_env_file()
+    write_target = paths.env_file_write_target()
+
+    console.print("[bold]Config locations[/bold]")
+    if home.is_dir():
+        console.print(f"  Tilth home:  {home}", soft_wrap=True)
+    else:
+        console.print(
+            f"  Tilth home:  {home}  "
+            "[dim](not found — run [bold]tilth init[/bold])[/dim]",
+            soft_wrap=True,
+        )
+
+    if env_file is not None:
+        console.print(f"  .env:        {env_file}", soft_wrap=True)
+    else:
+        console.print(
+            f"  .env:        {write_target}  "
+            "[dim](not found — run [bold]tilth init[/bold])[/dim]",
+            soft_wrap=True,
+        )
+    console.print()
+
+
+def _print_help(parser) -> None:
+    _print_config_locations()
+    parser.print_help()
 
 
 def _build_parser():
@@ -149,18 +181,19 @@ def main() -> int:
     loop.SESSIONS_DIR = paths.sessions_dir()
     argv = sys.argv[1:]
 
+    parser = _build_parser()
+
     if not argv:
-        _build_parser().print_help()
+        _print_help(parser)
         return 1
 
     if argv[0] in {"-h", "--help"}:
-        _build_parser().print_help()
+        _print_help(parser)
         return 0
 
-    parser = _build_parser()
     args = parser.parse_args(argv)
     if args.command is None:
-        parser.print_help()
+        _print_help(parser)
         return 1
     return _dispatch(args)
 

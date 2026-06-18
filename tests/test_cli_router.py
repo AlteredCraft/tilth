@@ -44,6 +44,7 @@ def test_no_args_prints_help_and_returns_nonzero(monkeypatch, capsys):
     assert rc == 1
     out = capsys.readouterr().out
     assert "usage: tilth" in out
+    assert "Config locations" in out
 
 
 def test_top_level_help_exits_zero(monkeypatch, capsys):
@@ -51,7 +52,32 @@ def test_top_level_help_exits_zero(monkeypatch, capsys):
     assert rc == 0
     out = capsys.readouterr().out
     assert "run" in out
+    assert "Config locations" in out
     assert "prep-feature" not in out  # removed verb must not resurface in help
+
+
+def test_help_shows_resolved_paths_when_present(monkeypatch, tmp_path, capsys):
+    home = tmp_path / "home"
+    home.mkdir()
+    env_file = home / ".env"
+    env_file.write_text("TILTH_BASE_URL=https://x/v1\n")
+    monkeypatch.setenv("TILTH_HOME", str(home))
+    _run(monkeypatch, ["--help"])
+    out = capsys.readouterr().out
+    assert str(home) in out
+    assert str(env_file) in out
+    assert "tilth init" not in out
+
+
+def test_help_suggests_init_when_home_and_env_missing(monkeypatch, tmp_path, capsys):
+    home = tmp_path / "home"
+    monkeypatch.setenv("TILTH_HOME", str(home))
+    monkeypatch.chdir(tmp_path)
+    _run(monkeypatch, ["--help"])
+    out = capsys.readouterr().out
+    assert str(home) in out
+    assert "not found" in out
+    assert "tilth init" in out
 
 
 def test_run_subcommand_dispatches_to_do_run_cmd(monkeypatch, patched_handlers):
