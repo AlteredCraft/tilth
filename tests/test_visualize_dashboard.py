@@ -169,7 +169,8 @@ def test_extract_facts_shapes():
     worker = facts[1]
     assert worker == {
         "e": "model", "t": 1781121605, "task": "T-001", "iter": 1,
-        "pt": 4000, "et": 250, "phase": "worker", "health": "ok",
+        "pt": 4000, "et": 250, "ct": 0, "rt": 0, "cost": 0.0,
+        "phase": "worker", "health": "ok",
     }
 
     ev_call = facts[3]
@@ -188,6 +189,22 @@ def test_extract_facts_shapes():
 
     stop = facts[7]
     assert stop["reason"] == "all_done"
+
+
+def test_model_fact_carries_cached_reasoning_cost():
+    """OpenRouter detail (cached/reasoning tokens, USD cost) rides on the model
+    fact so the dashboard can chart it without re-reading events."""
+    events = [
+        {"ts": "2026-06-10T20:00:05Z", "type": "model_call",
+         "payload": {"task_id": "T-001", "iter": 1,
+                     "prompt_tokens": 4000, "eval_tokens": 250,
+                     "cached_tokens": 3200, "reasoning_tokens": 180,
+                     "cost": 0.0012, "health": "ok"}},
+    ]
+    fact = extract_facts(events)[0]
+    assert fact["ct"] == 3200
+    assert fact["rt"] == 180
+    assert fact["cost"] == 0.0012
 
 
 def test_extract_facts_skips_unmapped_and_bad_timestamps():

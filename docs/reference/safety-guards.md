@@ -41,7 +41,7 @@ The branch is **never auto-merged**. Open a PR and review like any other branch.
 
 A few honest gaps to be upfront about:
 
-- **No dollar-cost cap.** The token cap is provider-agnostic, but does not translate to dollars. See [Token recording → What this does *not* do](../deep-dives/token-recording.md#what-this-does-not-do).
+- **No dollar-cost cap.** Dollar cost is now recorded and shown (on OpenRouter) but never gates a run — the cap is tokens, not dollars. See [Token recording → What it tracks, and what it still won't cap](../deep-dives/token-recording.md#what-it-tracks-and-what-it-still-wont-cap).
 - **No headroom warning.** Caps are binary — under, run; at, stop. No "you're at 80%" alert.
 - **No mid-task token cut-off.** Token enforcement is between tasks. A single runaway task can overshoot by up to `MAX_ITERATIONS_PER_TASK × tokens_per_call`. The trade-off is intentional; see [Token recording → Enforcement](../deep-dives/token-recording.md#enforcement-is-at-the-top-of-each-task).
 - **No allow-listed network egress.** Tools are intentionally narrow (no web fetch, no MCP, no curl-based downloads), so the network surface area is whatever the hard-coded shell guard misses. Treat the harness as having shell access and don't run it on machines you wouldn't run a foreign script on.

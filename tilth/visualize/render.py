@@ -7,6 +7,8 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+from tilth import usage
+
 
 def render_events(
     events: list[dict[str, Any]], last_task: str | None = None
@@ -52,7 +54,7 @@ def classify(ev: dict[str, Any]) -> tuple[str, bool, bool]:
     typ = ev.get("type", "")
     p = ev.get("payload") or {}
     if typ == "model_call":
-        kind = "evaluator" if p.get("phase") == "evaluator" else "worker"
+        kind = usage.phase_bucket(p.get("phase"))
         health = p.get("health")
         return kind, False, health is not None and health != "ok"
     if typ == "tool_call":
@@ -108,7 +110,10 @@ def _event_fact(ev: dict[str, Any]) -> dict[str, Any] | None:
             "e": "model", "t": t, "task": task, "iter": p.get("iter"),
             "pt": int(p.get("prompt_tokens") or 0),
             "et": int(p.get("eval_tokens") or 0),
-            "phase": "evaluator" if p.get("phase") == "evaluator" else "worker",
+            "ct": int(p.get("cached_tokens") or 0),
+            "rt": int(p.get("reasoning_tokens") or 0),
+            "cost": float(p.get("cost") or 0.0),
+            "phase": usage.phase_bucket(p.get("phase")),
             "health": p.get("health") or "ok",
         }
     if typ == "tool_call":
@@ -183,6 +188,9 @@ def _render_model_call(_typ: str, ts: str, p: dict[str, Any]) -> str:
     iter_n = p.get("iter", "?")
     pt = int(p.get("prompt_tokens", 0) or 0)
     et = int(p.get("eval_tokens", 0) or 0)
+    ct = int(p.get("cached_tokens", 0) or 0)
+    rt = int(p.get("reasoning_tokens", 0) or 0)
+    cost = float(p.get("cost", 0.0) or 0.0)
     total = int(p.get("tokens_used_total", 0) or 0)
     health = p.get("health")
     unhealthy = health is not None and health != "ok"
@@ -191,10 +199,21 @@ def _render_model_call(_typ: str, ts: str, p: dict[str, Any]) -> str:
         attempt = p.get("call_attempt")
         label = f"{health} · attempt {attempt}" if attempt else str(health)
         badges += f'<span class="badge badge-bad">{html.escape(label)}</span>'
+    # cached ⊆ prompt and reasoning ⊆ eval — shown as annotations on their
+    # parent bucket, never as separate addends.
+    meta = f"prompt {pt:,}"
+    if ct:
+        meta += f" ({ct:,} cached)"
+    meta += f" · eval {et:,}"
+    if rt:
+        meta += f" ({rt:,} reasoning)"
+    meta += f" · total {total:,}"
+    if cost:
+        meta += f" · {usage.format_cost(cost)}"
     strip = (
         '<div class="meta-strip">'
         f'{badges}'
-        f'<span class="meta">prompt {pt:,} · eval {et:,} · total {total:,}</span>'
+        f'<span class="meta">{html.escape(meta)}</span>'
         f'<span class="ts">{html.escape(ts)}</span>'
         '</div>'
     )

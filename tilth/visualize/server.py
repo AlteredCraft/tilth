@@ -3,7 +3,7 @@
 Read-only: the server only ever opens files under the sessions root, so it is
 safe to run alongside an active `tilth run`. Liveness comes from the harness's
 own write discipline — `session.log` appends one complete JSON line per event
-and `add_tokens`/`set_status` rewrite checkpoint.json — so a byte-offset tail
+and `record_usage`/`set_status` rewrite checkpoint.json — so a byte-offset tail
 over events.jsonl plus a checkpoint read per poll is a faithful near-realtime
 view with no harness coupling beyond the documented formats.
 
@@ -30,6 +30,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
+
+from tilth import usage
 
 from .render import extract_facts, render_events
 from .theme import APP_PAGE, LIST_PAGE, load_css
@@ -135,6 +137,24 @@ def _read_json(path: Path) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def _checkpoint_cost(checkpoint: dict[str, Any]) -> float:
+    """Total USD across actors from a checkpoint's usage breakdown.
+
+    Old checkpoints (pre-usage-breakdown) and non-OpenRouter runs yield 0.0.
+    """
+    usage = checkpoint.get("usage")
+    if not isinstance(usage, dict):
+        return 0.0
+    total = 0.0
+    for bucket in usage.values():
+        if isinstance(bucket, dict):
+            try:
+                total += float(bucket.get("cost") or 0.0)
+            except (TypeError, ValueError):
+                pass
+    return total
+
+
 def events_payload(
     session_dir: Path, offset: int, last_task: str | None
 ) -> dict[str, Any]:
@@ -155,6 +175,7 @@ def events_payload(
         "status": status,
         "status_label": _status_label(session_dir, status),
         "tokens_used": int(checkpoint.get("tokens_used") or 0),
+        "cost": _checkpoint_cost(checkpoint),
     }
 
 
@@ -173,11 +194,14 @@ def list_sessions(root: Path) -> list[dict[str, Any]]:
             status = t.get("status") if isinstance(t, dict) else None
             tasks[status if status in tasks else "pending"] += 1
         row_status = checkpoint.get("status") or "unknown"
+        tok = summary.get("tokens")
+        cost = float(tok.get("cost") or 0.0) if isinstance(tok, dict) else 0.0
         rows.append({
             "id": d.name,
             "status": row_status,
             "status_label": _status_label(d, row_status),
             "tokens_used": int(checkpoint.get("tokens_used") or 0),
+            "cost": cost,
             "started_at": summary.get("started_at") or "",
             "last_event_at": summary.get("last_event_at") or "",
             "tasks": tasks,
@@ -200,12 +224,17 @@ def _render_index(root: Path) -> str:
                 task_bits.append(f'{t["failed"]} failed')
             if t["pending"]:
                 task_bits.append(f'{t["pending"]} pending')
+            cost_bit = (
+                f'<span class="meta">{html.escape(usage.format_cost(r["cost"]))}</span>'
+                if r["cost"] > 0 else ""
+            )
             cells.append(
                 '<a class="session-row" href="/session/{id}">'
                 '<span class="session-row-id">{id}</span>'
                 '<span class="chip chip-{status}">{label}</span>'
                 '<span class="meta">{tasks}</span>'
                 '<span class="meta">{tokens:,} tokens</span>'
+                '{cost}'
                 '<span class="ts">{started}</span>'
                 "</a>".format(
                     id=html.escape(r["id"]),
@@ -213,6 +242,7 @@ def _render_index(root: Path) -> str:
                     label=html.escape(r["status_label"]),
                     tasks=" · ".join(task_bits) or "—",
                     tokens=r["tokens_used"],
+                    cost=cost_bit,
                     started=html.escape(r["started_at"]),
                 )
             )

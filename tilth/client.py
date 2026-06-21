@@ -157,7 +157,10 @@ class LLMClient:
     `chat()` returns a normalised dict shape:
         {
             "message": {"role": ..., "content": ..., "tool_calls": [...]?},
-            "usage":   {"prompt_tokens": int, "completion_tokens": int, "total_tokens": int},
+            "usage":   the provider's raw usage block, passed through verbatim —
+                       prompt/completion/total tokens plus, on OpenRouter, the
+                       `*_tokens_details` objects and `cost`. Read into the
+                       canonical record by `tilth.usage.extract_usage`.
         }
     """
 
@@ -201,15 +204,22 @@ class LLMClient:
         if tool_choice is not None:
             kwargs["tool_choice"] = tool_choice
         if _is_openrouter(base_url):
-            # OpenRouter-normalised opt-in for thinking-mode models. Without it,
-            # parallel-tool-call turns sometimes return reasoning_details: null
-            # — and the next request then 400s because the upstream protocol
-            # expects reasoning to be echoed. With it, reasoning_details is
-            # always populated and `assistant_history_message` echoes it back.
-            # Only sent for OpenRouter base URLs since this is OpenRouter-
-            # specific syntax (other gateways use different shapes); routing
-            # uses the per-purpose base_url, not the worker's.
-            kwargs["extra_body"] = {"reasoning": {"enabled": True}}
+            # Two OpenRouter-normalised opt-ins, both OpenRouter-specific syntax
+            # and so gated on the per-purpose base_url (not the worker's):
+            #   reasoning.enabled — without it, parallel-tool-call turns from
+            #     thinking-mode models sometimes return reasoning_details: null,
+            #     and the next request then 400s because the upstream protocol
+            #     expects reasoning to be echoed. With it, reasoning_details is
+            #     always populated and `assistant_history_message` echoes it.
+            #   usage.include — request the full usage accounting (cached /
+            #     reasoning token detail and the USD `cost`). The detail already
+            #     arrives without it on the providers we've probed, but the
+            #     documented opt-in makes it robust across models/providers that
+            #     don't default it on. See tilth/usage.py for the wire shape.
+            kwargs["extra_body"] = {
+                "reasoning": {"enabled": True},
+                "usage": {"include": True},
+            }
 
         resp = client.chat.completions.create(**kwargs)
         return _normalise(resp)

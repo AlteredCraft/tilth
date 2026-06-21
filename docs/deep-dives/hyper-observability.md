@@ -58,9 +58,10 @@ event.
 ### Every model call is recorded
 
 - **`model_call`** — emitted when any model call returns (worker or evaluator),
-  carrying `prompt_tokens`, `eval_tokens`, `finish_reason`, and the model's
-  reasoning when it emitted any. Grep `events.jsonl` for `model_call` and you
-  can reconstruct exactly when tokens were spent and why a turn ended. See
+  carrying the full usage detail (`prompt_tokens`, `eval_tokens`, `cached_tokens`,
+  `reasoning_tokens`, `cost`), `finish_reason`, and the model's reasoning when it
+  emitted any. Grep `events.jsonl` for `model_call` and you can reconstruct
+  exactly when tokens were spent, on what, and why a turn ended. See
   [Token recording](token-recording.md).
 
 ### The prompts are plain, editable files

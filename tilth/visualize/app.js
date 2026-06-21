@@ -132,6 +132,11 @@
     end: null,
     pt: 0,
     et: 0,
+    cached: 0,        // cache-hit tokens, a subset of pt (annotation, not addend)
+    reasoning: 0,     // thinking tokens, a subset of et
+    cost: 0,          // total USD across all calls
+    workerCost: 0,
+    evalCost: 0,
     workerCalls: 0,
     evalCalls: 0,
     tools: {},
@@ -177,9 +182,13 @@
       if (f.limits) S.limits = f.limits;
       if (typeof f.task_count === "number") S.taskTotal = f.task_count;
     } else if (f.e === "model") {
-      if (f.phase === "evaluator") S.evalCalls += 1;
-      else {
+      const cost = f.cost || 0;
+      if (f.phase === "evaluator") {
+        S.evalCalls += 1;
+        S.evalCost += cost;
+      } else {
         S.workerCalls += 1;
+        S.workerCost += cost;
         if (f.task) {
           const tk = task(f.task);
           tk.ticks.push(f.t);
@@ -190,6 +199,9 @@
       }
       S.pt += f.pt;
       S.et += f.et;
+      S.cached += f.ct || 0;
+      S.reasoning += f.rt || 0;
+      S.cost += cost;
       if (f.pt > S.maxPt) S.maxPt = f.pt;
       S.bars.push({ task: f.task, pt: f.pt, phase: f.phase, flag: false });
     } else if (f.e === "tool") {
@@ -257,6 +269,14 @@
 
   function fmtInt(n) {
     return String(Math.round(n));
+  }
+
+  // Mirror of tilth.usage.format_cost: enough precision that a cheap run's
+  // spend doesn't round away to $0.00.
+  function fmtCost(n) {
+    if (n >= 0.005) return "$" + n.toFixed(2);
+    if (n >= 0.00005) return "$" + n.toFixed(4);
+    return "$" + n.toFixed(6);
   }
 
   // Utilization band → severity. Low use is healthy headroom (green), the run
@@ -368,8 +388,23 @@
       e.style.background = "var(--eval-bar)";
       bar.append(p, e);
     }
-    document.getElementById("stat-tokens-sub").textContent =
-      "prompt " + fmtK(S.pt) + " · eval " + fmtK(S.et);
+    // cached ⊆ prompt and reasoning ⊆ eval — annotate their parent bucket only
+    // when present, never as separate addends.
+    let tokenSub = "prompt " + fmtK(S.pt);
+    if (S.cached) tokenSub += " (" + fmtK(S.cached) + " cached)";
+    tokenSub += " · eval " + fmtK(S.et);
+    if (S.reasoning) tokenSub += " (" + fmtK(S.reasoning) + " reasoning)";
+    document.getElementById("stat-tokens-sub").textContent = tokenSub;
+
+    // Cost tile: total spend, split by actor — the worker↔evaluator allocation
+    // expressed in the currency that matters. 0 across the board (non-OpenRouter
+    // providers don't report cost) reads as a plain dash.
+    document.getElementById("stat-cost").textContent =
+      S.cost > 0 ? fmtCost(S.cost) : "—";
+    document.getElementById("stat-cost-sub").textContent =
+      S.cost > 0
+        ? "worker " + fmtCost(S.workerCost) + " · evaluator " + fmtCost(S.evalCost)
+        : "";
 
     document.getElementById("stat-calls").textContent =
       String(S.workerCalls + S.evalCalls);
@@ -664,7 +699,8 @@
       lastTask = data.last_task || "";
 
       setStatus(data.status, data.status_label);
-      chipTokens.textContent = data.tokens_used.toLocaleString() + " tokens";
+      chipTokens.textContent = data.tokens_used.toLocaleString() + " tokens"
+        + (data.cost > 0 ? " · " + fmtCost(data.cost) : "");
       chipCount.textContent = count + " events";
       // A paused-but-resumable session gets a label like "running (interrupted)"
       // — only a plain live "running" warrants the 1s cadence.

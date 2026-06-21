@@ -14,7 +14,7 @@ tilth visualize --port 9000    # if the default port (8765) is taken
 
 Starts a local web app (Python's built-in HTTP server — no extra dependencies) over the `~/.tilth/sessions/` directory and prints the URLs:
 
-- **`/`** — every session, newest first, with its status, task counts, and token spend.
+- **`/`** — every session, newest first, with its status, task counts, and token (and, on OpenRouter, dollar) spend.
 - **`/session/<id>`** — one run rendered as a conversation:
     - model calls (with collapsible reasoning blocks where the model emitted any, and a health badge on provider-unhealthy attempts),
     - tool calls and results (including the worker's `submit_case`),
@@ -25,7 +25,7 @@ Starts a local web app (Python's built-in HTTP server — no extra dependencies)
 
     …all grouped by task, with live status / token / event-count chips in the header.
 
-Above the conversation, a dashboard band summarizes the run at a glance. It leads with **limit utilization** — meters showing how close the run is to each configured cap: the per-session token budget (`TILTH_MAX_TOKENS`) and wall clock (`TILTH_MAX_WALL_CLOCK_MINUTES`), plus per-task iterations (`TILTH_MAX_ITERATIONS_PER_TASK`) and, when set, evaluator calls (`MAX_EVALUATOR_CALLS_PER_TASK`). Each meter turns amber as it nears its cap and red at the edge, so a task grinding toward its iteration limit is visible before it fails. Below that sit the stat band, the session timeline, and the context-pressure chart. The caps are read from the run's `session_start` event, so a replayed dashboard shows the caps that run actually enforced.
+Above the conversation, a dashboard band summarizes the run at a glance. It leads with **limit utilization** — meters showing how close the run is to each configured cap: the per-session token budget (`TILTH_MAX_TOKENS`) and wall clock (`TILTH_MAX_WALL_CLOCK_MINUTES`), plus per-task iterations (`TILTH_MAX_ITERATIONS_PER_TASK`) and, when set, evaluator calls (`MAX_EVALUATOR_CALLS_PER_TASK`). Each meter turns amber as it nears its cap and red at the edge, so a task grinding toward its iteration limit is visible before it fails. Below that sit the stat band — which breaks tokens down into prompt/eval (annotating cached and reasoning subsets when present) and, on OpenRouter, a **cost** tile split worker vs evaluator — then the session timeline and the context-pressure chart. The caps are read from the run's `session_start` event, so a replayed dashboard shows the caps that run actually enforced.
 
 The viewer is **read-only and loopback-only** (it binds `127.0.0.1`; the log contains your full prompts and diffs, so it isn't meant for the LAN). It only ever reads `events.jsonl` and `checkpoint.json`, so it's safe to leave running next to an active `tilth run`.
 

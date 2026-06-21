@@ -29,7 +29,7 @@ from typing import Any
 
 from rich.console import Console
 
-from tilth import memory, paths, summary, tasks, tools, visualize
+from tilth import memory, paths, summary, tasks, tools, usage, visualize
 from tilth import workspace as ws
 from tilth.case import (
     NAME_SUBMIT_CASE,
@@ -191,18 +191,19 @@ def _chat_healthy(
     """
     for attempt in range(1, PROVIDER_RETRY_MAX_ATTEMPTS + 1):
         resp = client.chat(messages, tools=tools, model=model)
-        usage = resp.get("usage") or {}
-        prompt_tokens = int(usage.get("prompt_tokens") or 0)
-        eval_tokens = int(usage.get("completion_tokens") or 0)
-        session.add_tokens(prompt_tokens + eval_tokens)
+        u = usage.extract_usage(resp.get("usage"))
+        session.record_usage(u, base.get("phase"))
 
         health, detail = response_health(resp)
         msg = resp.get("message") or {}
         payload: dict[str, Any] = {
             **base,
             "call_attempt": attempt,
-            "prompt_tokens": prompt_tokens,
-            "eval_tokens": eval_tokens,
+            "prompt_tokens": u["prompt"],
+            "eval_tokens": u["eval"],
+            "cached_tokens": u["cached"],
+            "reasoning_tokens": u["reasoning"],
+            "cost": u["cost"],
             "tokens_used_total": session.tokens_used,
             "health": health,
         }
@@ -1170,6 +1171,31 @@ def _format_duration(seconds: float) -> str:
     return f"{s}s"
 
 
+def _usage_breakdown_lines(session_usage: dict[str, Any]) -> list[str]:
+    """The token-detail sub-lines under the `tokens` summary row.
+
+    Reads the live per-actor breakdown (`Session.usage`): a prompt/eval line
+    that names cached/reasoning subsets when present, then the worker↔evaluator
+    split. Detail-only — the cap line above already shows the headline total.
+    """
+    worker = session_usage.get("worker") or usage.zero_usage()
+    evaluator = session_usage.get("evaluator") or usage.zero_usage()
+    combined = usage.zero_usage()
+    usage.add_usage(combined, worker)
+    usage.add_usage(combined, evaluator)
+
+    detail = f"prompt {combined['prompt']:,} · eval {combined['eval']:,}"
+    if combined["cached"]:
+        detail += f" · cached {combined['cached']:,}"
+    if combined["reasoning"]:
+        detail += f" · reasoning {combined['reasoning']:,}"
+
+    w_total = worker["prompt"] + worker["eval"]
+    e_total = evaluator["prompt"] + evaluator["eval"]
+    split = f"worker {w_total:,} · evaluator {e_total:,}"
+    return [detail, split]
+
+
 def _print_summary(session: Session, client: LLMClient) -> None:
     elapsed = time.time() - session.started_at
     cfg = client.config
@@ -1206,6 +1232,14 @@ def _print_summary(session: Session, client: LLMClient) -> None:
         console.print(f"  branch    {session.branch}")
     console.print(f"  duration  {_format_duration(elapsed)} [dim]{wall_dim}[/dim]")
     console.print(f"  tokens    {session.tokens_used:,} [dim]{tokens_dim}[/dim]")
+    for line in _usage_breakdown_lines(session.usage):
+        console.print(f"            [dim]{line}[/dim]")
+    total_cost = (
+        (session.usage.get("worker") or {}).get("cost", 0.0)
+        + (session.usage.get("evaluator") or {}).get("cost", 0.0)
+    )
+    if total_cost > 0:
+        console.print(f"  cost      {usage.format_cost(total_cost)}")
     console.print(f"  tasks     {' '.join(task_bits + extras)}")
 
 

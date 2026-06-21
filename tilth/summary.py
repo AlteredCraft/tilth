@@ -6,23 +6,19 @@ stable, denormalised view.
 
 Stable shape — bump SUMMARY_VERSION if breaking.
 
-Schema (v3 — the prompt-driven refactor dropped prep-feature):
+Schema (v4 — full token/cost detail; see tilth/usage.py for the canonical record):
 
     {
-        "version": 3,
+        "version": 4,
         "session_id": str | null,
         "started_at":   "<ISO ts of the run's session_start>" | null,
         "last_event_at":"<ISO ts of most recent event>" | null,
-        "tokens": {
-            "prompt": int,            # sum across all model_call events
-            "eval":   int,            # sum across all model_call events
-            "total":  int,            # max of model_call.tokens_used_total
-        },
+        "tokens": <usage>,            # session totals; see <usage> below
         "tasks": {
             "<task_id>": {
                 "status": "in_progress" | "done" | "failed",
                 "iterations": int,            # max iter seen on a model_call
-                "tokens": int,                # prompt + eval, this task only
+                "tokens": <usage>,            # this task only (was a bare int in v3)
                 "tool_calls": {"<tool>": int, ...},
                 "hook_blocks": int,           # pre_tool blocks for this task
                 "evaluator": {
@@ -43,6 +39,20 @@ Schema (v3 — the prompt-driven refactor dropped prep-feature):
         "stop":            {"reason": str, "ts": str},   # absent if no stop yet
     }
 
+    <usage> = {
+        "prompt": int, "eval": int, "total": int,      # eval == completion tokens
+        "cached": int,        # cache-hit tokens, a SUBSET of prompt (not additive)
+        "reasoning": int,     # thinking tokens, a SUBSET of eval (not additive)
+        "cost": float,        # provider's USD figure (OpenRouter); 0.0 otherwise
+        "by_phase": { "worker": <usage-without-by_phase>,
+                      "evaluator": <usage-without-by_phase> },
+    }
+
+    Session `tokens.total` is `max(model_call.tokens_used_total)` (ties to the
+    cap counter); every other figure — and all by_phase / per-task totals — is a
+    field-wise sum across model_call events (worker + evaluator, including
+    provider-retry attempts). cached/reasoning never inflate total or the cap.
+
 Refreshed at every task boundary and at every stop path (see loop.py:
 _refresh_summary). Refresh is best-effort — failures must not break the run.
 """
@@ -54,16 +64,30 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from tilth import usage
 from tilth.session import iter_events
 
-SUMMARY_VERSION = 3
+SUMMARY_VERSION = 4
+
+
+def _usage_acc() -> dict[str, Any]:
+    """A zeroed usage accumulator with a per-actor split nested inside."""
+    acc = usage.zero_usage()
+    acc["by_phase"] = {"worker": usage.zero_usage(), "evaluator": usage.zero_usage()}
+    return acc
+
+
+def _accumulate_usage(acc: dict[str, Any], u: dict[str, Any], bucket: str) -> None:
+    """Add one call's usage to an accumulator and to its actor bucket."""
+    usage.add_usage(acc, u)
+    usage.add_usage(acc["by_phase"][bucket], u)
 
 
 def _empty_task() -> dict[str, Any]:
     return {
         "status": "in_progress",
         "iterations": 0,
-        "tokens": 0,
+        "tokens": _usage_acc(),
         "tool_calls": defaultdict(int),
         "hook_blocks": 0,
         "evaluator": {
@@ -77,7 +101,7 @@ def _empty_task() -> dict[str, Any]:
 def build_from_events(
     events_path: Path, session_id: str | None = None
 ) -> dict[str, Any]:
-    tokens = {"prompt": 0, "eval": 0, "total": 0}
+    tokens = _usage_acc()
     tasks: dict[str, dict[str, Any]] = {}
     tool_histogram: dict[str, int] = defaultdict(int)
     hook_outcomes: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
@@ -112,16 +136,16 @@ def build_from_events(
         elif typ == "stop":
             stop = {"reason": p.get("reason"), "ts": ts}
         elif typ == "model_call":
-            pt = int(p.get("prompt_tokens") or 0)
-            et = int(p.get("eval_tokens") or 0)
-            tokens["prompt"] += pt
-            tokens["eval"] += et
-            total = p.get("tokens_used_total")
-            if isinstance(total, int):
-                tokens["total"] = max(tokens["total"], total)
+            u = usage.from_event(p)
+            bucket = usage.phase_bucket(p.get("phase"))
+            _accumulate_usage(tokens, u, bucket)
+            # Session total ties to the cap counter, not the field-wise sum.
+            running = p.get("tokens_used_total")
+            if isinstance(running, int):
+                tokens["total"] = max(tokens["total"], running)
             if tid:
                 t = task_for(tid)
-                t["tokens"] += pt + et
+                _accumulate_usage(t["tokens"], u, bucket)
                 t["iterations"] = max(t["iterations"], int(p.get("iter") or 0))
         elif typ == "tool_call":
             tool = p.get("tool") or ""
