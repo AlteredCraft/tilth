@@ -1,8 +1,8 @@
 """Ralph loop entry point.
 
-The feature is authored as markdown under `<workspace>/.tilth/tasks/` (an
-`overview.md` plus one `T-NNN-*.md` per task — see `tilth/tasks.py`). For each
-pending task:
+The feature is authored as markdown in a feature directory (conventionally
+`<repo>/.tilth/<feature>/`): an `overview.md` plus one `T-NNN-*.md` per task —
+see `tilth/tasks.py`. For each pending task:
   1. Reset context — build a fresh message list from disk (workspace context
      files + feature overview + full plan + session progress tail + this task +
      the evaluator's prior verdicts on it).
@@ -29,7 +29,7 @@ from typing import Any
 
 from rich.console import Console
 
-from tilth import memory, paths, summary, tasks, tools, visualize
+from tilth import memory, paths, summary, tasks, tools, usage, visualize
 from tilth import workspace as ws
 from tilth.case import (
     NAME_SUBMIT_CASE,
@@ -191,18 +191,19 @@ def _chat_healthy(
     """
     for attempt in range(1, PROVIDER_RETRY_MAX_ATTEMPTS + 1):
         resp = client.chat(messages, tools=tools, model=model)
-        usage = resp.get("usage") or {}
-        prompt_tokens = int(usage.get("prompt_tokens") or 0)
-        eval_tokens = int(usage.get("completion_tokens") or 0)
-        session.add_tokens(prompt_tokens + eval_tokens)
+        u = usage.extract_usage(resp.get("usage"))
+        session.record_usage(u, base.get("phase"))
 
         health, detail = response_health(resp)
         msg = resp.get("message") or {}
         payload: dict[str, Any] = {
             **base,
             "call_attempt": attempt,
-            "prompt_tokens": prompt_tokens,
-            "eval_tokens": eval_tokens,
+            "prompt_tokens": u["prompt"],
+            "eval_tokens": u["eval"],
+            "cached_tokens": u["cached"],
+            "reasoning_tokens": u["reasoning"],
+            "cost": u["cost"],
             "tokens_used_total": session.tokens_used,
             "health": health,
         }
@@ -553,8 +554,9 @@ def _call_evaluator_with_retry(
 
 # --- task list + status -----------------------------------------------------
 #
-# The task *content* is authored markdown under `<workspace>/.tilth/tasks/`
-# (read-only; loaded via tilth.tasks). Per-task *status* is harness-owned and
+# The task *content* is authored markdown in the feature dir (conventionally
+# `<repo>/.tilth/<feature>/`; read-only, loaded via tilth.tasks). Per-task
+# *status* is harness-owned and
 # lives in sessions/<id>/task-status.json — a flat {task_id: status} map. A task
 # absent from the map is `pending`. The loop overlays status onto the static
 # task list to get the prd-shaped list the rest of the harness consumes.
@@ -608,10 +610,10 @@ def _load_static_tasks_for_session(session: Session) -> list[dict[str, Any]]:
     Used by summary/resume helpers that need the task set without the live
     `run()` having it in hand. Returns [] on any failure — these are reporting
     paths that must not crash the run."""
-    if session.source is None:
+    if session.feature_dir is None:
         return []
     try:
-        return tasks.load_tasks(session.source)
+        return tasks.load_tasks(session.feature_dir)
     except (TasksError, OSError):
         return []
 
@@ -1170,6 +1172,31 @@ def _format_duration(seconds: float) -> str:
     return f"{s}s"
 
 
+def _usage_breakdown_lines(session_usage: dict[str, Any]) -> list[str]:
+    """The token-detail sub-lines under the `tokens` summary row.
+
+    Reads the live per-actor breakdown (`Session.usage`): a prompt/eval line
+    that names cached/reasoning subsets when present, then the worker↔evaluator
+    split. Detail-only — the cap line above already shows the headline total.
+    """
+    worker = session_usage.get("worker") or usage.zero_usage()
+    evaluator = session_usage.get("evaluator") or usage.zero_usage()
+    combined = usage.zero_usage()
+    usage.add_usage(combined, worker)
+    usage.add_usage(combined, evaluator)
+
+    detail = f"prompt {combined['prompt']:,} · eval {combined['eval']:,}"
+    if combined["cached"]:
+        detail += f" · cached {combined['cached']:,}"
+    if combined["reasoning"]:
+        detail += f" · reasoning {combined['reasoning']:,}"
+
+    w_total = worker["prompt"] + worker["eval"]
+    e_total = evaluator["prompt"] + evaluator["eval"]
+    split = f"worker {w_total:,} · evaluator {e_total:,}"
+    return [detail, split]
+
+
 def _print_summary(session: Session, client: LLMClient) -> None:
     elapsed = time.time() - session.started_at
     cfg = client.config
@@ -1206,6 +1233,14 @@ def _print_summary(session: Session, client: LLMClient) -> None:
         console.print(f"  branch    {session.branch}")
     console.print(f"  duration  {_format_duration(elapsed)} [dim]{wall_dim}[/dim]")
     console.print(f"  tokens    {session.tokens_used:,} [dim]{tokens_dim}[/dim]")
+    for line in _usage_breakdown_lines(session.usage):
+        console.print(f"            [dim]{line}[/dim]")
+    total_cost = (
+        (session.usage.get("worker") or {}).get("cost", 0.0)
+        + (session.usage.get("evaluator") or {}).get("cost", 0.0)
+    )
+    if total_cost > 0:
+        console.print(f"  cost      {usage.format_cost(total_cost)}")
     console.print(f"  tasks     {' '.join(task_bits + extras)}")
 
 
@@ -1401,11 +1436,13 @@ def do_resume_cmd(maybe_id: str | None) -> int:
         return 2
     client = LLMClient(config)
     session = Session.wake(SESSIONS_DIR, sid)
-    if session.workspace is None or session.source is None:
-        console.print("[red]session has no worktree/source recorded; cannot resume[/red]")
+    if session.workspace is None or session.source is None or session.feature_dir is None:
+        console.print(
+            "[red]session has no worktree/source/feature recorded; cannot resume[/red]"
+        )
         return 2
     try:
-        overview, static_tasks = tasks.load_feature(session.source)
+        overview, static_tasks = tasks.load_feature(session.feature_dir)
     except TasksError as exc:
         console.print(f"[red]cannot load tasks for resume:[/red]\n{exc}")
         return 2
@@ -1415,15 +1452,22 @@ def do_resume_cmd(maybe_id: str | None) -> int:
     return _run_session(session, worktree, client, config, overview, static_tasks)
 
 
-def do_run_cmd(workspace: Path) -> int:
-    source = workspace.resolve()
-    ws.ensure_git_repo(source)
+def do_run_cmd(feature_dir: Path) -> int:
+    feature_dir = feature_dir.resolve()
 
     # Fail fast on a missing/malformed feature *before* creating any session or
     # worktree — no orphan state, and the user gets the templates inline.
     try:
-        overview, static_tasks = tasks.load_feature(source)
+        overview, static_tasks = tasks.load_feature(feature_dir)
     except TasksError as exc:
+        console.print(f"[red]cannot start run:[/red]\n{exc}")
+        return 2
+
+    # The worktree source is the git repo the feature directory lives in.
+    try:
+        source = ws.repo_root(feature_dir)
+        ws.ensure_git_repo(source)
+    except ws.WorkspaceError as exc:
         console.print(f"[red]cannot start run:[/red]\n{exc}")
         return 2
 
@@ -1434,6 +1478,7 @@ def do_run_cmd(workspace: Path) -> int:
 
     session = Session.new(SESSIONS_DIR)
     session.source = source
+    session.feature_dir = feature_dir
     worktree, branch = ws.ensure_worktree(
         source, session.session_id, session.root / "workspace"
     )
@@ -1444,6 +1489,8 @@ def do_run_cmd(workspace: Path) -> int:
         "session_start",
         {
             "source": str(source),
+            "feature_dir": str(feature_dir),
+            "feature": feature_dir.name,
             "phase": "run",
             "worktree": str(worktree),
             "branch": branch,
@@ -1461,7 +1508,8 @@ def do_run_cmd(workspace: Path) -> int:
         },
     )
     console.print(
-        f"[dim]loaded {len(static_tasks)} task(s) from {tasks.tasks_dir(source)}[/dim]"
+        f"[dim]loaded {len(static_tasks)} task(s) for feature "
+        f"'{feature_dir.name}' from {feature_dir}[/dim]"
     )
     return _run_session(session, worktree, client, config, overview, static_tasks)
 

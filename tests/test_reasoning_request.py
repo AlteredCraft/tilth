@@ -46,13 +46,19 @@ def _kwargs_for(create: MagicMock) -> dict[str, Any]:
     return create.call_args.kwargs
 
 
-def test_reasoning_param_sent_for_openrouter(monkeypatch):
+def test_openrouter_opt_ins_sent(monkeypatch):
+    """Both OpenRouter-normalised opt-ins ride on the same extra_body: reasoning
+    (so reasoning_details is echo-able) and usage accounting (so cached /
+    reasoning token detail and `cost` come back)."""
     client, create = _make_client(monkeypatch, base_url="https://openrouter.ai/api/v1")
     client.chat([{"role": "user", "content": "hello"}])
-    assert _kwargs_for(create)["extra_body"] == {"reasoning": {"enabled": True}}
+    assert _kwargs_for(create)["extra_body"] == {
+        "reasoning": {"enabled": True},
+        "usage": {"include": True},
+    }
 
 
-def test_reasoning_param_omitted_for_non_openrouter(monkeypatch):
+def test_opt_ins_omitted_for_non_openrouter(monkeypatch):
     client, create = _make_client(monkeypatch, base_url="https://api.openai.com/v1")
     client.chat([{"role": "user", "content": "hello"}])
     kwargs = _kwargs_for(create)

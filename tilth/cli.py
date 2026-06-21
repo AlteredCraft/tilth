@@ -2,15 +2,16 @@
 
 Subcommands:
 
-    tilth run       <workspace>
+    tilth run       <feature-dir>
     tilth resume    [<session_id>]
     tilth reset     [<session_id>] [-y]
     tilth visualize [<session_id>] [--port N]
 
-The feature is authored as markdown under `<workspace>/.tilth/tasks/` (an
-`overview.md` plus one `T-NNN-*.md` per task — see `tilth/tasks.py`). There is
-no separate prep step: `tilth run` reads that directory, creates a fresh session
-+ worktree, and runs the Ralph loop.
+The feature is authored as markdown in a feature directory (conventionally
+`<repo>/.tilth/<feature>/`): an `overview.md` plus one `T-NNN-*.md` per task —
+see `tilth/tasks.py`. There is no separate prep step: `tilth run` is given that
+directory's path, derives the enclosing git repo, creates a fresh session +
+worktree, and runs the Ralph loop.
 
 Dispatch:
   1. No args at all     → print config locations + top-level help, exit 1.
@@ -95,14 +96,20 @@ def _build_parser():
 
     run_p = sub.add_parser(
         "run",
-        help="Run the worker loop against a workspace.",
+        help="Run the worker loop against a feature directory.",
         description=(
-            "Read the feature from <workspace>/.tilth/tasks/ (overview.md + one "
-            "T-NNN-*.md per task), create a fresh session + worktree, and run the "
-            "Ralph loop. Fails fast with the templates if the tasks dir is missing."
+            "Read a feature from the given directory (overview.md + one T-NNN-*.md "
+            "per task), derive its git repo, create a fresh session + worktree, and "
+            "run the Ralph loop. Fails fast with the templates if the directory has "
+            "no feature."
         ),
     )
-    run_p.add_argument("workspace", type=Path, help="Path to the source repo.")
+    run_p.add_argument(
+        "feature_dir",
+        type=Path,
+        help="Path to the feature directory (e.g. <repo>/.tilth/<feature>/) "
+        "holding overview.md + T-NNN-*.md.",
+    )
 
     resume_p = sub.add_parser(
         "resume",
@@ -164,7 +171,7 @@ def _dispatch(args) -> int:
     if args.command == "init":
         return loop.do_init_cmd()
     if args.command == "run":
-        return loop.do_run_cmd(args.workspace)
+        return loop.do_run_cmd(args.feature_dir)
     if args.command == "resume":
         return loop.do_resume_cmd(args.session_id)
     if args.command == "reset":

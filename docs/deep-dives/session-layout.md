@@ -33,7 +33,7 @@ The flip side: the target repo stays pristine. Tilth never asks you to add anyth
 | `context_reset` | A new task starts; messages rebuilt from disk | `task_id` | card |
 | `prompt_assembled` | A user message is assembled, pre-send | `role` (`worker` \| `evaluator`), `iter`, `content` (capped) | — |
 | `memory_load` | Memory channels loaded into a prompt | per-channel `present`/`chars`/`truncated`/`sha256_8` | — |
-| `model_call` | Any model call returns (one event per attempt) | `prompt_tokens`, `eval_tokens`, `phase` (`evaluator`; worker omits it), `attempt` (evaluator), `finish_reason`, reasoning, `health` (`ok` \| `provider_error` \| `empty`), `call_attempt`, and when present `model` / `provider` / `response_id` / `health_detail` / `retry_backoff_seconds` | card |
+| `model_call` | Any model call returns (one event per attempt) | `prompt_tokens`, `eval_tokens`, `cached_tokens` (⊆ prompt), `reasoning_tokens` (⊆ eval), `cost` (USD), `tokens_used_total`, `phase` (`evaluator`; worker omits it), `attempt` (evaluator), `finish_reason`, reasoning, `health` (`ok` \| `provider_error` \| `empty`), `call_attempt`, and when present `model` / `provider` / `response_id` / `health_detail` / `retry_backoff_seconds` | card |
 | `nudge` | The harness injected a corrective user message | `iter`, `kind` (`no_case`), `streak`, `content` | card |
 | `tool_call` | The model invoked a tool (incl. `submit_case`) | `tool`, `args` | card |
 | `tool_result` | The harness answered a tool call | `tool`, result | card |

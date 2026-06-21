@@ -13,8 +13,16 @@ ledger append is mirrored by a `ledger_appended` event, but the ledger files are
 what the evaluator reads. See `append_ledger_entry` / `read_ledger`.
 
 Event types:
-    model_call         — request/response metadata for a model call. Carries
-                         `reasoning_details` (the OpenRouter-normalised
+    model_call         — request/response metadata for a model call. Carries the
+                         provider's usage detail, flat (see tilth/usage.py for
+                         the canonical record): `prompt_tokens`, `eval_tokens`
+                         (completion), `tokens_used_total` (post-increment
+                         running total = the cap counter), and the OpenRouter
+                         extras `cached_tokens` (cache hits, a subset of prompt),
+                         `reasoning_tokens` (thinking, a subset of eval), and
+                         `cost` (USD). cached/reasoning are subsets and never
+                         inflate the total or the cap; cost is display-only.
+                         Carries `reasoning_details` (the OpenRouter-normalised
                          structured form) when the model emitted any, falling
                          back to a flat `reasoning` string. Either is omitted
                          when absent so non-thinking models keep slim events.
@@ -119,8 +127,10 @@ Event types:
                          commit path does not log this.
     context_reset      — beginning of a new task; messages rebuilt from disk
     session_start      — fresh session began (worktree created). Payload carries
-                         {source, phase: "run", worktree, branch, worker_model,
-                         evaluator_model, base_url, limits, task_count};
+                         {source, feature_dir, feature, phase: "run", worktree,
+                         branch, worker_model, evaluator_model, base_url, limits,
+                         task_count}; `feature_dir` is the feature directory this
+                         run targets and `feature` its basename (for display);
                          summary.py keys
                          `started_at` off this. The model/endpoint config is
                          recorded so "what ran" is answerable from the log
@@ -158,6 +168,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from tilth.usage import add_usage, phase_bucket, zero_usage
+
 
 def _ts() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()) + "Z"
@@ -183,6 +195,24 @@ def iter_events(events_path: Path) -> Iterator[dict[str, Any]]:
                 continue
 
 
+def _restore_usage(stored: Any) -> dict[str, Any]:
+    """Rebuild the per-actor usage breakdown from a checkpoint.
+
+    Each actor bucket starts zeroed and is overlaid with whatever the
+    checkpoint carried, so old checkpoints (no `usage` key) and any
+    forward-added fields both degrade cleanly to a well-formed breakdown.
+    """
+    stored = stored if isinstance(stored, dict) else {}
+    out: dict[str, Any] = {}
+    for actor in ("worker", "evaluator"):
+        bucket = zero_usage()
+        saved = stored.get(actor)
+        if isinstance(saved, dict):
+            bucket.update({k: v for k, v in saved.items() if k in bucket})
+        out[actor] = bucket
+    return out
+
+
 SESSION_STATUSES = frozenset({"running", "all_done", "failed"})
 
 
@@ -194,9 +224,15 @@ class Session:
     checkpoint_path: Path               # sessions/<id>/checkpoint.json
     started_at: float = field(default_factory=time.time)
     source: Path | None = None          # user's source repo path; set by callers
+    feature_dir: Path | None = None     # feature dir (overview.md + T-NNN-*.md); set by callers
     workspace: Path | None = None       # worktree path; set when worktree exists
     branch: str | None = None
-    tokens_used: int = 0
+    tokens_used: int = 0                # cap counter: cumulative prompt + eval
+    # Full token/cost detail, split by actor. The cap reads `tokens_used`; this
+    # carries the breakdown (cached/reasoning subsets + cost) the cap discards.
+    usage: dict[str, Any] = field(
+        default_factory=lambda: {"worker": zero_usage(), "evaluator": zero_usage()}
+    )
     status: str = "running"             # running | all_done | failed
 
     @classmethod
@@ -221,7 +257,10 @@ class Session:
         `started_at` is reset to now so the wall-clock cap applies per-resume rather
         than cumulatively (otherwise a resume tomorrow trips the cap immediately).
         `tokens_used` is preserved — if the run hit `token_cap`, bump the env var
-        explicitly before resuming.
+        explicitly before resuming. The `usage` breakdown is preserved alongside
+        it (both cumulative across resumes); old checkpoints predate `usage`, so
+        it defaults to a fresh zeroed breakdown — `tokens_used` still restores
+        the cap counter, and the full per-call detail remains in events.jsonl.
 
         `status` is preserved from disk; a resuming caller flips it back to
         `running` via `set_status` as needed.
@@ -237,9 +276,11 @@ class Session:
             checkpoint_path=root / "checkpoint.json",
             started_at=time.time(),
             source=Path(cp["source"]) if cp.get("source") else None,
+            feature_dir=Path(cp["feature_dir"]) if cp.get("feature_dir") else None,
             workspace=Path(cp["workspace"]) if cp.get("workspace") else None,
             branch=cp.get("branch"),
             tokens_used=cp.get("tokens_used", 0),
+            usage=_restore_usage(cp.get("usage")),
             status=cp.get("status", "running"),
         )
         s.save_checkpoint()
@@ -311,9 +352,11 @@ class Session:
             "session_id": self.session_id,
             "started_at": self.started_at,
             "source": str(self.source) if self.source else None,
+            "feature_dir": str(self.feature_dir) if self.feature_dir else None,
             "workspace": str(self.workspace) if self.workspace else None,
             "branch": self.branch,
             "tokens_used": self.tokens_used,
+            "usage": self.usage,
             "status": self.status,
         }
         self.checkpoint_path.write_text(json.dumps(cp, indent=2))
@@ -326,8 +369,19 @@ class Session:
         self.status = status
         self.save_checkpoint()
 
-    def add_tokens(self, n: int) -> None:
-        self.tokens_used += n
+    def record_usage(self, u: dict[str, Any], phase: str | None = None) -> None:
+        """Record one model call's usage into the actor's breakdown and the cap
+        counter, then persist.
+
+        `tokens_used` (the cap counter) advances by `prompt + eval` only —
+        cached/reasoning are subsets of those, never added on top, so the cap
+        keeps its exact prior semantics. The per-actor `usage` carries the full
+        detail (including cost) for reporting. Called per attempt, like the
+        token recording it replaces, so provider-retry spend is counted even
+        though the unhealthy response never became a turn.
+        """
+        add_usage(self.usage[phase_bucket(phase)], u)
+        self.tokens_used += int(u.get("prompt") or 0) + int(u.get("eval") or 0)
         self.save_checkpoint()
 
     def elapsed_minutes(self) -> float:

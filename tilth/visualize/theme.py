@@ -61,6 +61,11 @@ APP_PAGE = """<!DOCTYPE html>
       <div class="stat-sub" id="stat-tokens-sub"></div>
     </div>
     <div class="stat">
+      <div class="stat-label">Cost</div>
+      <div class="stat-value" id="stat-cost">—</div>
+      <div class="stat-sub" id="stat-cost-sub"></div>
+    </div>
+    <div class="stat">
       <div class="stat-label">Model calls</div>
       <div class="stat-value" id="stat-calls">—</div>
       <div class="stat-sub" id="stat-calls-sub"></div>

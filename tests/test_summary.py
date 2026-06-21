@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from tilth import summary
+from tilth import summary, usage
 
 
 @pytest.fixture
@@ -28,7 +28,13 @@ def _write(path: Path, events: list[dict]) -> None:
 def test_empty_events_file_yields_zeroed_summary(events_path):
     events_path.write_text("")
     s = summary.build_from_events(events_path)
-    assert s["tokens"] == {"prompt": 0, "eval": 0, "total": 0}
+    assert s["tokens"]["prompt"] == 0
+    assert s["tokens"]["eval"] == 0
+    assert s["tokens"]["total"] == 0
+    assert s["tokens"]["cost"] == 0.0
+    assert s["tokens"]["by_phase"] == {
+        "worker": usage.zero_usage(), "evaluator": usage.zero_usage()
+    }
     assert s["tasks"] == {}
     assert s["tool_histogram"] == {}
 
@@ -95,7 +101,62 @@ def test_tokens_summed_across_model_calls(events_path):
         ],
     )
     s = summary.build_from_events(events_path)
-    assert s["tokens"] == {"prompt": 300, "eval": 80, "total": 380}
+    assert s["tokens"]["prompt"] == 300
+    assert s["tokens"]["eval"] == 80
+    assert s["tokens"]["total"] == 380  # max(tokens_used_total), the cap counter
+
+
+def test_detail_and_phase_split_aggregated(events_path):
+    """Worker and evaluator calls carry cached/reasoning/cost; the summary keeps
+    the detail and the per-actor split. The cap total stays prompt+eval — the
+    cached/reasoning subsets must not inflate it."""
+    _write(
+        events_path,
+        [
+            {"ts": "T1", "type": "model_call", "payload": {
+                "task_id": "T-1", "iter": 1,
+                "prompt_tokens": 100, "eval_tokens": 50,
+                "cached_tokens": 80, "reasoning_tokens": 40, "cost": 0.001,
+                "tokens_used_total": 150}},
+            {"ts": "T2", "type": "model_call", "payload": {
+                "task_id": "T-1", "iter": 1, "phase": "evaluator",
+                "prompt_tokens": 30, "eval_tokens": 10,
+                "cached_tokens": 5, "reasoning_tokens": 2, "cost": 0.0004,
+                "tokens_used_total": 190}},
+        ],
+    )
+    s = summary.build_from_events(events_path)
+    tok = s["tokens"]
+    assert tok["cached"] == 85
+    assert tok["reasoning"] == 42
+    assert tok["cost"] == pytest.approx(0.0014)
+    # cached (85) + reasoning (42) do NOT inflate the cap total:
+    assert tok["total"] == 190
+    assert tok["by_phase"]["worker"]["prompt"] == 100
+    assert tok["by_phase"]["worker"]["cost"] == pytest.approx(0.001)
+    assert tok["by_phase"]["evaluator"]["prompt"] == 30
+    assert tok["by_phase"]["evaluator"]["reasoning"] == 2
+
+
+def test_per_task_tokens_is_a_usage_dict(events_path):
+    """v3→v4: per-task `tokens` was a bare int, now the full usage record."""
+    _write(
+        events_path,
+        [
+            {"ts": "T1", "type": "model_call", "payload": {
+                "task_id": "T-1", "iter": 1,
+                "prompt_tokens": 100, "eval_tokens": 50,
+                "cached_tokens": 10, "cost": 0.002, "tokens_used_total": 150}},
+        ],
+    )
+    s = summary.build_from_events(events_path)
+    task_tokens = s["tasks"]["T-1"]["tokens"]
+    assert task_tokens["prompt"] == 100
+    assert task_tokens["eval"] == 50
+    assert task_tokens["total"] == 150
+    assert task_tokens["cached"] == 10
+    assert task_tokens["cost"] == pytest.approx(0.002)
+    assert task_tokens["by_phase"]["worker"]["prompt"] == 100
 
 
 def _mc(ts: str, tid: str, iter_n: int) -> dict:

@@ -129,7 +129,10 @@ def test_openrouter_optin_sent_when_worker_is_openrouter():
     client = LLMClient(cfg)
     client.chat([{"role": "user", "content": "x"}])
     sent = client._worker.calls[0]
-    assert sent.get("extra_body") == {"reasoning": {"enabled": True}}
+    assert sent.get("extra_body") == {
+        "reasoning": {"enabled": True},
+        "usage": {"include": True},
+    }
 
 
 def test_openrouter_optin_not_sent_to_non_openrouter_evaluator_provider():
@@ -161,6 +164,9 @@ def test_openrouter_optin_sent_to_openrouter_evaluator_when_worker_isnt():
     client = LLMClient(cfg)
     client.chat([{"role": "user", "content": "x"}], model="evaluator-m")
     sent = client._evaluator.calls[0]
-    assert sent.get("extra_body") == {"reasoning": {"enabled": True}}
+    assert sent.get("extra_body") == {
+        "reasoning": {"enabled": True},
+        "usage": {"include": True},
+    }
     # Worker (the default) shouldn't have been called at all.
     assert not client._worker.calls

@@ -100,11 +100,11 @@ nav:
       # gives the evaluator memory across iterations. The canonical home for
       # case / verdict / ledger; other pages link here.
       - The worker↔evaluator dialogue: deep-dives/worker-evaluator-dialogue.md
-      # Where the token cap is set (`client.py`), where the running counter
-      # lives (`Session.tokens_used` + `checkpoint.json`), the single call site
-      # that records tokens (`loop._chat_healthy`), why enforcement is
-      # between-task only, and the known gaps (no $-cost, no per-model split,
-      # no headroom warning).
+      # Where the token cap is set (`client.py`), the canonical usage record
+      # (`usage.py`: prompt/eval/cached/reasoning/cost, with cached & reasoning
+      # as subsets), the single call site that records it (`loop._chat_healthy`
+      # → `Session.record_usage`), why enforcement is between-task only, and
+      # what's display-only (cost, worker/evaluator split) vs capped (tokens).
       - Token recording: deep-dives/token-recording.md
       # The authored task format — `<workspace>/.tilth/tasks/` (overview.md +
       # one T-NNN-*.md per task): frontmatter and section parsing rules, the
