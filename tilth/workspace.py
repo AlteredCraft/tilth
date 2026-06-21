@@ -28,6 +28,24 @@ def _git(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
     )
 
 
+def repo_root(path: Path) -> Path:
+    """Return the git repo root that contains `path` (a feature dir inside it).
+
+    `path` must exist. Raises `WorkspaceError` when it isn't inside a git repo —
+    Tilth derives the worktree source from the feature directory the user runs.
+    """
+    if not path.exists():
+        raise WorkspaceError(f"path does not exist: {path}")
+    start = path if path.is_dir() else path.parent
+    proc = _git(["rev-parse", "--show-toplevel"], start)
+    if proc.returncode != 0:
+        raise WorkspaceError(
+            f"{path} is not inside a git repo. Tilth needs the feature directory "
+            "to live in a git repo with at least one commit."
+        )
+    return Path(proc.stdout.strip())
+
+
 def ensure_git_repo(source: Path) -> None:
     """Verify `source` is a git repo with at least one commit on a default branch."""
     if not source.is_dir():

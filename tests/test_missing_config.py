@@ -50,8 +50,9 @@ def test_load_config_incomplete_env_points_at_file(monkeypatch, tmp_path, capsys
 
 def test_do_run_returns_2_on_missing_config(monkeypatch, tmp_path):
     monkeypatch.setattr(loop.ws, "ensure_git_repo", lambda p: None)
+    monkeypatch.setattr(loop.ws, "repo_root", lambda p: tmp_path / "repo")
     monkeypatch.setattr(
-        loop.tasks, "load_feature", lambda src: ("overview", [{"id": "T-001"}])
+        loop.tasks, "load_feature", lambda feature_dir: ("overview", [{"id": "T-001"}])
     )
 
     def _raise():

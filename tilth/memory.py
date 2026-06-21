@@ -7,8 +7,9 @@ The channels (per Osmani's self-improving agents post):
     progress.txt    chronological journal — we inject a tail (last N lines).
                     Lives under sessions/<id>/ — a harness-owned runtime artifact,
                     never written into the workspace.
-    task markdown   the feature, authored in `<workspace>/.tilth/tasks/` (see
-                    `tilth/tasks.py`): an `overview.md` (feature "why") plus one
+    task markdown   the feature, authored in a feature dir (conventionally
+                    `<repo>/.tilth/<feature>/`; see `tilth/tasks.py`): an
+                    `overview.md` (feature "why") plus one
                     `T-NNN-*.md` per task. The caller loads them; this module
                     injects the overview + the full plan (every task collapsed,
                     so the worker doesn't pre-empt later tasks) + the worker's
@@ -212,8 +213,9 @@ def _render_full_prd(
 def _render_overview(overview: str | None) -> tuple[str, dict[str, Any]]:
     """Wrap the feature `overview.md` text as a worker-facing context section.
 
-    `overview` is loaded by the caller from `<workspace>/.tilth/tasks/overview.md`
-    (see `tilth/tasks.py`). It is the feature-level "why" — goal, scope
+    `overview` is loaded by the caller from the feature dir's `overview.md`
+    (conventionally `<repo>/.tilth/<feature>/overview.md`; see `tilth/tasks.py`).
+    It is the feature-level "why" — goal, scope
     boundaries, reviewer notes — so the worker understands the whole before
     building one slice. Absent/empty → ("", absent-manifest).
     """
@@ -245,7 +247,7 @@ def build_user_prompt(
     tail is read from `session_dir` (harness-owned runtime journal).
 
     The worker also sees the work it's part of: the feature `overview` (loaded
-    by the caller from `.tilth/tasks/overview.md`), the full feature plan
+    by the caller from the feature dir's `overview.md`), the full feature plan
     (`prd` — every task collapsed, so the worker doesn't pre-empt later ones),
     and its own task ledger (`own_ledger` — the evaluator's prior verdicts on
     this task, read by the caller via `session.read_ledger`). All three are

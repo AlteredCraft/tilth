@@ -1,8 +1,8 @@
 """Ralph loop entry point.
 
-The feature is authored as markdown under `<workspace>/.tilth/tasks/` (an
-`overview.md` plus one `T-NNN-*.md` per task — see `tilth/tasks.py`). For each
-pending task:
+The feature is authored as markdown in a feature directory (conventionally
+`<repo>/.tilth/<feature>/`): an `overview.md` plus one `T-NNN-*.md` per task —
+see `tilth/tasks.py`. For each pending task:
   1. Reset context — build a fresh message list from disk (workspace context
      files + feature overview + full plan + session progress tail + this task +
      the evaluator's prior verdicts on it).
@@ -554,8 +554,9 @@ def _call_evaluator_with_retry(
 
 # --- task list + status -----------------------------------------------------
 #
-# The task *content* is authored markdown under `<workspace>/.tilth/tasks/`
-# (read-only; loaded via tilth.tasks). Per-task *status* is harness-owned and
+# The task *content* is authored markdown in the feature dir (conventionally
+# `<repo>/.tilth/<feature>/`; read-only, loaded via tilth.tasks). Per-task
+# *status* is harness-owned and
 # lives in sessions/<id>/task-status.json — a flat {task_id: status} map. A task
 # absent from the map is `pending`. The loop overlays status onto the static
 # task list to get the prd-shaped list the rest of the harness consumes.
@@ -609,10 +610,10 @@ def _load_static_tasks_for_session(session: Session) -> list[dict[str, Any]]:
     Used by summary/resume helpers that need the task set without the live
     `run()` having it in hand. Returns [] on any failure — these are reporting
     paths that must not crash the run."""
-    if session.source is None:
+    if session.feature_dir is None:
         return []
     try:
-        return tasks.load_tasks(session.source)
+        return tasks.load_tasks(session.feature_dir)
     except (TasksError, OSError):
         return []
 
@@ -1435,11 +1436,13 @@ def do_resume_cmd(maybe_id: str | None) -> int:
         return 2
     client = LLMClient(config)
     session = Session.wake(SESSIONS_DIR, sid)
-    if session.workspace is None or session.source is None:
-        console.print("[red]session has no worktree/source recorded; cannot resume[/red]")
+    if session.workspace is None or session.source is None or session.feature_dir is None:
+        console.print(
+            "[red]session has no worktree/source/feature recorded; cannot resume[/red]"
+        )
         return 2
     try:
-        overview, static_tasks = tasks.load_feature(session.source)
+        overview, static_tasks = tasks.load_feature(session.feature_dir)
     except TasksError as exc:
         console.print(f"[red]cannot load tasks for resume:[/red]\n{exc}")
         return 2
@@ -1449,15 +1452,22 @@ def do_resume_cmd(maybe_id: str | None) -> int:
     return _run_session(session, worktree, client, config, overview, static_tasks)
 
 
-def do_run_cmd(workspace: Path) -> int:
-    source = workspace.resolve()
-    ws.ensure_git_repo(source)
+def do_run_cmd(feature_dir: Path) -> int:
+    feature_dir = feature_dir.resolve()
 
     # Fail fast on a missing/malformed feature *before* creating any session or
     # worktree — no orphan state, and the user gets the templates inline.
     try:
-        overview, static_tasks = tasks.load_feature(source)
+        overview, static_tasks = tasks.load_feature(feature_dir)
     except TasksError as exc:
+        console.print(f"[red]cannot start run:[/red]\n{exc}")
+        return 2
+
+    # The worktree source is the git repo the feature directory lives in.
+    try:
+        source = ws.repo_root(feature_dir)
+        ws.ensure_git_repo(source)
+    except ws.WorkspaceError as exc:
         console.print(f"[red]cannot start run:[/red]\n{exc}")
         return 2
 
@@ -1468,6 +1478,7 @@ def do_run_cmd(workspace: Path) -> int:
 
     session = Session.new(SESSIONS_DIR)
     session.source = source
+    session.feature_dir = feature_dir
     worktree, branch = ws.ensure_worktree(
         source, session.session_id, session.root / "workspace"
     )
@@ -1478,6 +1489,8 @@ def do_run_cmd(workspace: Path) -> int:
         "session_start",
         {
             "source": str(source),
+            "feature_dir": str(feature_dir),
+            "feature": feature_dir.name,
             "phase": "run",
             "worktree": str(worktree),
             "branch": branch,
@@ -1495,7 +1508,8 @@ def do_run_cmd(workspace: Path) -> int:
         },
     )
     console.print(
-        f"[dim]loaded {len(static_tasks)} task(s) from {tasks.tasks_dir(source)}[/dim]"
+        f"[dim]loaded {len(static_tasks)} task(s) for feature "
+        f"'{feature_dir.name}' from {feature_dir}[/dim]"
     )
     return _run_session(session, worktree, client, config, overview, static_tasks)
 

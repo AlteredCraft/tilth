@@ -127,8 +127,10 @@ Event types:
                          commit path does not log this.
     context_reset      — beginning of a new task; messages rebuilt from disk
     session_start      — fresh session began (worktree created). Payload carries
-                         {source, phase: "run", worktree, branch, worker_model,
-                         evaluator_model, base_url, limits, task_count};
+                         {source, feature_dir, feature, phase: "run", worktree,
+                         branch, worker_model, evaluator_model, base_url, limits,
+                         task_count}; `feature_dir` is the feature directory this
+                         run targets and `feature` its basename (for display);
                          summary.py keys
                          `started_at` off this. The model/endpoint config is
                          recorded so "what ran" is answerable from the log
@@ -222,6 +224,7 @@ class Session:
     checkpoint_path: Path               # sessions/<id>/checkpoint.json
     started_at: float = field(default_factory=time.time)
     source: Path | None = None          # user's source repo path; set by callers
+    feature_dir: Path | None = None     # feature dir (overview.md + T-NNN-*.md); set by callers
     workspace: Path | None = None       # worktree path; set when worktree exists
     branch: str | None = None
     tokens_used: int = 0                # cap counter: cumulative prompt + eval
@@ -273,6 +276,7 @@ class Session:
             checkpoint_path=root / "checkpoint.json",
             started_at=time.time(),
             source=Path(cp["source"]) if cp.get("source") else None,
+            feature_dir=Path(cp["feature_dir"]) if cp.get("feature_dir") else None,
             workspace=Path(cp["workspace"]) if cp.get("workspace") else None,
             branch=cp.get("branch"),
             tokens_used=cp.get("tokens_used", 0),
@@ -348,6 +352,7 @@ class Session:
             "session_id": self.session_id,
             "started_at": self.started_at,
             "source": str(self.source) if self.source else None,
+            "feature_dir": str(self.feature_dir) if self.feature_dir else None,
             "workspace": str(self.workspace) if self.workspace else None,
             "branch": self.branch,
             "tokens_used": self.tokens_used,

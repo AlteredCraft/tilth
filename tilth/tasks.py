@@ -1,14 +1,18 @@
-"""Load a feature's per-task markdown from ``<workspace>/.tilth/tasks/``.
+"""Load a feature's per-task markdown from a feature directory.
 
 This replaces the prep-feature-generated ``prd.json``. A feature is authored by
 hand (or by a model following the template) as a directory of markdown files in
-the source repo:
+the source repo, conventionally ``<repo>/.tilth/<feature>/`` so one repo can
+hold several:
 
-    .tilth/tasks/
+    .tilth/<feature>/
         overview.md          (required) — feature-level context, the "why"
         T-001-<slug>.md      one per task, ordered by id
         T-002-<slug>.md
         ...
+
+``tilth run <feature-dir>`` is given the path to that directory directly; the
+harness derives the enclosing git repo for the worktree.
 
 Each task file is small frontmatter (``id``, ``title``) plus two body sections:
 
@@ -40,7 +44,9 @@ import re
 from pathlib import Path
 from typing import Any
 
-TASKS_REL_DIR = ".tilth/tasks"
+# A feature directory holds overview.md + one T-NNN-*.md per task, directly.
+# Conventionally <repo>/.tilth/<feature>/, but the path is whatever the user
+# passes to `tilth run`.
 OVERVIEW_FILENAME = "overview.md"
 TASK_GLOB = "T-*.md"
 
@@ -49,7 +55,7 @@ _ID_RE = re.compile(r"^T-\d+$")
 
 
 class TasksError(RuntimeError):
-    """A feature's ``.tilth/tasks/`` is missing or malformed.
+    """A feature directory is missing or malformed.
 
     Carries a fully-formed, user-facing message (path + what to do). The CLI
     prints ``str(exc)`` and exits non-zero — no internal detail leaks beyond the
@@ -92,16 +98,12 @@ message the worker sees. Note any non-load-bearing assumptions here.>
 """
 
 
-def tasks_dir(workspace: Path) -> Path:
-    return workspace / TASKS_REL_DIR
-
-
-def _scaffold_hint(workspace: Path) -> str:
-    d = tasks_dir(workspace)
+def _scaffold_hint(feature_dir: Path) -> str:
     return (
-        f"Author your feature as markdown under {d}/ :\n\n"
-        f"  {d}/{OVERVIEW_FILENAME}   (required — feature context)\n"
-        f"  {d}/T-001-<slug>.md       (one file per task, ordered by id)\n\n"
+        f"Author a feature as markdown in {feature_dir}/ :\n\n"
+        f"  {feature_dir}/{OVERVIEW_FILENAME}   (required — feature context)\n"
+        f"  {feature_dir}/T-001-<slug>.md       (one file per task, ordered by id)\n\n"
+        f"Then run it with `tilth run {feature_dir}`.\n\n"
         f"--- {OVERVIEW_FILENAME} template ---\n{OVERVIEW_TEMPLATE}\n"
         f"--- task template ---\n{TASK_TEMPLATE}"
     )
@@ -219,21 +221,19 @@ def parse_task_file(path: Path) -> dict[str, Any]:
     }
 
 
-def load_tasks(workspace: Path) -> list[dict[str, Any]]:
-    """Parse every ``T-*.md`` under ``.tilth/tasks/``, ordered by id.
+def load_tasks(feature_dir: Path) -> list[dict[str, Any]]:
+    """Parse every ``T-*.md`` in the feature directory, ordered by id.
 
     Raises ``TasksError`` (with the scaffold hint) when the directory or any
     task files are missing, or when ids collide.
     """
-    d = tasks_dir(workspace)
+    d = feature_dir
     if not d.is_dir():
-        raise TasksError(f"No tasks directory at {d}.\n\n{_scaffold_hint(workspace)}")
+        raise TasksError(f"No feature directory at {d}.\n\n{_scaffold_hint(d)}")
 
     paths = sorted(d.glob(TASK_GLOB))
     if not paths:
-        raise TasksError(
-            f"No task files ({TASK_GLOB}) in {d}.\n\n{_scaffold_hint(workspace)}"
-        )
+        raise TasksError(f"No task files ({TASK_GLOB}) in {d}.\n\n{_scaffold_hint(d)}")
 
     tasks = [parse_task_file(p) for p in paths]
     tasks.sort(key=lambda t: t["id"])
@@ -247,9 +247,9 @@ def load_tasks(workspace: Path) -> list[dict[str, Any]]:
     return tasks
 
 
-def load_overview(workspace: Path) -> str:
+def load_overview(feature_dir: Path) -> str:
     """Read the required ``overview.md``. Raises ``TasksError`` when absent/empty."""
-    path = tasks_dir(workspace) / OVERVIEW_FILENAME
+    path = feature_dir / OVERVIEW_FILENAME
     if not path.is_file():
         raise TasksError(
             f"No {OVERVIEW_FILENAME} at {path} (required).\n\n"
@@ -264,8 +264,8 @@ def load_overview(workspace: Path) -> str:
     return text
 
 
-def load_feature(workspace: Path) -> tuple[str, list[dict[str, Any]]]:
-    """Load ``(overview_text, tasks)`` for a workspace. Fails fast on any gap."""
-    overview = load_overview(workspace)
-    tasks = load_tasks(workspace)
+def load_feature(feature_dir: Path) -> tuple[str, list[dict[str, Any]]]:
+    """Load ``(overview_text, tasks)`` for a feature directory. Fails fast on any gap."""
+    overview = load_overview(feature_dir)
+    tasks = load_tasks(feature_dir)
     return overview, tasks
