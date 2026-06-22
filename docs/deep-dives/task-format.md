@@ -22,13 +22,17 @@ Required, must be non-empty. Free-form markdown — the template `tilth run` pri
 
 ### Task files — `T-NNN-<slug>.md`
 
-Each task file is frontmatter plus two body sections:
+Each task file is frontmatter plus a body. `## Description` and `## Acceptance criteria` are the canonical sections, but the body can carry any other sections too (e.g. a `## Problem` lead) — everything outside `## Acceptance criteria` becomes the description:
 
 ```markdown
 ---
 id: T-001
 title: Add the `add` subcommand
 ---
+
+## Problem
+(optional) Why this task exists / what's broken — context and intent, so the
+worker can choose the implementation rather than follow keystroke-level steps.
 
 ## Description
 What to build, in the worker's voice. Real paths and symbols
@@ -47,7 +51,7 @@ Parsing (`tilth/tasks.py`) is deliberately forgiving — a hand-rolled `key: val
 | Frontmatter block | Required (`---` … `---`). Unknown keys are ignored (forward-compatible); a missing or unterminated block is an error. |
 | `id` | Required; must match `T-<digits>` (zero-padded by convention, e.g. `T-001`). Must be unique across files. |
 | `title` | Required, non-empty. |
-| `## Description` | The section's text becomes the task description. Lenient fallback: with no explicit `## Description` heading, all body text outside the AC section is used. Empty → error. |
+| Body sections | The task description is **every section except `## Acceptance criteria`**, in document order with headings preserved — so you can lead with a discrete `## Problem` (the *why*) before `## Description` (the *what*), or add `## Context` / `## Approach`. A sole `## Description` (or plain pre-heading prose) renders bare, without its heading. Empty non-AC body → error. |
 | `## Acceptance criteria` | `- ` / `* ` bullets are collected as the criteria list. Heading match is case-insensitive. *Not required* — a task with no AC parses fine, but gives the evaluator nothing concrete to gate on. Write them. |
 
 Files are discovered by the glob `T-*.md` and ordered by `id`. The filename's `<slug>` is for humans; only the frontmatter `id` matters to the harness.
