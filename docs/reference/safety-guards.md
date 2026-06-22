@@ -10,12 +10,12 @@ Tilth enforces a budget so an unattended run can't spin forever. The full mental
 |---|---|---|
 | Iteration, per task | `32` | `TILTH_MAX_ITERATIONS_PER_TASK` |
 | Wall-clock, per run | `120` min | `TILTH_MAX_WALL_CLOCK_MINUTES` |
-| Token, per session | `2,000,000` | `TILTH_MAX_TOKENS` |
+| Dollar spend, per session | `$10.00` | `TILTH_MAX_TOKEN_DOLLAR_SPEND` |
 | Evaluator-call, per task *(optional)* | `0` = off | `MAX_EVALUATOR_CALLS_PER_TASK` |
 
 Two fixed circuit-breakers have no env knob — they guard against failures the caps can't see:
 
-- **Provider-health gate.** Every model call is checked against the provider's own signals (`error` object, `finish_reason: "error"`, or a completely empty body). Unhealthy responses never enter the conversation — retried with the history untouched (8 attempts ≈ 3 minutes of backoff). Exhaustion aborts the task with `provider_failure` but leaves the session resumable. Worth a guard because unhealthy turns can cost no tokens, so the token cap never catches a bad endpoint.
+- **Provider-health gate.** Every model call is checked against the provider's own signals (`error` object, `finish_reason: "error"`, or a completely empty body). Unhealthy responses never enter the conversation — retried with the history untouched (8 attempts ≈ 3 minutes of backoff). Exhaustion aborts the task with `provider_failure` but leaves the session resumable. Worth a guard because unhealthy turns can cost nothing, so the dollar-spend cap never catches a bad endpoint.
 - **No-case circuit breaker.** A worker that keeps going quiet without calling `submit_case` is nudged up to 3 times, then the task aborts with `no_case` and the run halts.
 
 ## Pre-tool veto

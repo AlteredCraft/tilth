@@ -1,9 +1,10 @@
-"""Session.record_usage feeds the per-actor breakdown and the cap counter, and
-the breakdown round-trips through the checkpoint.
+"""Session.record_usage feeds the per-actor breakdown and the running token
+total, and the breakdown round-trips through the checkpoint.
 
-The load-bearing property: `tokens_used` (what the cap reads) advances by
-`prompt + eval` only — cached/reasoning are subsets and must not inflate it.
-The full detail (including cost) lives in the per-actor `usage` breakdown.
+The load-bearing property: `tokens_used` advances by `prompt + eval` only —
+cached/reasoning are subsets and must not inflate it. The full detail (including
+`cost`) lives in the per-actor `usage` breakdown; `cost_used()` sums that cost
+into the dollar-spend cap counter.
 """
 
 from __future__ import annotations
@@ -29,11 +30,32 @@ def _u(prompt, eval_, *, cached=0, reasoning=0, cost=0.0):
     }
 
 
-def test_cap_counter_advances_by_prompt_plus_eval_only(sessions_root):
+def test_token_total_advances_by_prompt_plus_eval_only(sessions_root):
     s = Session.new(sessions_root)
     s.record_usage(_u(100, 40, cached=80, reasoning=30, cost=0.001))
     # cached (⊆prompt) and reasoning (⊆eval) must NOT be added on top.
     assert s.tokens_used == 140
+
+
+def test_cost_used_sums_both_actors(sessions_root):
+    s = Session.new(sessions_root)
+    s.record_usage(_u(100, 40, cost=0.002))
+    s.record_usage(_u(50, 10, cost=0.003), phase="evaluator")
+    # The dollar-spend cap reads this — worker + evaluator cost combined.
+    assert s.cost_used() == pytest.approx(0.005)
+
+
+def test_cost_used_round_trips_through_wake(sessions_root):
+    s = Session.new(sessions_root)
+    s.record_usage(_u(100, 40, cost=0.002), phase="evaluator")
+    woken = Session.wake(sessions_root, s.session_id)
+    assert woken.cost_used() == pytest.approx(0.002)
+
+
+def test_cost_used_zero_when_provider_omits_cost(sessions_root):
+    s = Session.new(sessions_root)
+    s.record_usage(_u(100, 40))  # no cost reported
+    assert s.cost_used() == 0.0
 
 
 def test_usage_routes_to_worker_by_default(sessions_root):
@@ -82,7 +104,7 @@ def test_usage_present_in_checkpoint_json(sessions_root):
 
 def test_wake_tolerates_old_checkpoint_without_usage(sessions_root):
     """Pre-refactor checkpoints have no `usage` key; wake must default it to a
-    zeroed breakdown while still restoring the cap counter."""
+    zeroed breakdown while still restoring the running token total."""
     s = Session.new(sessions_root)
     s.record_usage(_u(100, 40))
     cp = json.loads(s.checkpoint_path.read_text())
@@ -91,4 +113,4 @@ def test_wake_tolerates_old_checkpoint_without_usage(sessions_root):
 
     woken = Session.wake(sessions_root, s.session_id)
     assert woken.usage == {"worker": zero_usage(), "evaluator": zero_usage()}
-    assert woken.tokens_used == 140  # cap counter still restored
+    assert woken.tokens_used == 140  # running token total still restored

@@ -95,16 +95,16 @@ class TilthConfig:
     max_iterations_per_task: int
     max_evaluator_calls_per_task: int
     max_wall_clock_minutes: int
-    max_tokens: int
+    max_token_dollar_spend: float
     context_files: list[str] = field(default_factory=lambda: list(DEFAULT_CONTEXT_FILES))
 
-    def limits(self) -> dict[str, int]:
+    def limits(self) -> dict[str, float]:
         """The configured caps as a flat dict, recorded in `session_start` so
         the read-only viewer can show utilization against them. Single source
         for the recorded shape — keep it in step with `_stop_reason` and the
         per-task caps in `loop._run_task`."""
         return {
-            "max_tokens": self.max_tokens,
+            "max_token_dollar_spend": self.max_token_dollar_spend,
             "max_wall_clock_minutes": self.max_wall_clock_minutes,
             "max_iterations_per_task": self.max_iterations_per_task,
             "max_evaluator_calls_per_task": self.max_evaluator_calls_per_task,
@@ -146,7 +146,9 @@ class TilthConfig:
                 os.environ.get("MAX_EVALUATOR_CALLS_PER_TASK", "0") or "0"
             ),
             max_wall_clock_minutes=int(os.environ.get("TILTH_MAX_WALL_CLOCK_MINUTES", "120")),
-            max_tokens=int(os.environ.get("TILTH_MAX_TOKENS", "2000000")),
+            max_token_dollar_spend=float(
+                os.environ.get("TILTH_MAX_TOKEN_DOLLAR_SPEND", "10.00")
+            ),
             context_files=context_files,
         )
 

@@ -9,10 +9,10 @@ The Ralph loop proper. Picks the next pending task (the authored task list from 
 Bounded by:
 
 - `TILTH_MAX_WALL_CLOCK_MINUTES`
-- `TILTH_MAX_TOKENS`
+- `TILTH_MAX_TOKEN_DOLLAR_SPEND`
 - "no more pending tasks"
 
-This loop has no iteration cap. If you have 20 tasks and the wall-clock and token caps allow it, it'll run all 20.
+This loop has no iteration cap. If you have 20 tasks and the wall-clock and dollar-spend caps allow it, it'll run all 20.
 
 ## Inner loop — `_run_task()` in `loop.py`
 
@@ -112,11 +112,11 @@ The caps exist because Tilth runs unattended. An interactive agent doesn't need 
 
 Two operate at the **session level**, stopping the Ralph loop between tasks:
 
-- **`MAX_WALL_CLOCK_MINUTES`** and **`MAX_TOKENS`** — checked at the top of each task, so the current task finishes first. Where the token cap is read and why enforcement is between-task is in [Token recording](token-recording.md).
+- **`MAX_WALL_CLOCK_MINUTES`** and **`MAX_TOKEN_DOLLAR_SPEND`** — checked at the top of each task, so the current task finishes first. Where the dollar-spend cap is read and why enforcement is between-task is in [Token recording](token-recording.md).
 
 The rest operate at the **task level** — they mark the task `failed`, log `task_failed`, and halt the run; the next `tilth resume` retries with a fresh budget, so none is destructive:
 
-- **`MAX_ITERATIONS_PER_TASK`** — the task spun out its iteration budget (the `iter_cap` exit above). Bounds worker effort within a task, and caps per-task tokens *indirectly* — there is no direct per-task token cap.
+- **`MAX_ITERATIONS_PER_TASK`** — the task spun out its iteration budget (the `iter_cap` exit above). Bounds worker effort within a task, and caps per-task spend *indirectly* — there is no direct per-task dollar cap.
 - **`MAX_EVALUATOR_CALLS_PER_TASK`** *(optional; `0` = off, the default)* — stops a worker↔evaluator ping-pong before it burns the whole iteration budget on a task the evaluator won't accept.
 - **`provider_failure`** and **`no_case`** — the two fixed backstops from the flowchart (a misbehaving endpoint; a worker that never presents its case). Not env-tunable.
 

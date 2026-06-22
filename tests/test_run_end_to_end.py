@@ -51,7 +51,7 @@ def _config() -> SimpleNamespace:
         max_iterations_per_task=8,
         max_evaluator_calls_per_task=0,
         max_wall_clock_minutes=120,
-        max_tokens=2_000_000,
+        max_token_dollar_spend=10.0,
     )
 
 
