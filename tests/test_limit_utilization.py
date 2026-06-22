@@ -35,7 +35,7 @@ def _config(**over) -> TilthConfig:
         max_iterations_per_task=32,
         max_evaluator_calls_per_task=0,
         max_wall_clock_minutes=120,
-        max_tokens=2_000_000,
+        max_token_dollar_spend=10.0,
     )
     base.update(over)
     return TilthConfig(**base)
@@ -43,7 +43,7 @@ def _config(**over) -> TilthConfig:
 
 def test_config_limits_dict():
     assert _config().limits() == {
-        "max_tokens": 2_000_000,
+        "max_token_dollar_spend": 10.0,
         "max_wall_clock_minutes": 120,
         "max_iterations_per_task": 32,
         "max_evaluator_calls_per_task": 0,
@@ -51,13 +51,13 @@ def test_config_limits_dict():
 
 
 def test_config_limits_reflects_overrides():
-    limits = _config(max_tokens=500_000, max_iterations_per_task=8).limits()
-    assert limits["max_tokens"] == 500_000
+    limits = _config(max_token_dollar_spend=5.0, max_iterations_per_task=8).limits()
+    assert limits["max_token_dollar_spend"] == 5.0
     assert limits["max_iterations_per_task"] == 8
 
 
 def test_session_start_fact_carries_limits():
-    limits = _config(max_tokens=500_000).limits()
+    limits = _config(max_token_dollar_spend=5.0).limits()
     ev = {
         "ts": "2026-06-10T20:00:00Z",
         "type": "session_start",

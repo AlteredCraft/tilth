@@ -103,7 +103,7 @@ def test_tokens_summed_across_model_calls(events_path):
     s = summary.build_from_events(events_path)
     assert s["tokens"]["prompt"] == 300
     assert s["tokens"]["eval"] == 80
-    assert s["tokens"]["total"] == 380  # max(tokens_used_total), the cap counter
+    assert s["tokens"]["total"] == 380  # max(tokens_used_total), the running token total
 
 
 def test_detail_and_phase_split_aggregated(events_path):

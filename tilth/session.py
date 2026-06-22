@@ -17,11 +17,11 @@ Event types:
                          provider's usage detail, flat (see tilth/usage.py for
                          the canonical record): `prompt_tokens`, `eval_tokens`
                          (completion), `tokens_used_total` (post-increment
-                         running total = the cap counter), and the OpenRouter
-                         extras `cached_tokens` (cache hits, a subset of prompt),
+                         running token total), and the OpenRouter extras
+                         `cached_tokens` (cache hits, a subset of prompt),
                          `reasoning_tokens` (thinking, a subset of eval), and
-                         `cost` (USD). cached/reasoning are subsets and never
-                         inflate the total or the cap; cost is display-only.
+                         `cost` (USD — the dollar-spend cap counter). cached and
+                         reasoning are subsets and never inflate the token total.
                          Carries `reasoning_details` (the OpenRouter-normalised
                          structured form) when the model emitted any, falling
                          back to a flat `reasoning` string. Either is omitted
@@ -136,7 +136,7 @@ Event types:
                          recorded so "what ran" is answerable from the log
                          alone, not from whatever .env says later. `limits` is
                          the configured cap dict (see TilthConfig.limits:
-                         max_tokens, max_wall_clock_minutes,
+                         max_token_dollar_spend, max_wall_clock_minutes,
                          max_iterations_per_task, max_evaluator_calls_per_task)
                          — the visualizer shows utilization against it.
                          `task_count` is the feature's full task count (the
@@ -256,11 +256,12 @@ class Session:
 
         `started_at` is reset to now so the wall-clock cap applies per-resume rather
         than cumulatively (otherwise a resume tomorrow trips the cap immediately).
-        `tokens_used` is preserved — if the run hit `token_cap`, bump the env var
-        explicitly before resuming. The `usage` breakdown is preserved alongside
-        it (both cumulative across resumes); old checkpoints predate `usage`, so
-        it defaults to a fresh zeroed breakdown — `tokens_used` still restores
-        the cap counter, and the full per-call detail remains in events.jsonl.
+        The `usage` breakdown is preserved — its `cost` is the dollar-spend cap
+        counter (`cost_used()`), so if the run hit `token_cap`, bump
+        TILTH_MAX_TOKEN_DOLLAR_SPEND before resuming or it re-trips at once. Old
+        checkpoints predate `usage`, so it defaults to a fresh zeroed breakdown;
+        `tokens_used` still restores the running token total and the full
+        per-call detail remains in events.jsonl.
 
         `status` is preserved from disk; a resuming caller flips it back to
         `running` via `set_status` as needed.
@@ -370,19 +371,34 @@ class Session:
         self.save_checkpoint()
 
     def record_usage(self, u: dict[str, Any], phase: str | None = None) -> None:
-        """Record one model call's usage into the actor's breakdown and the cap
-        counter, then persist.
+        """Record one model call's usage into the actor's breakdown and the
+        running token total, then persist.
 
-        `tokens_used` (the cap counter) advances by `prompt + eval` only —
-        cached/reasoning are subsets of those, never added on top, so the cap
-        keeps its exact prior semantics. The per-actor `usage` carries the full
-        detail (including cost) for reporting. Called per attempt, like the
-        token recording it replaces, so provider-retry spend is counted even
-        though the unhealthy response never became a turn.
+        `tokens_used` advances by `prompt + eval` only — cached/reasoning are
+        subsets of those, never added on top, so the token total keeps its exact
+        prior semantics. The per-actor `usage` carries the full detail including
+        `cost`, which `cost_used()` sums into the dollar-spend cap counter.
+        Called per attempt, like the token recording it replaces, so
+        provider-retry spend is counted even though the unhealthy response never
+        became a turn.
         """
         add_usage(self.usage[phase_bucket(phase)], u)
         self.tokens_used += int(u.get("prompt") or 0) + int(u.get("eval") or 0)
         self.save_checkpoint()
+
+    def cost_used(self) -> float:
+        """Cumulative provider-reported USD spend — the dollar cap counter.
+
+        Summed from the per-actor `usage` breakdown (worker + evaluator), which
+        carries the provider's own `cost` figure and is persisted/restored
+        across resumes alongside `tokens_used`. Providers that don't report cost
+        leave this at 0.0, so the dollar cap never trips for them; wall-clock is
+        the backstop there.
+        """
+        return float(
+            (self.usage.get("worker") or {}).get("cost", 0.0)
+            + (self.usage.get("evaluator") or {}).get("cost", 0.0)
+        )
 
     def elapsed_minutes(self) -> float:
         return (time.time() - self.started_at) / 60.0

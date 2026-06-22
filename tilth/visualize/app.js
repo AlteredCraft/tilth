@@ -259,14 +259,6 @@
     document.getElementById(id).hidden = false;
   }
 
-  // Tokens read better in millions once a budget gets large; mmss/fmtK stay
-  // for the per-task and clock numbers.
-  function fmtBig(n) {
-    if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + "M";
-    if (n >= 1e4) return (n / 1e3).toFixed(0) + "k";
-    return Math.round(n).toLocaleString();
-  }
-
   function fmtInt(n) {
     return String(Math.round(n));
   }
@@ -328,9 +320,10 @@
 
     const session = document.getElementById("session-meters");
     session.replaceChildren();
-    if (L.max_tokens > 0) {
+    if (L.max_token_dollar_spend > 0) {
       session.appendChild(meterEl({
-        name: "Token budget", used: S.pt + S.et, max: L.max_tokens, fmt: fmtBig,
+        name: "Cost budget", used: S.cost, max: L.max_token_dollar_spend,
+        fmt: fmtCost,
       }));
     }
     if (L.max_wall_clock_minutes > 0) {

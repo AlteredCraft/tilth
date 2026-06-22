@@ -1051,7 +1051,7 @@ def _run_task(
 def _stop_reason(client: LLMClient, session: Session) -> str | None:
     if session.elapsed_minutes() >= client.config.max_wall_clock_minutes:
         return "wall_clock"
-    if session.tokens_used >= client.config.max_tokens:
+    if session.cost_used() >= client.config.max_token_dollar_spend:
         return "token_cap"
     return None
 
@@ -1093,7 +1093,10 @@ def run(
             if stop == "wall_clock":
                 detail = f" [TILTH_MAX_WALL_CLOCK_MINUTES={client.config.max_wall_clock_minutes}]"
             elif stop == "token_cap":
-                detail = f" [TILTH_MAX_TOKENS={client.config.max_tokens}]"
+                detail = (
+                    " [TILTH_MAX_TOKEN_DOLLAR_SPEND="
+                    f"{usage.format_cost(client.config.max_token_dollar_spend)}]"
+                )
             console.print(f"[yellow]stopping: {stop}[/yellow][dim]{detail}[/dim]")
             session.log("stop", {"reason": stop})
             session.set_status(_stop_to_status(stop))
@@ -1200,7 +1203,11 @@ def _usage_breakdown_lines(session_usage: dict[str, Any]) -> list[str]:
 def _print_summary(session: Session, client: LLMClient) -> None:
     elapsed = time.time() - session.started_at
     cfg = client.config
-    tokens_pct = (session.tokens_used / cfg.max_tokens * 100) if cfg.max_tokens else 0.0
+    cost_used = session.cost_used()
+    cost_pct = (
+        (cost_used / cfg.max_token_dollar_spend * 100)
+        if cfg.max_token_dollar_spend else 0.0
+    )
     wall_pct = (
         (elapsed / 60.0) / cfg.max_wall_clock_minutes * 100
         if cfg.max_wall_clock_minutes
@@ -1220,7 +1227,10 @@ def _print_summary(session: Session, client: LLMClient) -> None:
     wall_dim = (
         f"({wall_pct:.1f}% of TILTH_MAX_WALL_CLOCK_MINUTES={cfg.max_wall_clock_minutes})"
     )
-    tokens_dim = f"({tokens_pct:.1f}% of TILTH_MAX_TOKENS={cfg.max_tokens:,})"
+    cost_dim = (
+        f"({cost_pct:.1f}% of TILTH_MAX_TOKEN_DOLLAR_SPEND="
+        f"{usage.format_cost(cfg.max_token_dollar_spend)})"
+    )
     base_keys = ("done", "failed", "pending")
     total = sum(counts.values())
     task_bits = [f"total={total}"] + [f"{k}={counts.get(k, 0)}" for k in base_keys]
@@ -1232,15 +1242,10 @@ def _print_summary(session: Session, client: LLMClient) -> None:
     if session.branch:
         console.print(f"  branch    {session.branch}")
     console.print(f"  duration  {_format_duration(elapsed)} [dim]{wall_dim}[/dim]")
-    console.print(f"  tokens    {session.tokens_used:,} [dim]{tokens_dim}[/dim]")
+    console.print(f"  tokens    {session.tokens_used:,}")
     for line in _usage_breakdown_lines(session.usage):
         console.print(f"            [dim]{line}[/dim]")
-    total_cost = (
-        (session.usage.get("worker") or {}).get("cost", 0.0)
-        + (session.usage.get("evaluator") or {}).get("cost", 0.0)
-    )
-    if total_cost > 0:
-        console.print(f"  cost      {usage.format_cost(total_cost)}")
+    console.print(f"  cost      {usage.format_cost(cost_used)} [dim]{cost_dim}[/dim]")
     console.print(f"  tasks     {' '.join(task_bits + extras)}")
 
 

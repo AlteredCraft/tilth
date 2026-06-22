@@ -62,7 +62,7 @@ The `.env` is discovered in order — `$TILTH_ENV_FILE`, then `~/.tilth/.env`, t
 | `TILTH_CONTEXT_FILES` | `AGENTS.md,CLAUDE.md` | Comma-separated project-context files read from the workspace root (in order, concatenated) into the worker and evaluator prompts. |
 | `TILTH_MAX_ITERATIONS_PER_TASK` | `32` | Tool-use iterations before a task is marked failed. |
 | `TILTH_MAX_WALL_CLOCK_MINUTES` | `120` | Outer-loop wall-clock cap. |
-| `TILTH_MAX_TOKENS` | `2000000` | Cumulative session token cap. |
+| `TILTH_MAX_TOKEN_DOLLAR_SPEND` | `10.00` | Cumulative session USD-spend cap, read from the provider's per-call `cost` (OpenRouter reports it; gateways that don't leave it uncapped — wall-clock is the backstop). |
 | `MAX_EVALUATOR_CALLS_PER_TASK` | `0` (off) | Optional cap on worker↔evaluator ping-pong. |
 
 See [What can stop a run](../deep-dives/two-loops.md#what-can-stop-a-run) for the safety story behind the caps.

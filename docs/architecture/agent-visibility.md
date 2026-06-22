@@ -31,7 +31,7 @@ The wall is softer than it once was, by design: the worker sees the feature over
 Three failure modes — all seen in earlier hand-built loops — are prevented by hiding mechanics from the agent:
 
 1. **Gaming the evaluator.** The worker sees the evaluator's verdicts on *its own task* — by design, so it can fix what was flagged — but not the rejection categories aggregated across the session or the evaluation machinery itself. Keeping the wider machinery hidden stops the worker padding commits *for the reviewer* instead of writing working code.
-2. **Token shortcuts.** If the agent knew the token cap, it would cut corners ("I'll skip verifying to save tokens"). The only objective it's given is "do the task." Cost accounting is the harness's problem.
+2. **Budget shortcuts.** If the agent knew the spend cap, it would cut corners ("I'll skip verifying to save money"). The only objective it's given is "do the task." Cost accounting is the harness's problem.
 3. **Trying to manage state itself.** If the agent saw the mutable status *state* — `task-status.json`, the queue machinery — it would try to mark its own task done, skip ahead, or rewrite the queue. The plan it sees is read-only prose; state management belongs in code, and the agent works on one task at a time and stops.
 
 A corollary follows for `AGENTS.md`: it's for *project* conventions, not harness mechanics — the [Memory channels](memory-channels.md#agentsmd-your-project-conventions) page carries the belongs/doesn't-belong rule.
