@@ -66,6 +66,74 @@ def test_description_falls_back_to_body_without_heading(feature_dir):
     assert task["acceptance_criteria"] == []
 
 
+def test_single_description_section_renders_without_heading(feature_dir):
+    # Backward compat: a sole `## Description` parses to bare body, exactly as
+    # before the multi-section change (the heading adds nothing over the prompt's
+    # own "Your task" framing).
+    p = _write_task(feature_dir, "T-001-add.md", VALID_TASK)
+    task = tasks.parse_task_file(p)
+    assert task["description"] == "Implement `todo add` in todo_cli/__main__.py:main()."
+
+
+MULTI_SECTION_TASK = """\
+---
+id: T-007
+title: Lead with the problem
+---
+
+## Problem
+The parser drops every body section except `## Description`.
+
+## Description
+Build the description from all non-AC sections, in document order.
+
+## Acceptance criteria
+- the problem text reaches the model
+"""
+
+
+def test_description_includes_all_non_ac_sections_in_order(feature_dir):
+    p = _write_task(feature_dir, "T-007-problem.md", MULTI_SECTION_TASK)
+    task = tasks.parse_task_file(p)
+    desc = task["description"]
+    # Both authored sections survive, with their headings.
+    assert "## Problem" in desc
+    assert "parser drops every body section" in desc
+    assert "## Description" in desc
+    assert "all non-AC sections" in desc
+    # Document order is preserved.
+    assert desc.index("## Problem") < desc.index("## Description")
+    # AC stays out of the description and is still parsed into its own list.
+    assert "the problem text reaches the model" not in desc
+    assert task["acceptance_criteria"] == ["the problem text reaches the model"]
+
+
+def test_description_supports_arbitrary_headings(feature_dir):
+    body = (
+        "---\nid: T-008\ntitle: t\n---\n\n"
+        "## Context\nbackground for the slice.\n\n"
+        "## Approach\ndo it this way.\n"
+    )
+    p = _write_task(feature_dir, "T-008-ctx.md", body)
+    task = tasks.parse_task_file(p)
+    desc = task["description"]
+    assert "## Context" in desc and "background for the slice." in desc
+    assert "## Approach" in desc and "do it this way." in desc
+
+
+def test_description_keeps_pre_heading_prose_before_sections(feature_dir):
+    body = (
+        "---\nid: T-009\ntitle: t\n---\n\n"
+        "Lead-in prose with no heading.\n\n"
+        "## Description\nThe what.\n"
+    )
+    p = _write_task(feature_dir, "T-009-lead.md", body)
+    task = tasks.parse_task_file(p)
+    desc = task["description"]
+    assert desc.index("Lead-in prose") < desc.index("## Description")
+    assert "The what." in desc
+
+
 @pytest.mark.parametrize(
     "body, needle",
     [

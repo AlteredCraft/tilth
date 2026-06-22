@@ -89,6 +89,25 @@ def test_full_prd_absent_when_not_passed(workspace, session_dir):
     assert manifest["channels"]["full_prd"]["present"] is False
 
 
+def test_multi_section_body_reaches_worker_prompt(workspace, session_dir, tmp_path):
+    # A task authored with a discrete `## Problem` lead must carry that section
+    # all the way into the worker's "Your task" block (issue #47).
+    from tilth import tasks
+
+    task_md = tmp_path / "T-009-problem.md"
+    task_md.write_text(
+        "---\nid: T-009\ntitle: Lead with the problem\n---\n\n"
+        "## Problem\nWhy this task exists.\n\n"
+        "## Description\nWhat done looks like.\n\n"
+        "## Acceptance criteria\n- it works\n"
+    )
+    task = tasks.parse_task_file(task_md)
+    prompt, _ = memory.build_user_prompt(task, workspace, session_dir)
+    assert "## Problem" in prompt
+    assert "Why this task exists." in prompt
+    assert "What done looks like." in prompt
+
+
 def test_full_prd_truncates_when_oversized(workspace, session_dir):
     big = [
         {"id": f"T-{i:03d}", "title": "x", "description": "y" * 1000,

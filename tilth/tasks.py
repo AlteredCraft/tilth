@@ -149,22 +149,23 @@ def _parse_frontmatter(text: str, path: Path) -> tuple[dict[str, str], str]:
 _HEADING_RE = re.compile(r"^##\s+(.*\S)\s*$")
 
 
-def _split_sections(body: str) -> dict[str, str]:
-    """Map normalised ``## Heading`` text → the section's body text.
+def _split_sections(body: str) -> list[tuple[str, str]]:
+    """Split a body into ordered ``(heading, text)`` segments.
 
-    Lower-cased heading keys; the text under each heading runs until the next
-    ``## `` heading. Content before the first heading is keyed under ``""``.
+    ``heading`` is the original ``## Heading`` text (sans the ``## `` marker), or
+    ``""`` for content before the first heading. Order follows the document and
+    headings are preserved verbatim, so a caller can both look a section up
+    (case-insensitively) *and* reconstruct the body. Each segment's text has
+    surrounding blank lines stripped.
     """
-    sections: dict[str, list[str]] = {"": []}
-    current = ""
+    segments: list[tuple[str, list[str]]] = [("", [])]
     for ln in body.splitlines():
         m = _HEADING_RE.match(ln)
         if m:
-            current = m.group(1).strip().lower()
-            sections.setdefault(current, [])
+            segments.append((m.group(1).strip(), []))
             continue
-        sections[current].append(ln)
-    return {k: "\n".join(v).strip() for k, v in sections.items()}
+        segments[-1][1].append(ln)
+    return [(heading, "\n".join(lines).strip()) for heading, lines in segments]
 
 
 def _bullets(text: str) -> list[str]:
@@ -183,8 +184,10 @@ def parse_task_file(path: Path) -> dict[str, Any]:
 
     Shape: ``{id, title, description, acceptance_criteria}`` — the same fields
     ``loop``/``memory`` consumed from a ``prd.json`` entry, minus ``status``
-    (tracked harness-side). Lenient on body structure: ``description`` falls back
-    to all non-AC body text when there's no explicit ``## Description`` heading.
+    (tracked harness-side). The ``description`` is every body section *except*
+    ``## Acceptance criteria``, in document order with headings preserved — so a
+    ``## Problem`` lead (or ``## Context``, ``## Approach``, …) reaches the worker
+    and evaluator. A sole ``## Description`` (or pre-heading prose) renders bare.
     """
     text = path.read_text()
     fields, body = _parse_frontmatter(text, path)
@@ -200,17 +203,34 @@ def parse_task_file(path: Path) -> dict[str, Any]:
     if not title:
         raise TasksError(f"{path.name}: frontmatter is missing `title`.")
 
-    sections = _split_sections(body)
-    ac_text = sections.get("acceptance criteria", "")
-    description = sections.get("description", "").strip()
-    if not description:
-        # No explicit `## Description` heading — take all body text that isn't
-        # the acceptance-criteria section.
-        description = sections.get("", "").strip()
-    if not description:
+    segments = _split_sections(body)
+    ac_text = next(
+        (text for heading, text in segments if heading.lower() == "acceptance criteria"),
+        "",
+    )
+    # Everything outside the AC section is the description, in document order —
+    # so an author can lead with `## Problem` (the why) before `## Description`
+    # (the what) and have all of it reach the worker and evaluator.
+    non_ac = [
+        (heading, text)
+        for heading, text in segments
+        if heading.lower() != "acceptance criteria" and text
+    ]
+    if not non_ac:
         raise TasksError(
-            f"{path.name}: no description. Add a `## Description` section the "
-            "worker can act on."
+            f"{path.name}: no description. Add a `## Description` section (or any "
+            "prose outside `## Acceptance criteria`) the worker can act on."
+        )
+    if len(non_ac) == 1 and non_ac[0][0].lower() == "description":
+        # The conventional sole section renders bare: the prompt already frames
+        # it as "Your task", and this keeps single-`## Description` files
+        # byte-identical to how they parsed before multi-section support.
+        description = non_ac[0][1]
+    else:
+        # Keep every heading so the author's structure survives intact; drop the
+        # heading only for leading pre-heading prose (which never had one).
+        description = "\n\n".join(
+            text if not heading else f"## {heading}\n{text}" for heading, text in non_ac
         )
 
     return {
