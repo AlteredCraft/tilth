@@ -13,7 +13,7 @@ A minimal long-running agent harness against an **OpenAI-compatible** LLM endpoi
 
 **Target run:** I test with 10-60 minutes of autonomous work against an open model (default `deepseek/deepseek-v4-flash` on OpenRouter for the worker; the evaluator defaults to `deepseek/deepseek-v4-pro`). Completing a short task list against a small project on a per-session git worktree.
 
-> **Status — prompt-driven core.** Tilth is deliberately small and currently being driven *down* to its essentials: a worker and an independent evaluator, the base file/search/bash tools, and full observability. There is **no codified test/lint gate** — the evaluator is the only gate — and **no interview step**: you author the work as markdown under `<repo>/.tilth/tasks/` and run it. Capabilities get added back only as testing shows they're needed.
+> **Status — prompt-driven core.** Tilth is deliberately small and currently being driven *down* to its essentials: a worker and an independent evaluator, the base file/search/bash tools, and full observability. There is **no codified test/lint gate** — the evaluator is the only gate — and **no interview step**: you author the work as markdown in a feature directory under `<repo>/.tilth/<feature>/` and point `tilth run` at it. Capabilities get added back only as testing shows they're needed.
 
 ![The harness loop — a task from .tilth/tasks/ to worker agent to evaluator to commit, with a Rejects feedback path and a New Task loop, all inside a per-session git worktree](assets/harness-loop.png)
 
@@ -53,7 +53,7 @@ None of this is a knock on interactive agents; it's a different shape for a diff
 
 ## What's in these docs
 
-- **[Getting started](getting-started/installation.md)** — install, author a task list under `.tilth/tasks/`, run the demo, [visualize](getting-started/visualizing.md) / resume / reset a session.
+- **[Getting started](getting-started/installation.md)** — install, author a feature under `.tilth/<feature>/`, run the demo, [visualize](getting-started/visualizing.md) / resume / reset a session.
 - **[Architecture](architecture/overview.md)** — the Brain / Hands / Session split, the memory channels, and what the agent sees (and doesn't).
 - **[Deep dives](deep-dives/index.md)** — [hyper-observability](deep-dives/hyper-observability.md) and `tilth visualize`, the two loops and what can stop a run, the worker↔evaluator dialogue, token recording, the task format, session layout. Honest, code-level walk-throughs for extending, debugging, or reasoning about the safety story.
 - **[Reference](reference/safety-guards.md)** — safety guards.

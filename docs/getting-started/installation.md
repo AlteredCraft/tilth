@@ -13,7 +13,7 @@ Tilth is a small Python package; setup is straight `uv` plumbing plus a `.env`.
 
 > **Install-from-source, for now.** Tilth is early research, so the supported install path today is cloning the repo and installing it as a `uv` tool (below). There's no `pip install tilth` or prebuilt binary yet — publishing to PyPI is on the roadmap, not here.
 
-Tilth and the project you point it at are **independent checkouts** — Tilth lives in its own directory, and the codebase it works on lives somewhere else. Installing Tilth as a tool puts `tilth` on your PATH so it runs from any directory; the command takes the target repo as a plain path argument (`tilth run <path>`), so any layout works.
+Tilth and the project you point it at are **independent checkouts** — Tilth lives in its own directory, and the codebase it works on lives somewhere else. Installing Tilth as a tool puts `tilth` on your PATH so it runs from any directory; the command takes a feature directory as a plain path argument (`tilth run <repo>/.tilth/<feature>`) and derives the enclosing repo from it, so any layout works.
 
 ```bash
 git clone git@github.com:AlteredCraft/tilth.git
@@ -28,7 +28,7 @@ tilth init                     # scaffolds ~/.tilth/.env from the template
 
 > **Contributor path.** If you're working *on* the harness rather than using it, skip the tool install: `uv sync` for the dev env, then run the CLI from the clone with `uv run tilth …`. Either way, state lands under `~/.tilth/` unless you override it (below).
 
-> **About the example paths in these docs.** Later pages show commands like `tilth run ~/projects/project-x` and reference paths such as `~/.tilth/sessions/<id>/`. The target-repo path is just one illustrative choice — substitute whatever matches your own setup.
+> **About the example paths in these docs.** Later pages show commands like `tilth run ~/projects/project-x/.tilth/<feature>` and reference paths such as `~/.tilth/sessions/<id>/`. The feature-directory path (and the feature name) is just one illustrative choice — substitute whatever matches your own setup.
 
 All three of `TILTH_BASE_URL`, `TILTH_API_KEY`, and `TILTH_WORKER_MODEL` are **required** — Tilth refuses to start without them so a misconfigured run can't silently fall back to a provider/model your account doesn't have. The example `.env` points at OpenRouter.
 

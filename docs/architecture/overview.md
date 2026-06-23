@@ -52,7 +52,7 @@ tilth/
 │   ├── session.py         # events.jsonl + checkpoint.json + ledger + wake()
 │   ├── summary.py         # roll events.jsonl into summary.json (denormalised view)
 │   ├── memory.py          # context files / progress.txt / overview / full-plan injection
-│   ├── tasks.py           # load + validate <workspace>/.tilth/tasks/ (overview + T-NNN files)
+│   ├── tasks.py           # load + validate <repo>/.tilth/<feature>/ (overview + T-NNN files)
 │   ├── workspace.py       # git worktree create / commit / diff
 │   ├── case.py            # worker submit_case schema / parse / render
 │   ├── verdict.py         # evaluator submit_verdict schema / parse / ledger format
@@ -75,4 +75,4 @@ These are load-bearing. Read [Deep dives](../deep-dives/index.md) before breakin
 4. **Hook contract: "success silent, failures verbose" — to the *agent*.** Pass states inject nothing into the loop's message history; failures inject a feedback message that the next worker iteration sees. **Telemetry is separate.** Every hook invocation should emit a `hook_run` event regardless of outcome — observability is for the developer reading `events.jsonl`, not the agent.
 5. **The worktree branch is never auto-merged.** `commit_task` commits to the session branch; humans review and merge.
 6. **Token cap enforcement is between tasks, not mid-task.** The "always finish the current task cleanly" property matters; preserve it. See [Token recording](../deep-dives/token-recording.md).
-7. **Session state belongs to the harness, not the source repo.** The working tree for a run lives at `~/.tilth/sessions/<id>/workspace/` (Tilth's per-user data dir, `$TILTH_HOME`); only the branch `session/<id>` and its worktree admin entry land in the source repo's `.git`. The source repo stays pristine — the only thing you add to it is the `.tilth/tasks/` directory you author. See [Session layout](../deep-dives/session-layout.md).
+7. **Session state belongs to the harness, not the source repo.** The working tree for a run lives at `~/.tilth/sessions/<id>/workspace/` (Tilth's per-user data dir, `$TILTH_HOME`); only the branch `session/<id>` and its worktree admin entry land in the source repo's `.git`. The source repo stays pristine — the only thing you add to it is the `.tilth/<feature>/` directory you author. See [Session layout](../deep-dives/session-layout.md).

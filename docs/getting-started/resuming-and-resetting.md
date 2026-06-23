@@ -20,7 +20,7 @@ Continuing the [cap-hit example](../deep-dives/two-loops.md#what-can-stop-a-run)
 
 ### What resume does
 
-- **Re-reads the feature from your repo.** Task content always comes from `<workspace>/.tilth/tasks/` (never cached in the session), so a description you sharpen between runs is live on the retry. Tasks already marked `done` in `sessions/<id>/task-status.json` are skipped.
+- **Re-reads the feature from your repo.** Task content always comes from the feature directory you ran (`<repo>/.tilth/<feature>/`, never cached in the session), so a description you sharpen between runs is live on the retry. Tasks already marked `done` in `sessions/<id>/task-status.json` are skipped.
 - **Retries the trailing failed task**, if any. Iter-cap, evaluator-cap, and no-case stops mark the in-flight task `failed` and write a `FAILED (...)` placeholder commit; resume flips it back to `pending` and unwinds the placeholder so the retry sees the partial work as uncommitted changes — the evaluator then gets one cumulative diff, not just the new edits. Wall-clock and dollar-spend caps stop *between* tasks, so there's no failed task to unwind.
 - **Re-reads the per-task ledger.** The evaluator's prior verdicts survive on disk, so a retry shows both sides the verdict history from the run before — even though the conversation is gone. See [The worker↔evaluator dialogue](../deep-dives/worker-evaluator-dialogue.md#the-per-task-ledger-memory-across-iterations).
 - **Resets the wall-clock budget** for this resume — otherwise a resume the next day would trip `TILTH_MAX_WALL_CLOCK_MINUTES` immediately.

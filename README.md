@@ -43,10 +43,10 @@ tilth init                     # scaffolds ~/.tilth/.env
 
 Tilth keeps all per-user state under `~/.tilth/` — the `.env` above and every run's `sessions/<id>/`. Relocate it with `$TILTH_HOME` (whole tree) or `$TILTH_SESSIONS_DIR` (just the runs).
 
-You author the feature as markdown in the target repo, then run it — there's no interview step. The work lives under `<repo>/.tilth/tasks/`:
+You author the feature as markdown in the target repo, then run it — there's no interview step. The work lives in a feature directory you name under `<repo>/.tilth/<feature>/` (one repo can hold several features):
 
 ```
-.tilth/tasks/
+.tilth/todo-cli/
 ├── overview.md            # the feature's goal + scope boundaries (required)
 ├── T-001-<slug>.md        # one file per task, ordered by id
 ├── T-002-<slug>.md
@@ -70,15 +70,15 @@ What to build, in the worker's voice. Real paths/symbols
 - Another one
 ```
 
-Then point Tilth at the repo:
+Then point Tilth at the feature directory:
 
 ```bash
 git clone git@github.com:AlteredCraft/tilth-demo-todo-cli.git tilth-demo
-# author tilth-demo/.tilth/tasks/  (run prints ready-to-fill templates if it's missing)
-tilth run ./tilth-demo
+# author tilth-demo/.tilth/todo-cli/  (run prints ready-to-fill templates if it's missing)
+tilth run ./tilth-demo/.tilth/todo-cli
 ```
 
-For each pending task, Tilth resets context from disk, lets the worker work with the file/search/bash tools until it calls `submit_case`, hands the case + diff to the evaluator in a fresh context, and on `accept` commits one task = one commit on the `session/<id>` branch (humans review and merge — Tilth never auto-merges). A run stops on all-tasks-done or a cap (iterations / wall-clock / tokens / evaluator calls). Interrupt with Ctrl-C; resume with `tilth resume`.
+For each pending task, Tilth resets context from disk, lets the worker work with the file/search/bash tools until it calls `submit_case`, hands the case + diff to the evaluator in a fresh context, and on `accept` commits one task = one commit on the `session/<id>` branch (humans review and merge — Tilth never auto-merges). A run stops on all-tasks-done or a cap (iterations / wall-clock / dollar spend / evaluator calls). Interrupt with Ctrl-C; resume with `tilth resume`.
 
 ```bash
 tilth resume                 # continue the latest session
