@@ -1,6 +1,6 @@
 # The task format
 
-A feature is authored as markdown in the target repo, at `<workspace>/.tilth/tasks/` — a required `overview.md` plus one `T-NNN-<slug>.md` per task. It's small, but every stage of a run reads from it, and not every contract between the pieces is enforced by the harness. This page is the reference for the format, the parsing rules, the harness-owned status overlay, and which contracts are load-bearing-but-soft.
+A feature is authored as markdown in the target repo, in a feature directory you name at `<repo>/.tilth/<feature>/` (so one repo can hold several features) — a required `overview.md` plus one `T-NNN-<slug>.md` per task. `tilth run` is pointed at that directory directly and derives the enclosing git repo. It's small, but every stage of a run reads from it, and not every contract between the pieces is enforced by the harness. This page is the reference for the format, the parsing rules, the harness-owned status overlay, and which contracts are load-bearing-but-soft.
 
 For *where to author it and why it's the high-leverage moment*, see [Using on your own project](../getting-started/your-own-project.md). For *where the harness keeps its own state*, see [Session layout](session-layout.md). This page is the data itself.
 
@@ -9,7 +9,7 @@ For *where to author it and why it's the high-leverage moment*, see [Using on yo
 ## Shape
 
 ```
-.tilth/tasks/
+.tilth/<feature>/
 ├── overview.md            # required — the feature's "why"
 ├── T-001-<slug>.md        # one file per task, ordered by id
 ├── T-002-<slug>.md

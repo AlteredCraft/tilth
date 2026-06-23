@@ -10,11 +10,11 @@ Your project must be a **git repo with at least one commit**. That's it for hard
 
 - **`AGENTS.md` (or `CLAUDE.md`) at the repo root.** User-owned, user-maintained — Tilth reads it as project context for the worker and the evaluator but never writes to it. Even a short one helps the worker understand your conventions. By default Tilth reads both `AGENTS.md` and `CLAUDE.md` (in that order, concatenated); override the list with `TILTH_CONTEXT_FILES`. A starting template lives at [Memory channels → `AGENTS.md`](../architecture/memory-channels.md#agentsmd-your-project-conventions); the same page covers what does and doesn't belong there.
 
-You do **not** hand-manage any harness state. Per-task status, the progress journal, and the evaluator ledgers are harness-owned and live under `~/.tilth/sessions/<id>/` — they never enter your repo's working tree. The only artifacts in your source repo are the `.tilth/tasks/` directory you author (below) and the `session/<id>` branch in `.git`.
+You do **not** hand-manage any harness state. Per-task status, the progress journal, and the evaluator ledgers are harness-owned and live under `~/.tilth/sessions/<id>/` — they never enter your repo's working tree. The only artifacts in your source repo are the `.tilth/<feature>/` directory you author (below) and the `session/<id>` branch in `.git`.
 
 ## 2. Author the feature
 
-The work is markdown you write in your repo, at `<repo>/.tilth/tasks/`: a required `overview.md` (the feature's goal, context, and — the high-leverage part — explicit scope boundaries) plus one `T-NNN-<slug>.md` per task (frontmatter `id`/`title`, a `## Description` in the worker's voice, and `## Acceptance criteria` as externally checkable bullets). The format reference is [The task format](../deep-dives/task-format.md); `tilth run` prints ready-to-fill templates when the directory is missing.
+The work is markdown you write in your repo, in a feature directory you name at `<repo>/.tilth/<feature>/` (one repo can hold several features): a required `overview.md` (the feature's goal, context, and — the high-leverage part — explicit scope boundaries) plus one `T-NNN-<slug>.md` per task (frontmatter `id`/`title`, a `## Description` in the worker's voice, and `## Acceptance criteria` as externally checkable bullets). The format reference is [The task format](../deep-dives/task-format.md); `tilth run` prints ready-to-fill templates when the directory is missing.
 
 > The task files *are* the contract. The worker's job is to satisfy them, and the evaluator judges the diff against them — there's no codified test gate underneath. Vague descriptions and weak acceptance criteria collapse the quality gate down to "the evaluator said it looked fine," burn tokens, and produce branches you'll rewrite. Authoring is the high-leverage moment — slow down here, not in the run.
 
@@ -29,10 +29,10 @@ You can draft the files with any agent you like (the templates are designed to b
 ## 3. Run it
 
 ```bash
-tilth run /absolute/path/to/your/repo
+tilth run /absolute/path/to/your/repo/.tilth/<feature>
 ```
 
-`tilth run` loads `.tilth/tasks/`, creates a fresh session + worktree, and starts the worker loop. With Tilth installed as a tool, run it from anywhere — no `cd` into a clone. (Working from a clone instead? `uv run tilth run …`.) The per-task lifecycle is identical to the demo — see [Running the demo → end-to-end flow](running-the-demo.md#run-a-session-against-the-demo) for the breakdown. Follow-on operations:
+`tilth run` loads the feature directory you point it at, derives the enclosing git repo, creates a fresh session + worktree, and starts the worker loop. With Tilth installed as a tool, run it from anywhere — no `cd` into a clone. (Working from a clone instead? `uv run tilth run …`.) The per-task lifecycle is identical to the demo — see [Running the demo → end-to-end flow](running-the-demo.md#run-a-session-against-the-demo) for the breakdown. Follow-on operations:
 
 - [Resuming & resetting](resuming-and-resetting.md) — `tilth resume` to continue a stopped run; `tilth reset` to tear one down.
 - [Visualizing a session](visualizing.md) — `tilth visualize` renders `events.jsonl` as a chat-style web app, live or replayed.

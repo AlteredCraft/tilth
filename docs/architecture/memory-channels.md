@@ -7,7 +7,7 @@ Five memory channels live *outside* the agent. Some are project files the user o
 | `AGENTS.md` / `CLAUDE.md` | the workspace (user-owned) | the user | worker, evaluator (injected when present) |
 | Git history | the worktree | the harness (one commit per task) | humans, evaluator (via diff) |
 | `progress.txt` | `sessions/<id>/` (harness-owned) | the harness (one line per task outcome) | worker (last ~30 lines injected) |
-| Task markdown (`.tilth/tasks/`) | the workspace (user-authored, read-only to Tilth) | the user | the harness (task selection); worker (its task + the overview + the *plan* as injected prose context); evaluator (the task under review) |
+| Task markdown (`.tilth/<feature>/`) | the workspace (user-authored, read-only to Tilth) | the user | the harness (task selection); worker (its task + the overview + the *plan* as injected prose context); evaluator (the task under review) |
 | Evaluator ledger | `sessions/<id>/ledger/<task_id>.jsonl` | the harness (one entry per evaluator call) | evaluator (its prior verdicts on this task); worker (the same, on a retry) |
 
 > The reviewing role is the **evaluator**.
@@ -69,7 +69,7 @@ The agent does *not* write to `progress.txt` directly; the harness writes after 
 
 ## Task markdown — the work itself
 
-This is the work. You author it in your repo at `<workspace>/.tilth/tasks/` — an `overview.md` (the feature's goal, context, and scope boundaries) plus one `T-NNN-<slug>.md` per task (frontmatter `id`/`title`, a description, acceptance criteria). The harness does not plan; you (or whatever agent you draft with) plan, and the files are the contract. The format reference is [The task format](../deep-dives/task-format.md).
+This is the work. You author it in your repo in a feature directory you name at `<repo>/.tilth/<feature>/` — an `overview.md` (the feature's goal, context, and scope boundaries) plus one `T-NNN-<slug>.md` per task (frontmatter `id`/`title`, a description, acceptance criteria). The harness does not plan; you (or whatever agent you draft with) plan, and the files are the contract. The format reference is [The task format](../deep-dives/task-format.md).
 
 The files are **read-only inputs** to Tilth — the harness never mutates your authored docs. Per-task *status* lives separately, in the harness-owned `sessions/<id>/task-status.json` (a flat `{task_id: status}` map; a task absent from the map is `pending`). The loop overlays status onto the static task list to pick the next pending task.
 

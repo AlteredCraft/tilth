@@ -4,7 +4,7 @@ There are two loops in the harness, and the names matter because they govern dif
 
 ## Outer loop — `run()` in `loop.py`
 
-The Ralph loop proper. Picks the next pending task (the authored task list from `.tilth/tasks/`, with status overlaid from the harness-owned `task-status.json`), runs it to completion, resets context, picks the next one.
+The Ralph loop proper. Picks the next pending task (the authored task list from the feature directory `.tilth/<feature>/`, with status overlaid from the harness-owned `task-status.json`), runs it to completion, resets context, picks the next one.
 
 Bounded by:
 

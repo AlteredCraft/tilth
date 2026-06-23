@@ -1,10 +1,10 @@
 # Running the demo
 
-The demo workspace is deliberately almost empty — just an `AGENTS.md` (the project's conventions) and a `.gitignore`. It exists mainly as a *git repo*, which is all Tilth needs to do what it always does: branch off a worktree and build inside it. The path mirrors what a real first-time user does — author the feature as markdown under `.tilth/tasks/`, then run it. Nothing is pre-baked; the todo CLI gets built from scratch during the run.
+The demo workspace is deliberately almost empty — just an `AGENTS.md` (the project's conventions) and a `.gitignore`. It exists mainly as a *git repo*, which is all Tilth needs to do what it always does: branch off a worktree and build inside it. The path mirrors what a real first-time user does — author the feature as markdown in a feature directory under `.tilth/`, then point `tilth run` at it. Nothing is pre-baked; the todo CLI gets built from scratch during the run.
 
 ## Clone the demo workspace
 
-> **Path used on this page.** Commands below use `~/projects/tilth-demo` as an illustrative location. Tilth doesn't care where the workspace lives — the path is just a CLI argument — so substitute any directory that matches your setup. Treat the demo repo as a stand-in for your own.
+> **Path used on this page.** Commands below use `~/projects/tilth-demo` as an illustrative location, and `todo-cli` as an illustrative feature name. Tilth doesn't care where the workspace lives or what you call the feature — you pass the feature directory's path and it derives the enclosing repo — so substitute any directory that matches your setup. Treat the demo repo as a stand-in for your own.
 
 ```bash
 git clone git@github.com:AlteredCraft/tilth-demo-todo-cli.git ~/projects/tilth-demo
@@ -12,10 +12,10 @@ git clone git@github.com:AlteredCraft/tilth-demo-todo-cli.git ~/projects/tilth-d
 
 ## Author the feature
 
-There is no interview or prep step: the work is a directory of markdown files you write (by hand, or with whatever agent you like) in the target repo, at `<repo>/.tilth/tasks/`:
+There is no interview or prep step: the work is a directory of markdown files you write (by hand, or with whatever agent you like) in the target repo, at `<repo>/.tilth/<feature>/` — you name the feature directory, so one repo can hold several features side by side:
 
 ```
-.tilth/tasks/
+.tilth/todo-cli/
 ├── overview.md            # the feature's goal + scope boundaries (required)
 ├── T-001-<slug>.md        # one file per task, ordered by id
 ├── T-002-<slug>.md
@@ -51,12 +51,12 @@ For the demo, try a feature like *"a minimal todo CLI with add, list, and done s
 ## Run a session against the demo
 
 ```bash
-tilth run ~/projects/tilth-demo
+tilth run ~/projects/tilth-demo/.tilth/todo-cli
 ```
 
 What happens, end-to-end:
 
-1. Tilth verifies the path is a git repo and loads `.tilth/tasks/` (failing fast with templates if it's missing).
+1. Tilth reads the feature directory you pointed it at and derives the enclosing git repo for the worktree (failing fast with templates if the directory has no feature).
 2. Creates a fresh session and a worktree of the demo repo. The working tree lives at `~/.tilth/sessions/<id>/workspace/` (in Tilth's per-user data dir, outside the demo repo); the new branch `session/<id>` is registered in the demo repo's `.git`. The two halves live in different places by design — see [Session layout](../deep-dives/session-layout.md) for the why.
 3. Loops through pending tasks in order. For each task:
     - Reset context. Prompt = system + project context (`AGENTS.md`/`CLAUDE.md`) + recent progress + the feature overview + the full plan (as context) + this task (and, on a retry, the evaluator's prior verdicts on it).
@@ -87,7 +87,7 @@ Once every task is `done`, the harness closes out the final task and prints `all
 
 ![A three-region diagram of Tilth's end-of-session state. Left region, under the label "ON THE SESSION BRANCH": a vertical stack of five rounded rectangles, each a monospace task id with a checkmark — T-001 through T-005 — with the italic caption "tasks done · one commit each". Centre region: a rounded panel titled "RUN SUMMARY" in bold sans-serif all caps, with four monospace key/value rows — session 20260525-103149-3800ea, duration 6m10s, tokens 412,800, tasks total=5 done=5 failed=0 pending=0 — and the italic caption "harness reports out". Right region, under the label "WRITTEN UNDER sessions/<id>/": a vertical stack of document-icon chips, each a monospace filename with a short italic role note — events.jsonl ("full audit trail"), summary.json ("rolled-up snapshot"), checkpoint.json ("resume footing"). A sage-green arrow runs from the task stack into the RUN SUMMARY panel; a second sage-green arrow curves from the panel up into the right-hand stack, labelled "everything one run leaves on disk".](../assets/session-end.png)
 
-*A clean ending. Every task is committed on the session branch (left); the run summary tallies what happened (centre); and the artifacts the run wrote under `~/.tilth/sessions/<id>/` — the event log, the rolled-up summary, the resume checkpoint — sit on the right, outside the worktree for you to read or resume from. Your `AGENTS.md` and `.tilth/tasks/` are never touched by the run.*
+*A clean ending. Every task is committed on the session branch (left); the run summary tallies what happened (centre); and the artifacts the run wrote under `~/.tilth/sessions/<id>/` — the event log, the rolled-up summary, the resume checkpoint — sit on the right, outside the worktree for you to read or resume from. Your `AGENTS.md` and `.tilth/<feature>/` are never touched by the run.*
 {: .caption }
 
 To inspect what just got committed:

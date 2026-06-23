@@ -11,12 +11,12 @@ The wall is softer than it once was, by design: the worker sees the feature over
 | Artifact | Worker's view |
 |---|---|
 | **Current task** | Sees its full description and acceptance criteria, injected as the user message. Not the file path or frontmatter — just the content. |
-| **Feature overview** | Sees the text of `.tilth/tasks/overview.md` (capped at `OVERVIEW_MAX_CHARS`, 4 KB), so it understands the whole before building one slice. |
+| **Feature overview** | Sees the text of the feature's `overview.md` (capped at `OVERVIEW_MAX_CHARS`, 4 KB), so it understands the whole before building one slice. |
 | **Full feature plan** | Sees every task collapsed (id, title, status, description, AC), capped at `FULL_PRD_MAX_CHARS` (6 KB), framed as "context, not work to do" with the current task marked. It sees the *plan*, not the mutable status store. |
 | **Task ledger** (`ledger/<task_id>.jsonl`) | On a retry, sees its *own* task's ledger — the evaluator's prior verdicts (last 5). Empty on a first run; populated on later iterations and across resume. Not other tasks' ledgers or the file itself. |
 | **`AGENTS.md` / `CLAUDE.md`** | Sees the *content* (injected at task start; file list via `TILTH_CONTEXT_FILES`). Could also `read_file` it. Tilth never writes to these. |
 | **`progress.txt`** | Sees the last ~30 lines, injected. Doesn't write to it — the harness appends after task done/fail. |
-| **`.tilth/tasks/` files** | The *content* reaches it as the overview + plan + task injections. The directory is physically present in the worktree, so it could `read_file` them — the system prompt marks `.tilth/` read-only, and the evaluator hard-rejects diffs that edit it. |
+| **`.tilth/<feature>/` files** | The *content* reaches it as the overview + plan + task injections. The directory is physically present in the worktree, so it could `read_file` them — the system prompt marks `.tilth/` read-only, and the evaluator hard-rejects diffs that edit it. |
 | **`task-status.json`** | **Never sees the file.** Per-task status is harness-owned; the worker only sees each task's status rendered into the plan-as-context. |
 | **`events.jsonl`** | **Never sees it.** Pure harness audit log. |
 | **`checkpoint.json`** | **Never sees it.** Resume mechanics. |

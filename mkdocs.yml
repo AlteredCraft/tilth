@@ -25,9 +25,10 @@ nav:
       # required and optional `TILTH_*` env vars, tested provider/base-URL
       # combinations, and how to build the docs site locally.
       - Installation: getting-started/installation.md
-      # End-to-end walkthrough of a run: author the feature as markdown under
-      # `<repo>/.tilth/tasks/` (overview.md + one T-NNN-*.md per task), then
-      # `tilth run` — the per-task lifecycle (prompt assembly → tool-use loop →
+      # End-to-end walkthrough of a run: author the feature as markdown in a
+      # named feature dir `<repo>/.tilth/<feature>/` (overview.md + one
+      # T-NNN-*.md per task), then point `tilth run` at it — the per-task
+      # lifecycle (prompt assembly → tool-use loop →
       # submit_case → evaluator verdict → commit), what the console streams,
       # and where to look in `sessions/<id>/` after the run.
       - Running the demo: getting-started/running-the-demo.md
@@ -45,7 +46,7 @@ nav:
       - Resuming & resetting a session: getting-started/resuming-and-resetting.md
       # The "honest version" of using Tilth on your own (non-demo) codebase:
       # what prep your repo actually needs (a clean git repo, optionally an
-      # AGENTS.md/CLAUDE.md), authoring `.tilth/tasks/`, the caveats list,
+      # AGENTS.md/CLAUDE.md), authoring `.tilth/<feature>/`, the caveats list,
       # picking an evaluator model, when this is the wrong tool, and what to
       # do on a first run.
       - Using on your own project: getting-started/your-own-project.md
@@ -57,7 +58,7 @@ nav:
       # before extending the harness.
       - Overview: architecture/overview.md
       # The data-flow view of a run: what the per-task loop reads (system.md,
-      # the project-context files, `.tilth/tasks/`, the worktree), what it
+      # the project-context files, `.tilth/<feature>/`, the worktree), what it
       # writes (commits, events.jsonl, summary.json, checkpoint.json), and the
       # three artifacts that feed back as working memory (task-status.json,
       # progress.txt, ledger). The "what flows through" map — reach for it
@@ -107,7 +108,7 @@ nav:
       # between-task only, and how the provider's `cost` becomes the cap counter
       # (`Session.cost_used`) while token counts stay display-only.
       - Token recording: deep-dives/token-recording.md
-      # The authored task format — `<workspace>/.tilth/tasks/` (overview.md +
+      # The authored task format — `<repo>/.tilth/<feature>/` (overview.md +
       # one T-NNN-*.md per task): frontmatter and section parsing rules, the
       # templates `tilth run` prints when the directory is missing, the
       # harness-owned task-status.json overlay, and who reads each field.

@@ -12,7 +12,7 @@ The ultimate goal is a minimal, productive agent harness with **hyper-observabil
 
 - **`mkdocs.yml`** — **the canonical map of the documentation set**, and your primary entry point when looking for docs by topic. The `nav:` block has a one- to four-line comment above each leaf entry summarising what the linked `.md` covers and when you'd reach for it; skim those comments first, then open the page that fits. Everything that matters for users and contributors lives under `docs/`; `README.md` is the GitHub landing page and points into `docs/` for anything beyond the elevator pitch.
 - **`README.md`** — terse GitHub landing page: product elevator pitch (with the Brain/Hands/Session image), a minimal quickstart, and the working-with-the-codebase commands (lint, tests, docs). **Not a mirror** of `docs/index.md` — for any product detail beyond the pitch, README points readers into `docs/`. Edit the two files independently.
-- **`docs/getting-started/your-own-project.md`** — the "honest version" of using Tilth on a non-demo codebase: what prep your repo actually needs (a clean git repo, optionally an `AGENTS.md`), authoring the feature as markdown under `.tilth/tasks/` (you write it by hand, or have a model fill the templates — there's no interview/seed step), picking an evaluator model, the caveats that aren't obvious from a demo run, and when it's the wrong tool. (Successor to the old root-level `USAGE.md`.)
+- **`docs/getting-started/your-own-project.md`** — the "honest version" of using Tilth on a non-demo codebase: what prep your repo actually needs (a clean git repo, optionally an `AGENTS.md`), authoring the feature as markdown in a named feature dir under `.tilth/<feature>/` (you write it by hand, or have a model fill the templates — there's no interview/seed step), picking an evaluator model, the caveats that aren't obvious from a demo run, and when it's the wrong tool. (Successor to the old root-level `USAGE.md`.)
 - **`docs/deep-dives/`** — code-level walk-throughs of the two loops, the worker↔evaluator dialogue (case / verdict / ledger), iteration accounting, token recording/enforcement, and the agent-visibility boundary. Read this before changing any of those mechanics. (Successor to the old root-level `deep-dives.md`.)
 - **The demo workspace** — lives in its own repo at [`AlteredCraft/tilth-demo-todo-cli`](https://github.com/AlteredCraft/tilth-demo-todo-cli). The docs use `~/projects/tilth-demo` as an illustrative path, but Tilth treats the path as just an argument so any layout works.
 - **`docs/assets/IMAGE_STYLE.md`** — the prompt scaffold for generating new docs *images*, anchored to the canonical `brain-hands-session.png`. Use this whenever you generate a new diagram or illustration so the visual voice stays consistent across pages. Not in the published nav (excluded via `not_in_nav` in `mkdocs.yml`).
@@ -45,7 +45,7 @@ tilth/
 │   ├── session.py         # events.jsonl + checkpoint.json + per-task ledger + wake()
 │   ├── summary.py         # roll events.jsonl into summary.json (denormalised view)
 │   ├── memory.py          # AGENTS.md / progress.txt / overview / full-plan injection
-│   ├── tasks.py           # load + validate <workspace>/.tilth/tasks/ (overview + T-NNN files)
+│   ├── tasks.py           # load + validate <repo>/.tilth/<feature>/ (overview + T-NNN files)
 │   ├── workspace.py       # git worktree create / commit / diff
 │   ├── case.py            # worker submit_case schema / parse / render
 │   ├── verdict.py         # evaluator submit_verdict schema / parse / ledger format
@@ -116,9 +116,9 @@ uv run --extra docs mkdocs serve
 # Demo (needs provider config from Setup, and a local clone of the demo repo
 # at AlteredCraft/tilth-demo-todo-cli — clone it wherever; path below is illustrative)
 git clone git@github.com:AlteredCraft/tilth-demo-todo-cli.git ~/projects/tilth-demo
-# author ~/projects/tilth-demo/.tilth/tasks/  (overview.md + T-NNN-*.md; run prints
+# author ~/projects/tilth-demo/.tilth/<feature>/  (overview.md + T-NNN-*.md; run prints
 # ready-to-fill templates if the dir is missing) — there is no prep/interview step
-uv run tilth run ~/projects/tilth-demo
+uv run tilth run ~/projects/tilth-demo/.tilth/<feature>
 
 # Resume an interrupted session (latest in ~/.tilth/sessions/, or by id)
 uv run tilth resume
@@ -178,7 +178,7 @@ git branch -D session/<id>            # if it still exists
 rm -rf ~/.tilth/sessions/<id>/        # or $TILTH_SESSIONS_DIR/<id>/ if overridden
 ```
 
-Don't commit changes the agent made on `session/*` branches into the demo clone's `main`. Those are run artefacts; the demo's `main` should stay clean of them. The session worktree and all harness state live under `~/.tilth/`, never in the demo repo — the only thing you'd intentionally add to the demo is the `.tilth/tasks/` you author.
+Don't commit changes the agent made on `session/*` branches into the demo clone's `main`. Those are run artefacts; the demo's `main` should stay clean of them. The session worktree and all harness state live under `~/.tilth/`, never in the demo repo — the only thing you'd intentionally add to the demo is the `.tilth/<feature>/` directory you author.
 
 ## Things not to do without asking
 
