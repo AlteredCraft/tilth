@@ -144,6 +144,10 @@ def _event_fact(ev: dict[str, Any]) -> dict[str, Any] | None:
         count = p.get("task_count")
         if isinstance(count, int):
             fact["task_count"] = count
+        if p.get("worker_model"):
+            fact["worker_model"] = p["worker_model"]
+        if p.get("evaluator_model"):
+            fact["evaluator_model"] = p["evaluator_model"]
         return fact
     if typ == "stop":
         return {"e": "stop", "t": t, "reason": p.get("reason") or ""}

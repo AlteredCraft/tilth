@@ -455,6 +455,28 @@ pre {
 }
 .split-bar i { display: block; }
 
+/* staff (models for this run) */
+.staff {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(248px, 1fr));
+  gap: 12px 28px;
+}
+.staff-member { min-width: 0; }
+.staff-role {
+  font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  margin-bottom: 5px;
+}
+.staff-model {
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* limit utilization (meters) */
 .limits-panel .limit-group + .limit-group { margin-top: 16px; }
 .limit-group-label {

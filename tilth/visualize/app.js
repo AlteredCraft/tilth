@@ -150,6 +150,8 @@
     maxPt: 0,
     limits: null,     // configured caps from session_start (or null on old logs)
     taskTotal: null,  // feature's full task count (may exceed tasks seen so far)
+    workerModel: null,    // models from session_start (null on pre-model logs)
+    evaluatorModel: null,
   };
 
   function task(id) {
@@ -181,6 +183,8 @@
     if (f.e === "start") {
       if (f.limits) S.limits = f.limits;
       if (typeof f.task_count === "number") S.taskTotal = f.task_count;
+      if (f.worker_model) S.workerModel = f.worker_model;
+      if (f.evaluator_model) S.evaluatorModel = f.evaluator_model;
     } else if (f.e === "model") {
       const cost = f.cost || 0;
       if (f.phase === "evaluator") {
@@ -238,8 +242,12 @@
 
   // -------------------------------------------------------------- renderers
 
+  // Token counts climb across magnitudes over a run; let the unit follow.
+  // M uses 4 decimals so it preserves the same 100-token granularity the k
+  // form shows at 1 decimal (2726.6k → 2.7266M); trailing zeros are trimmed.
   function fmtK(n) {
-    return n >= 10000 ? (n / 1000).toFixed(1) + "k" : n.toLocaleString();
+    if (n >= 1e6) return (n / 1e6).toFixed(4).replace(/\.?0+$/, "") + "M";
+    return n >= 1e4 ? (n / 1e3).toFixed(1) + "k" : n.toLocaleString();
   }
 
   function mmss(seconds) {
@@ -311,6 +319,23 @@
     track.appendChild(fill);
     m.append(head, track);
     return m;
+  }
+
+  function renderStaff() {
+    if (!S.workerModel && !S.evaluatorModel) return; // pre-model session log
+    show("staff-panel");
+    const roster = document.getElementById("staff-roster");
+    roster.replaceChildren();
+    for (const [role, model] of [
+      ["Worker", S.workerModel], ["Evaluator", S.evaluatorModel],
+    ]) {
+      if (!model) continue;
+      const member = el("div", "staff-member");
+      const name = el("div", "staff-model", model);
+      name.title = model;
+      member.append(el("div", "staff-role", role), name);
+      roster.appendChild(member);
+    }
   }
 
   function renderLimits() {
@@ -608,6 +633,7 @@
   }
 
   function renderDashboard() {
+    renderStaff();
     renderLimits();
     renderStats();
     renderTimeline();

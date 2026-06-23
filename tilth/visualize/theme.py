@@ -41,6 +41,11 @@ APP_PAGE = """<!DOCTYPE html>
       <span class="chip" id="chip-count"></span>
     </div>
   </header>
+  <section class="panel staff-panel" id="staff-panel" hidden>
+    <h2>Staff</h2>
+    <div class="panel-sub">the models doing the work this run</div>
+    <div class="staff" id="staff-roster"></div>
+  </section>
   <section class="panel limits-panel" id="limits-panel" hidden>
     <h2>Limit utilization</h2>
     <div class="panel-sub">how close this run is to its configured caps</div>
