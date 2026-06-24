@@ -84,6 +84,8 @@ For each pending task, Tilth resets context from disk, lets the worker work with
 tilth resume                 # continue the latest session
 tilth reset                  # tear down a session's worktree + branch + dir
 tilth visualize              # serve the live session viewer (127.0.0.1:8765)
+tilth info                   # list sessions (status, progress, tokens); `tilth info <id>` for one session's detail
+tilth config                 # show resolved provider config + run caps (API keys masked)
 ```
 
 The `TILTH_*` env-var table (caps, evaluator routing, context-file selection) is documented in the generated `~/.tilth/.env` (copied from `.env.example`).
