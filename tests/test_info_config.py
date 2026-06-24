@@ -138,3 +138,79 @@ def test_config_full_masks_key(sessions, monkeypatch, capsys):
     assert "sk-secret-tail" not in out  # masked
     assert "tail" in out                # last-4 shown
     assert "limits" in out
+
+
+def _row(out: str, name: str) -> str:
+    """The output line for env var `name` (rows are not wrapped at these widths)."""
+    return next(ln for ln in out.splitlines() if ln.strip().startswith(name))
+
+
+@pytest.fixture
+def configured(monkeypatch):
+    monkeypatch.setenv("TILTH_BASE_URL", "https://x/v1")
+    monkeypatch.setenv("TILTH_API_KEY", "sk-secret-tail")
+    monkeypatch.setenv("TILTH_WORKER_MODEL", "vendor/model-x")
+    for var in ("TILTH_EVALUATOR_MODEL", "TILTH_EVALUATOR_BASE_URL",
+                "TILTH_EVALUATOR_API_KEY", "TILTH_MAX_ITERATIONS_PER_TASK",
+                "MAX_EVALUATOR_CALLS_PER_TASK", "TILTH_MAX_WALL_CLOCK_MINUTES",
+                "TILTH_MAX_TOKEN_DOLLAR_SPEND", "TILTH_CONTEXT_FILES"):
+        monkeypatch.delenv(var, raising=False)
+
+
+def test_config_uses_real_var_names(sessions, configured, capsys):
+    assert loop.do_config_cmd() == 0
+    out = capsys.readouterr().out
+    for name in ("TILTH_BASE_URL", "TILTH_WORKER_MODEL", "TILTH_API_KEY",
+                 "TILTH_EVALUATOR_MODEL", "TILTH_MAX_ITERATIONS_PER_TASK",
+                 "MAX_EVALUATOR_CALLS_PER_TASK", "TILTH_CONTEXT_FILES"):
+        assert name in out
+
+
+def test_config_source_environment_and_default(sessions, configured, capsys):
+    # required vars come from the process env; no .env file exists in tmp home
+    assert loop.do_config_cmd() == 0
+    out = capsys.readouterr().out
+    assert "environment" in _row(out, "TILTH_BASE_URL")
+    # an unset cap falls back to its built-in default, sourced as such
+    assert "default" in _row(out, "TILTH_MAX_ITERATIONS_PER_TASK")
+    assert "32" in _row(out, "TILTH_MAX_ITERATIONS_PER_TASK")
+
+
+def test_config_source_dotenv_file(sessions, tmp_path, monkeypatch, capsys):
+    envfile = tmp_path / "myenv"
+    envfile.write_text(
+        "TILTH_BASE_URL=https://file/v1\n"
+        "TILTH_API_KEY=sk-from-file\n"
+        "TILTH_WORKER_MODEL=file/model\n"
+    )
+    monkeypatch.setenv("TILTH_ENV_FILE", str(envfile))
+    # mirror cli._load_env: load_dotenv(override=False) merges the file into env
+    monkeypatch.setenv("TILTH_BASE_URL", "https://file/v1")
+    monkeypatch.setenv("TILTH_API_KEY", "sk-from-file")
+    monkeypatch.setenv("TILTH_WORKER_MODEL", "file/model")
+    assert loop.do_config_cmd() == 0
+    out = capsys.readouterr().out
+    assert ".env" in _row(out, "TILTH_WORKER_MODEL")
+    assert "environment" not in _row(out, "TILTH_WORKER_MODEL")
+
+
+def test_config_source_shell_overrides_file(sessions, tmp_path, monkeypatch, capsys):
+    envfile = tmp_path / "myenv"
+    envfile.write_text("TILTH_WORKER_MODEL=file/model\n")
+    monkeypatch.setenv("TILTH_ENV_FILE", str(envfile))
+    monkeypatch.setenv("TILTH_BASE_URL", "https://x/v1")
+    monkeypatch.setenv("TILTH_API_KEY", "sk-secret-tail")
+    # shell value differs from the file entry -> shell wins (override=False)
+    monkeypatch.setenv("TILTH_WORKER_MODEL", "shell/model")
+    assert loop.do_config_cmd() == 0
+    out = capsys.readouterr().out
+    assert "environment" in _row(out, "TILTH_WORKER_MODEL")
+    assert "shell/model" in _row(out, "TILTH_WORKER_MODEL")
+
+
+def test_config_evaluator_inherits_source(sessions, configured, capsys):
+    assert loop.do_config_cmd() == 0
+    out = capsys.readouterr().out
+    assert "inherits TILTH_WORKER_MODEL" in _row(out, "TILTH_EVALUATOR_MODEL")
+    assert "inherits TILTH_BASE_URL" in _row(out, "TILTH_EVALUATOR_BASE_URL")
+    assert "inherits TILTH_API_KEY" in _row(out, "TILTH_EVALUATOR_API_KEY")

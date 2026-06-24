@@ -28,6 +28,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from dotenv import dotenv_values
 from rich.console import Console
 
 from tilth import memory, paths, summary, tasks, tools, usage, visualize
@@ -1549,14 +1550,45 @@ def do_info_cmd(maybe_id: str | None) -> int:
 
 
 def _mask_key(value: str) -> str:
+    """Plain masked key — never reveals more than the last 4 chars. Plain (no
+    markup) so it can be width-aligned alongside the other config values."""
     if not value:
-        return "[dim]unset[/dim]"
+        return "unset"
     tail = value[-4:] if len(value) >= 4 else ""
-    return f"set [dim](…{tail})[/dim]" if tail else "set"
+    return f"set (…{tail})" if tail else "set"
+
+
+# Every env var the config view reports, in display order — also the source for
+# the name-column width so all rows line up under one another.
+_CONFIG_VAR_NAMES = (
+    "TILTH_BASE_URL", "TILTH_WORKER_MODEL", "TILTH_API_KEY",
+    "TILTH_EVALUATOR_BASE_URL", "TILTH_EVALUATOR_MODEL", "TILTH_EVALUATOR_API_KEY",
+    "TILTH_MAX_ITERATIONS_PER_TASK", "MAX_EVALUATOR_CALLS_PER_TASK",
+    "TILTH_MAX_WALL_CLOCK_MINUTES", "TILTH_MAX_TOKEN_DOLLAR_SPEND",
+    "TILTH_CONTEXT_FILES",
+)
+_SOURCE_LABEL = {"file": ".env", "env": "environment", "default": "default"}
+
+
+def _config_source(name: str, file_vals: dict[str, str | None]) -> str:
+    """Where env var `name`'s effective value comes from: 'file' (the resolved
+    .env), 'env' (the process environment — a shell export or inline on the
+    command line), or 'default' (unset/blank, so `from_env`'s built-in).
+
+    The .env is loaded with override=False, so a shell value beats a file value;
+    a file entry that differs from what's now in `os.environ` therefore means the
+    shell overrode it — which is how the two are told apart after the merge."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return "default"
+    fval = (file_vals.get(name) or "").strip()
+    return "file" if fval and fval == raw else "env"
 
 
 def do_config_cmd() -> int:
-    """Show resolved provider config + caps. Keys masked; safe to paste anywhere."""
+    """Show resolved provider config + caps by real env var name, each annotated
+    with where its value came from (the .env, the environment, or a built-in
+    default). Keys masked; safe to paste anywhere."""
     _print_locations()
     console.print()
     try:
@@ -1572,31 +1604,55 @@ def do_config_cmd() -> int:
         console.print(f"[dim]incomplete config — {hint} and set the missing value(s)[/dim]")
         return 1
 
-    same_eval = (
-        cfg.evaluator_base_url == cfg.base_url
-        and cfg.evaluator_api_key == cfg.api_key
-        and cfg.evaluator_model == cfg.worker_model
-    )
-    console.print("[bold]worker[/bold]")
-    console.print(f"  base_url    {cfg.base_url}")
-    console.print(f"  model       {cfg.worker_model}")
-    console.print(f"  api_key     {_mask_key(cfg.api_key)}")
-    eval_tag = "  [dim](inherits worker)[/dim]" if same_eval else ""
-    console.print(f"[bold]evaluator[/bold]{eval_tag}")
-    console.print(f"  base_url    {cfg.evaluator_base_url}")
-    console.print(f"  model       {cfg.evaluator_model}")
-    console.print(f"  api_key     {_mask_key(cfg.evaluator_api_key)}")
-    console.print("[bold]limits[/bold]")
-    console.print(f"  iterations / task        {cfg.max_iterations_per_task}")
+    env_file = paths.resolve_env_file()
+    file_vals = dotenv_values(env_file) if env_file else {}
+    nw = max(len(n) for n in _CONFIG_VAR_NAMES)
+
+    def src(name: str) -> str:
+        return _SOURCE_LABEL[_config_source(name, file_vals)]
+
+    def eval_src(eval_var: str, worker_var: str) -> str:
+        s = _config_source(eval_var, file_vals)
+        return f"inherits {worker_var}" if s == "default" else _SOURCE_LABEL[s]
+
+    def section(title: str, rows: list[tuple[str, str, str, str]]) -> None:
+        console.print(f"[bold]{title}[/bold]")
+        vw = max((len(value) for _, value, _, _ in rows), default=0)
+        for name, value, source, note in rows:
+            note_s = f"   [dim]({note})[/dim]" if note else ""
+            console.print(
+                f"  {name:<{nw}}  {value:<{vw}}  [dim]{source}[/dim]{note_s}",
+                soft_wrap=True,
+            )
+
+    section("worker", [
+        ("TILTH_BASE_URL", cfg.base_url, src("TILTH_BASE_URL"), ""),
+        ("TILTH_WORKER_MODEL", cfg.worker_model, src("TILTH_WORKER_MODEL"), ""),
+        ("TILTH_API_KEY", _mask_key(cfg.api_key), src("TILTH_API_KEY"), ""),
+    ])
+    section("evaluator", [
+        ("TILTH_EVALUATOR_BASE_URL", cfg.evaluator_base_url,
+         eval_src("TILTH_EVALUATOR_BASE_URL", "TILTH_BASE_URL"), ""),
+        ("TILTH_EVALUATOR_MODEL", cfg.evaluator_model,
+         eval_src("TILTH_EVALUATOR_MODEL", "TILTH_WORKER_MODEL"), ""),
+        ("TILTH_EVALUATOR_API_KEY", _mask_key(cfg.evaluator_api_key),
+         eval_src("TILTH_EVALUATOR_API_KEY", "TILTH_API_KEY"), ""),
+    ])
     evcalls = cfg.max_evaluator_calls_per_task
-    console.print(
-        f"  evaluator calls / task   {evcalls}"
-        + ("  [dim](0 = unlimited)[/dim]" if evcalls == 0 else "")
-    )
-    console.print(f"  wall clock (minutes)     {cfg.max_wall_clock_minutes}")
-    console.print(f"  token spend ($)          {cfg.max_token_dollar_spend}")
-    console.print("[bold]context files[/bold]")
-    console.print(f"  {', '.join(cfg.context_files)}")
+    section("limits", [
+        ("TILTH_MAX_ITERATIONS_PER_TASK", str(cfg.max_iterations_per_task),
+         src("TILTH_MAX_ITERATIONS_PER_TASK"), ""),
+        ("MAX_EVALUATOR_CALLS_PER_TASK", str(evcalls),
+         src("MAX_EVALUATOR_CALLS_PER_TASK"), "0 = unlimited" if evcalls == 0 else ""),
+        ("TILTH_MAX_WALL_CLOCK_MINUTES", str(cfg.max_wall_clock_minutes),
+         src("TILTH_MAX_WALL_CLOCK_MINUTES"), ""),
+        ("TILTH_MAX_TOKEN_DOLLAR_SPEND", str(cfg.max_token_dollar_spend),
+         src("TILTH_MAX_TOKEN_DOLLAR_SPEND"), ""),
+    ])
+    section("context files", [
+        ("TILTH_CONTEXT_FILES", ", ".join(cfg.context_files),
+         src("TILTH_CONTEXT_FILES"), ""),
+    ])
     return 0
 
 
