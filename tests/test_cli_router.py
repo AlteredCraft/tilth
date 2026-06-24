@@ -31,6 +31,8 @@ def patched_handlers(monkeypatch):
     monkeypatch.setattr(loop, "do_resume_cmd", make_stub("resume"))
     monkeypatch.setattr(loop, "do_reset_cmd", make_stub("reset"))
     monkeypatch.setattr(loop, "do_visualize_cmd", make_stub("visualize"))
+    monkeypatch.setattr(loop, "do_info_cmd", make_stub("info"))
+    monkeypatch.setattr(loop, "do_config_cmd", make_stub("config"))
     return calls
 
 
@@ -121,6 +123,21 @@ def test_visualize_without_id(monkeypatch, patched_handlers):
 def test_visualize_custom_port(monkeypatch, patched_handlers):
     _run(monkeypatch, ["visualize", "--port", "9000"])
     assert patched_handlers == [("visualize", (None,), {"port": 9000})]
+
+
+def test_info_with_id(monkeypatch, patched_handlers):
+    _run(monkeypatch, ["info", "20260525-100000-aaa"])
+    assert patched_handlers == [("info", ("20260525-100000-aaa",), {})]
+
+
+def test_info_without_id_passes_none(monkeypatch, patched_handlers):
+    _run(monkeypatch, ["info"])
+    assert patched_handlers == [("info", (None,), {})]
+
+
+def test_config_dispatches(monkeypatch, patched_handlers):
+    _run(monkeypatch, ["config"])
+    assert patched_handlers == [("config", (), {})]
 
 
 def test_loop_main_shim_still_callable(monkeypatch, patched_handlers):

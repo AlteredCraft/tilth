@@ -2,6 +2,22 @@
 
 A Tilth session is append-only on disk: an `events.jsonl` log plus a `checkpoint.json` snapshot under `~/.tilth/sessions/<id>/`. That's enough state to **resume** the run on a fresh process — or, when you're done with it, to **reset** (tear it down) in one command.
 
+## Inspecting
+
+Before you resume or reset, `tilth info` tells you what's there — and, for a single session, exactly where its worktree landed.
+
+```bash
+tilth info                 # every session, newest first
+tilth info <session_id>    # one session's full detail
+tilth config               # resolved provider config + run caps
+```
+
+Bare `tilth info` prints the resolved locations (Tilth home, the `.env` it loaded, the sessions dir) and a table of every session — status, task progress, and tokens — newest first, with the latest tagged. `tilth info <session_id>` expands one run into its full dossier: source repo, feature, branch, token/cost totals, and the **worktree mapping** — both the worktree folder under `~/.tilth/sessions/<id>/workspace/` *and* the git admin dir it points at (`<source>/.git/worktrees/<name>`), cross-checked against the source repo's worktree registry so a worktree you deleted by hand shows up as `stale — run git worktree prune`. This is the quickest answer to "where is the agent's work, and is git still tracking it?"
+
+`tilth config` prints the configuration the harness would run with — worker and evaluator endpoints/models, the per-task and per-run caps, and the context files — plus which `.env` it resolved. API keys are masked (`set (…tail)`), so the output is safe to paste into an issue. It works with a partial config too: missing required values are flagged rather than fatal, so you can run it before `tilth init` to see what's still unset.
+
+All three are read-only — they read `checkpoint.json`/`summary.json` and the environment, never replay the loop or touch a model.
+
 ## Resuming
 
 ```bash

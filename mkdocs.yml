@@ -37,12 +37,14 @@ nav:
       # in near-realtime. Same renderer live or replayed. Tilth's flagship
       # observability surface — reach for it during or after any run.
       - Visualizing a session: getting-started/visualizing.md
-      # The two session-lifecycle commands. `tilth resume`: re-reads the
-      # feature, retries the trailing `failed` task (unwinding its FAILED
-      # placeholder), resets wall-clock, preserves cumulative tokens.
-      # `tilth reset`: tears a session down (worktree + branch + sessions/<id>/),
-      # idempotent, gated by `[y/N]`/`--yes`. Includes the under-the-hood
-      # src pointers for each.
+      # The session-lifecycle commands. `tilth info` (list all, or one session's
+      # full dossier incl. the worktree↔.git mapping) + `tilth config` (resolved
+      # provider config + caps, keys masked) for read-only inspection.
+      # `tilth resume`: re-reads the feature, retries the trailing `failed` task
+      # (unwinding its FAILED placeholder), resets wall-clock, preserves
+      # cumulative tokens. `tilth reset`: tears a session down (worktree + branch
+      # + sessions/<id>/), idempotent, gated by `[y/N]`/`--yes`. Includes the
+      # under-the-hood src pointers for each.
       - Resuming & resetting a session: getting-started/resuming-and-resetting.md
       # The "honest version" of using Tilth on your own (non-demo) codebase:
       # what prep your repo actually needs (a clean git repo, optionally an

@@ -6,6 +6,8 @@ Subcommands:
     tilth resume    [<session_id>]
     tilth reset     [<session_id>] [-y]
     tilth visualize [<session_id>] [--port N]
+    tilth info      [<session_id>]
+    tilth config
 
 The feature is authored as markdown in a feature directory (conventionally
 `<repo>/.tilth/<feature>/`): an `overview.md` plus one `T-NNN-*.md` per task —
@@ -31,7 +33,7 @@ from tilth import loop, paths
 
 console = Console()
 
-SUBCOMMANDS = frozenset({"init", "run", "resume", "reset", "visualize"})
+SUBCOMMANDS = frozenset({"init", "run", "resume", "reset", "visualize", "info", "config"})
 
 
 def _load_env() -> None:
@@ -164,6 +166,33 @@ def _build_parser():
         help="Port to bind on 127.0.0.1 (default: 8765).",
     )
 
+    info_p = sub.add_parser(
+        "info",
+        help="Show sessions, or one session's full detail (incl. worktree location).",
+        description=(
+            "Without an id: list every session newest-first with status, task "
+            "progress, and tokens. With an id: the full dossier — source repo, "
+            "feature, the worktree folder and its git admin dir (the `.git` "
+            "mapping), branch, and registration health. Read-only."
+        ),
+    )
+    info_p.add_argument(
+        "session_id",
+        nargs="?",
+        help="Session ID to detail; omit to list all sessions.",
+    )
+
+    sub.add_parser(
+        "config",
+        help="Show resolved provider config and run caps (API keys masked).",
+        description=(
+            "Print the configuration the harness would run with — worker and "
+            "evaluator endpoints/models, the per-task and per-run caps, and "
+            "context files — plus which .env it resolved. API keys are masked. "
+            "Works with a partial config; flags what's missing."
+        ),
+    )
+
     return parser
 
 
@@ -178,6 +207,10 @@ def _dispatch(args) -> int:
         return loop.do_reset_cmd(args.session_id, args.yes)
     if args.command == "visualize":
         return loop.do_visualize_cmd(args.session_id, port=args.port)
+    if args.command == "info":
+        return loop.do_info_cmd(args.session_id)
+    if args.command == "config":
+        return loop.do_config_cmd()
     raise AssertionError(f"unknown subcommand {args.command!r}")
 
 
