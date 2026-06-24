@@ -20,7 +20,7 @@ Many minimal coding agents are *interactive* — a developer watches the output 
 
 If no one is watching a run mid-flight, the recording *is* the supervision. Tilth's standing goal is **hyper-observability** — *every prompt the harness sends is accessible, and every run is fully inspectable after the fact.* Every assembled prompt, memory load, model call, and evaluator verdict lands in an append-only `events.jsonl`, and `tilth visualize` serves the whole thing as a local chat-style web app — tail an active run in near-realtime or replay a finished one end-to-end, with no state hidden out of reach.
 
-![A finished Tilth run rendered as chat-style HTML: session header, task divider, a model-call meta strip with an expanded reasoning block, and a bash tool call with its result](docs/assets/session-render.png)
+![A finished Tilth run rendered by `tilth visualize`: the dashboard band — a header with an `all_done` status chip plus token-cost and event-count chips, a "Limit utilization" row of cost-budget, wall-clock, and per-task iteration meters, a stat band (tokens, cost, model and tool calls, verdicts), a session timeline, and a context-pressure chart](docs/assets/session-render.png)
 
 *A finished run, rendered by `tilth visualize`.*
 

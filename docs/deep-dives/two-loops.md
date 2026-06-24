@@ -128,9 +128,9 @@ Default `MAX_ITERATIONS_PER_TASK=32` means each task gets at most 32 worker turn
 
 An `iter_cap` hit, with the post-run summary the harness prints on the way out:
 
-![Terminal capture: task T-003 reaches iter 8, the harness logs "task T-003 hit iteration cap [TILTH_MAX_ITERATIONS_PER_TASK=8]" and then "× T-003 failed (iter_cap); halting run". A run summary block follows: session 20260523-082151-45f0a5, branch session/20260523-082151-45f0a5, duration 2m27s (2.0% of TILTH_MAX_WALL_CLOCK_MINUTES=120), tokens 75,387 (3.8% of TILTH_MAX_TOKENS=2,000,000), tasks done=2 failed=1 pending=2.](../assets/iter-cap-and-summary.png)
+![Terminal capture: task T-003 reaches iter 8, the harness logs "task T-003 hit iteration cap [TILTH_MAX_ITERATIONS_PER_TASK=8]" and then "× T-003 failed (iter_cap); halting run". A run summary block follows](../assets/iter-cap-and-summary.png)
 
-*The cap fires and the run halts mid-task list (T-003 of five). The summary surfaces every cap as a percentage, so it's obvious which one bit — duration and tokens are both well under, only iterations were tight. (This capture predates the default bump — the cap was `8` here, below today's `32` — which is why it halts this early.)*
+*The cap fires and the run halts mid-task list (T-003 of five). Iterations were the cap that bit — duration is well under its budget (1.1%), and tokens are now a bare count rather than a ceiling.*
 {: .caption }
 
 The `failed=1 pending=2` line is what `tilth resume` reads to plan its retry — see [Resuming & resetting](../getting-started/resuming-and-resetting.md) for what picks up from this exact point (same session id).

@@ -37,7 +37,7 @@ Rendering happens server-side from the same renderer for every view — what you
 
 ## What it looks like
 
-![Live session view: header with status, token, and event-count chips; a session-started card; the T-001 task divider; context-reset and memory-load cards](../assets/session-render.png)
+![The `tilth visualize` dashboard band for a finished run: a header reading "Tilth" with the session id, an `all_done` status chip, a token-and-cost chip, and an event-count chip; a "Limit utilization" section with cost-budget and wall-clock meters and per-task iteration meters for T-001 through T-004; a stat band of tokens, cost (split worker vs evaluator), model calls, tool calls, verdicts, and hook blocks; a session timeline of task spans with iteration ticks and verdict markers; and a context-pressure bar chart of prompt tokens per model call, reset at each task boundary.](../assets/session-render.png)
 
 ## When to use it
 

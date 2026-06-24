@@ -15,7 +15,7 @@ A minimal long-running agent harness against an **OpenAI-compatible** LLM endpoi
 
 > **Status — prompt-driven core.** Tilth is deliberately small and currently being driven *down* to its essentials: a worker and an independent evaluator, the base file/search/bash tools, and full observability. There is **no codified test/lint gate** — the evaluator is the only gate — and **no interview step**: you author the work as markdown in a feature directory under `<repo>/.tilth/<feature>/` and point `tilth run` at it. Capabilities get added back only as testing shows they're needed.
 
-![The harness loop — a task from .tilth/tasks/ to worker agent to evaluator to commit, with a Rejects feedback path and a New Task loop, all inside a per-session git worktree](assets/harness-loop.png)
+![The harness loop — a task from .tilth/<feature>/ to worker agent to evaluator to commit, with a Rejects feedback path and a New Task loop, all inside a per-session git worktree](assets/harness-loop.png)
 
 *The harness loop*
 {: .caption }
@@ -24,7 +24,7 @@ A minimal long-running agent harness against an **OpenAI-compatible** LLM endpoi
 
 A **harness** is the deterministic code wrapped around the model — it decides what the model sees, when it runs, and what happens to what it produces. The model is the *brain*; the harness is everything around it that turns a single model call into a loop that finishes work.
 
-The labels under each box in the diagram above are that harness, made literal: `loop.py` and `workspace.py` are Tilth's code; `.tilth/tasks/` is the work you authored; `evaluator.md` is the prompt it hands to a second model. The harness owns the **arrows** — the forward path, the dashed `Rejects` feedback, and the green `New Task` loop. It picks the next task, routes the evaluator's verdict, commits to the session branch, and moves on. That green `New Task` arrow is the Ralph loop proper — the outer loop that carries a session from one task to the next.
+The labels under each box in the diagram above are that harness, made literal: `loop.py` and `workspace.py` are Tilth's code; `.tilth/<feature>/` is the work you authored; `evaluator.md` is the prompt it hands to a second model. The harness owns the **arrows** — the forward path, the dashed `Rejects` feedback, and the green `New Task` loop. It picks the next task, routes the evaluator's verdict, commits to the session branch, and moves on. That green `New Task` arrow is the Ralph loop proper — the outer loop that carries a session from one task to the next.
 
 The model owns only what happens *inside* a box:
 
@@ -46,7 +46,7 @@ Almost everything distinctive about Tilth follows from that one difference. Each
 
 None of this is a knock on interactive agents; it's a different shape for a different job.
 
-![A Tilth run rendered by `tilth visualize`: a header with status, token, and event-count chips; a session-started card; the T-001 task divider; context-reset and memory-load cards, all grouped by task.](assets/session-render.png)
+![The `tilth visualize` dashboard band for a finished run: a header with an `all_done` status chip and token-cost and event-count chips; a "Limit utilization" row of cost-budget, wall-clock, and per-task iteration meters; a stat band of tokens, cost, model calls, tool calls, and verdicts; a session timeline; and a context-pressure chart.](assets/session-render.png)
 
 *Every run — streaming live or replayed after the fact — is browsable as a chat-style web app with [`tilth visualize`](getting-started/visualizing.md). When no one is watching mid-run, the recording **is** the supervision.*
 {: .caption }
