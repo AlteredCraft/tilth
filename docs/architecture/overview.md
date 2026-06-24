@@ -45,7 +45,7 @@ tilth/
 ├── docs/                  # MkDocs source — annotated nav in mkdocs.yml is the topic index
 ├── pyproject.toml, .env.example, .gitignore
 ├── tilth/
-│   ├── cli.py             # verb-routed entry: init / run / resume / reset / visualize
+│   ├── cli.py             # verb-routed entry: init / run / resume / reset / visualize / info / config
 │   ├── paths.py           # ~/.tilth resolution: sessions dir + .env search order
 │   ├── loop.py            # Ralph loop + inner tool-use loop + subcommand handlers
 │   ├── client.py          # OpenAI-compat wrapper, dual-client routing (worker / evaluator)
