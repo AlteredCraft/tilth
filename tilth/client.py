@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -84,6 +85,18 @@ def assistant_history_message(msg: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in msg.items() if k in _HISTORY_KEEP}
 
 
+def _num_env(name: str, default: str, cast: Callable[[str], Any]) -> Any:
+    """Parse a numeric cap from the env: unset or blank falls back to `default`,
+    and a non-numeric value fails fast with an actionable message naming the var
+    rather than surfacing a raw `int()`/`float()` ValueError."""
+    raw = os.environ.get(name, default).strip() or default
+    try:
+        return cast(raw)
+    except ValueError as exc:
+        kind = "an integer" if cast is int else "a number"
+        raise RuntimeError(f"Invalid value for {name}: {raw!r} is not {kind}.") from exc
+
+
 @dataclass
 class TilthConfig:
     base_url: str
@@ -141,14 +154,10 @@ class TilthConfig:
             evaluator_base_url=evaluator_base_url,
             evaluator_api_key=evaluator_api_key,
             evaluator_model=evaluator_model,
-            max_iterations_per_task=int(os.environ.get("TILTH_MAX_ITERATIONS_PER_TASK", "32")),
-            max_evaluator_calls_per_task=int(
-                os.environ.get("MAX_EVALUATOR_CALLS_PER_TASK", "0") or "0"
-            ),
-            max_wall_clock_minutes=int(os.environ.get("TILTH_MAX_WALL_CLOCK_MINUTES", "120")),
-            max_token_dollar_spend=float(
-                os.environ.get("TILTH_MAX_TOKEN_DOLLAR_SPEND", "10.00")
-            ),
+            max_iterations_per_task=_num_env("TILTH_MAX_ITERATIONS_PER_TASK", "32", int),
+            max_evaluator_calls_per_task=_num_env("MAX_EVALUATOR_CALLS_PER_TASK", "0", int),
+            max_wall_clock_minutes=_num_env("TILTH_MAX_WALL_CLOCK_MINUTES", "120", int),
+            max_token_dollar_spend=_num_env("TILTH_MAX_TOKEN_DOLLAR_SPEND", "10.00", float),
             context_files=context_files,
         )
 
