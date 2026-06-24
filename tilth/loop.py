@@ -21,6 +21,7 @@ but nothing is enforced between iterations.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 import uuid
@@ -653,6 +654,16 @@ def _read_checkpoint(session_dir: Path) -> dict[str, Any]:
         return {}
     try:
         return json.loads(cp_path.read_text())
+    except json.JSONDecodeError:
+        return {}
+
+
+def _read_summary(session_dir: Path) -> dict[str, Any]:
+    summ_path = session_dir / "summary.json"
+    if not summ_path.is_file():
+        return {}
+    try:
+        return json.loads(summ_path.read_text())
     except json.JSONDecodeError:
         return {}
 
@@ -1386,6 +1397,207 @@ def _resolve_session_id(maybe_id: str | None) -> str | None:
     if maybe_id:
         return maybe_id
     return _latest_session_id(SESSIONS_DIR)
+
+
+# --- info + config ----------------------------------------------------------
+#
+# Read-only discovery surface. `info` answers "what sessions exist and where did
+# their worktrees land"; `config` answers "what settings is the harness running
+# with". Both tolerate a half-configured environment — they report rather than
+# enforce, so they work before `tilth init` and never replay events.jsonl.
+
+def _abbrev_home(p: Path | str | None) -> str:
+    """Render a path with $HOME collapsed to ~, for compact, copy-pasteable output."""
+    if not p:
+        return "(none)"
+    s = str(p)
+    home = str(Path.home())
+    return "~" + s[len(home):] if s == home or s.startswith(home + os.sep) else s
+
+
+def _print_locations() -> None:
+    home = paths.tilth_home()
+    env_file = paths.resolve_env_file()
+    console.print("[bold]locations[/bold]")
+    env_label = _abbrev_home(env_file) if env_file else "[dim](none — run tilth init)[/dim]"
+    console.print(f"  tilth home  {_abbrev_home(home)}")
+    console.print(f"  .env        {env_label}")
+    console.print(f"  sessions    {_abbrev_home(SESSIONS_DIR)}")
+
+
+def _list_session_ids() -> list[str]:
+    if not SESSIONS_DIR.is_dir():
+        return []
+    return sorted((p.name for p in SESSIONS_DIR.iterdir() if p.is_dir()), reverse=True)
+
+
+def _session_brief(sid: str) -> dict[str, Any]:
+    """Denormalised one-session view from checkpoint.json + summary.json.
+
+    Best-effort — both files may be absent on a half-started run; missing pieces
+    come back as None/0 rather than raising."""
+    session_dir = SESSIONS_DIR / sid
+    cp = _read_checkpoint(session_dir)
+    summ = _read_summary(session_dir)
+    tasks_map = summ.get("tasks") or {}
+    done = sum(1 for t in tasks_map.values() if t.get("status") == "done")
+    tokens = cp.get("tokens_used")
+    if tokens is None:
+        tokens = (summ.get("tokens") or {}).get("total")
+    return {
+        "status": cp.get("status") or (summ.get("stop") or {}).get("reason") or "—",
+        "done": done,
+        "total": len(tasks_map),
+        "tokens": tokens,
+        "cost": (summ.get("tokens") or {}).get("cost"),
+        "branch": cp.get("branch"),
+        "source": cp.get("source"),
+        "workspace": cp.get("workspace"),
+        "feature_dir": cp.get("feature_dir"),
+        "started_at": summ.get("started_at"),
+    }
+
+
+def _info_list() -> int:
+    _print_locations()
+    console.print()
+    ids = _list_session_ids()
+    if not ids:
+        console.print(f"[dim]no sessions under {_abbrev_home(SESSIONS_DIR)}[/dim]")
+        _print_migration_hint()
+        return 0
+    latest = ids[0]
+    console.print(f"[bold]{len(ids)} session(s)[/bold] [dim](newest first)[/dim]")
+    console.print(
+        f"[dim]  {'SESSION':<30} {'STATUS':<9} {'TASKS':>6} {'TOKENS':>10}  SOURCE[/dim]"
+    )
+    for sid in ids:
+        b = _session_brief(sid)
+        label = sid + (" (latest)" if sid == latest else "")
+        tasks_cell = f"{b['done']}/{b['total']}" if b["total"] else "—"
+        tokens_cell = f"{b['tokens']:,}" if isinstance(b["tokens"], int) else "—"
+        console.print(
+            f"  {label:<30} {b['status']:<9} {tasks_cell:>6} {tokens_cell:>10}  "
+            f"{_abbrev_home(b['source'])}"
+        )
+    console.print()
+    console.print("[dim]tilth info <session-id> for full detail[/dim]")
+    return 0
+
+
+def _info_detail(sid: str) -> int:
+    session_dir = SESSIONS_DIR / sid
+    if not session_dir.is_dir():
+        console.print(f"[red]no session at {session_dir}[/red]")
+        return 2
+
+    b = _session_brief(sid)
+    source = Path(b["source"]) if b["source"] else _source_for_session(session_dir)
+    worktree = Path(b["workspace"]) if b["workspace"] else None
+    latest = _latest_session_id(SESSIONS_DIR)
+
+    latest_tag = "  [dim](latest)[/dim]" if sid == latest else ""
+    console.print(f"[bold]session[/bold]   {sid}{latest_tag}")
+    console.print(f"  status    {b['status']}")
+    console.print(
+        f"  source    {_abbrev_home(source) if source else '[dim](unknown)[/dim]'}"
+    )
+    feat = b["feature_dir"]
+    if feat:
+        console.print(f"  feature   {Path(feat).name}  [dim]{_abbrev_home(feat)}[/dim]")
+    else:
+        console.print("  feature   [dim](unknown)[/dim]")
+
+    if worktree:
+        present = "present" if worktree.exists() else "[yellow]missing[/yellow]"
+        console.print(f"  worktree  {_abbrev_home(worktree)}  [dim]{present}[/dim]")
+        gitdir = ws.worktree_gitdir(worktree) if worktree.exists() else None
+        reg = ws.worktree_registered(source, worktree) if source else None
+        reg_label = {
+            True: "[dim]registered[/dim]",
+            False: "[yellow]stale — run git worktree prune[/yellow]",
+            None: "[dim]source unavailable[/dim]",
+        }[reg]
+        if gitdir:
+            console.print(f"    └ gitdir  {_abbrev_home(gitdir)}  {reg_label}")
+        else:
+            console.print(f"    └ gitdir  [dim](unresolved)[/dim]  {reg_label}")
+    else:
+        console.print("  worktree  [dim](none)[/dim]")
+
+    console.print(f"  branch    {b['branch'] or '[dim](none)[/dim]'}")
+    if b["started_at"]:
+        console.print(f"  started   {b['started_at']}")
+    tokens_cell = f"{b['tokens']:,}" if isinstance(b["tokens"], int) else "—"
+    cost = b["cost"]
+    cost_cell = (
+        f"   cost ~{usage.format_cost(cost)}"
+        if isinstance(cost, (int, float)) and cost
+        else ""
+    )
+    console.print(f"  tokens    {tokens_cell}{cost_cell}")
+    if b["total"]:
+        console.print(f"  tasks     done {b['done']} / {b['total']}")
+    return 0
+
+
+def do_info_cmd(maybe_id: str | None) -> int:
+    """No id → overview + session table. With id → that session's full dossier."""
+    if maybe_id:
+        return _info_detail(maybe_id)
+    return _info_list()
+
+
+def _mask_key(value: str) -> str:
+    if not value:
+        return "[dim]unset[/dim]"
+    tail = value[-4:] if len(value) >= 4 else ""
+    return f"set [dim](…{tail})[/dim]" if tail else "set"
+
+
+def do_config_cmd() -> int:
+    """Show resolved provider config + caps. Keys masked; safe to paste anywhere."""
+    _print_locations()
+    console.print()
+    try:
+        cfg = TilthConfig.from_env()
+    except RuntimeError as exc:
+        console.print(f"[yellow]{exc}[/yellow]")
+        for key in ("TILTH_BASE_URL", "TILTH_API_KEY", "TILTH_WORKER_MODEL"):
+            raw = os.environ.get(key, "").strip()
+            shown = _mask_key(raw) if key.endswith("API_KEY") else (raw or "[dim]unset[/dim]")
+            console.print(f"  {key:<20} {shown}")
+        env_file = paths.resolve_env_file()
+        hint = f"edit {_abbrev_home(env_file)}" if env_file else "run tilth init"
+        console.print(f"[dim]incomplete config — {hint} and set the missing value(s)[/dim]")
+        return 1
+
+    same_eval = (
+        cfg.evaluator_base_url == cfg.base_url
+        and cfg.evaluator_api_key == cfg.api_key
+        and cfg.evaluator_model == cfg.worker_model
+    )
+    console.print("[bold]worker[/bold]")
+    console.print(f"  base_url    {cfg.base_url}")
+    console.print(f"  model       {cfg.worker_model}")
+    console.print(f"  api_key     {_mask_key(cfg.api_key)}")
+    eval_tag = "  [dim](inherits worker)[/dim]" if same_eval else ""
+    console.print(f"[bold]evaluator[/bold]{eval_tag}")
+    console.print(f"  base_url    {cfg.evaluator_base_url}")
+    console.print(f"  model       {cfg.evaluator_model}")
+    console.print(f"  api_key     {_mask_key(cfg.evaluator_api_key)}")
+    console.print("[bold]limits[/bold]")
+    console.print(f"  iterations / task        {cfg.max_iterations_per_task}")
+    evcalls = cfg.max_evaluator_calls_per_task
+    console.print(
+        f"  evaluator calls / task   {evcalls}"
+        + ("  [dim](0 = unlimited)[/dim]" if evcalls == 0 else "")
+    )
+    console.print(f"  wall clock (minutes)     {cfg.max_wall_clock_minutes}")
+    console.print(f"  token spend ($)          {cfg.max_token_dollar_spend}")
+    console.print("[bold]context files[/bold]")
+    console.print(f"  {', '.join(cfg.context_files)}")
+    return 0
 
 
 def do_reset_cmd(maybe_id: str | None, assume_yes: bool) -> int:

@@ -100,6 +100,45 @@ def ensure_worktree(source: Path, session_id: str, target: Path) -> tuple[Path, 
     return create_worktree(source, session_id, target)
 
 
+def worktree_gitdir(worktree: Path) -> Path | None:
+    """Resolve a linked worktree's git admin dir from its `.git` pointer file.
+
+    A linked worktree has a `.git` *file* (not a dir) holding
+    `gitdir: <source>/.git/worktrees/<name>`. Returns that path, or None when the
+    worktree is missing or `.git` isn't the expected pointer shape. This is the
+    map `tilth info <id>` shows alongside the worktree folder.
+    """
+    dotgit = worktree / ".git"
+    if not dotgit.is_file():
+        return None
+    text = dotgit.read_text(errors="replace").strip()
+    prefix = "gitdir:"
+    if not text.startswith(prefix):
+        return None
+    return Path(text[len(prefix):].strip())
+
+
+def worktree_registered(source: Path, worktree: Path) -> bool | None:
+    """Whether `worktree` is a live entry in `source`'s worktree registry.
+
+    None when the registry can't be read (source gone / not a repo); True if
+    `git worktree list` includes the path; False if it's stale (the directory
+    was removed by hand and only an admin entry lingers — `git worktree prune`
+    would clear it).
+    """
+    proc = _git(["worktree", "list", "--porcelain"], source)
+    if proc.returncode != 0:
+        return None
+    target = worktree.resolve() if worktree.exists() else worktree
+    for line in proc.stdout.splitlines():
+        if line.startswith("worktree "):
+            existing = Path(line[len("worktree "):].strip())
+            existing = existing.resolve() if existing.exists() else existing
+            if existing == target:
+                return True
+    return False
+
+
 def commit_task(worktree: Path, task_id: str, title: str) -> str | None:
     """Stage and commit. Returns short SHA, or None if there was nothing to commit."""
     _git(["add", "-A"], worktree)
