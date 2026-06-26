@@ -9,6 +9,10 @@ A single Tilth run has artifacts on disk in two distinct places: the **harness s
 
 The agent's *working directory* sits inside `~/.tilth/sessions/`, but every `git` operation that worktree performs reads and writes the target repo's `.git/`. That's how `git worktree add` works — the worktree directory can live anywhere on disk; its git database is the repo it was created from. `workspace.py:create_worktree` runs `git worktree add <target> -b session/<id>` with `cwd=source` (via `ensure_worktree`, which reuses an existing worktree on a re-entered run), which registers the worktree under the target repo's `.git/worktrees/` and creates the branch in its refs.
 
+## Why a worktree, not just a branch
+
+A branch is only a pointer; checking one out happens *in place*, in the repo's single working tree. If Tilth ran the agent on a plain `session/<id>` branch in your repo, a 10–60-minute unattended run would commandeer your `HEAD` and overwrite your working files as it edits — clobbering any uncommitted work and locking you out of your own checkout until it finished. A worktree instead gives the agent its **own** working directory (with its own index and `HEAD`) on that branch while sharing the repo's object store, so your checkout stays pristine and usable throughout, and commits still land on `session/<id>` in the shared `.git/` for you to review and merge like any other branch. (This is *workflow* isolation, not a security boundary — the agent still has `bash` and can reach back up the filesystem; real process isolation is tracked in [#13](https://github.com/AlteredCraft/tilth/issues/13). See [Safety guards → Worktree isolation](../reference/safety-guards.md#worktree-isolation).)
+
 ## Why the working tree lives in Tilth's data dir, not in the target repo
 
 A session has more artifacts than just the worktree — the rest of `sessions/<id>/` (events log, summary, checkpoint, plus the run's durable state — `task-status.json`, `progress.txt`, and the per-task `ledger/<task_id>.jsonl` files) all belong to one run. Co-locating them under one directory means one logical container per run, and `tilth reset` only has to walk one tree on the harness side.
