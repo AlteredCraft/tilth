@@ -4,7 +4,7 @@
 
 A minimal long-running agent harness against an **OpenAI-compatible** LLM endpoint. Tested today against [OpenRouter](https://openrouter.ai); the OpenAI SDK underneath means other OpenAI-flavour gateways should work, but support for them is on the roadmap rather than validated. Built to learn (and demonstrate) the Brain/Hands/Session split, the Ralph loop, and the file-backed memory channels described in Addy Osmani's [long-running agents](https://addyosmani.com/blog/long-running-agents/) and [agent harness engineering](https://addyosmani.com/blog/agent-harness-engineering/) posts.
 
-![Brain / Hands / Session split — three boxes connected by flow arrows, with the files that implement each piece](docs/assets/brain-hands-session.png)
+![Brain / Hands / Session split — three boxes connected by flow arrows, with the files that implement each piece](https://raw.githubusercontent.com/AlteredCraft/tilth/main/docs/assets/brain-hands-session.png)
 
 **Audience:** This is an active research project for my work in [Altered Craft](https://alteredcraft.com). I do actively use it for real work, so I'd suggest it for single-dev / few-dev teams who want to *understand* what a long-running agent harness actually does. That's today (June 2026); the future, we shall see.
 
@@ -20,7 +20,7 @@ Many minimal coding agents are *interactive* — a developer watches the output 
 
 If no one is watching a run mid-flight, the recording *is* the supervision. Tilth's standing goal is **hyper-observability** — *every prompt the harness sends is accessible, and every run is fully inspectable after the fact.* Every assembled prompt, memory load, model call, and evaluator verdict lands in an append-only `events.jsonl`, and `tilth visualize` serves the whole thing as a local chat-style web app — tail an active run in near-realtime or replay a finished one end-to-end, with no state hidden out of reach.
 
-![A finished Tilth run rendered by `tilth visualize`: the dashboard band — a header with an `all_done` status chip plus token-cost and event-count chips, a "Limit utilization" row of cost-budget, wall-clock, and per-task iteration meters, a stat band (tokens, cost, model and tool calls, verdicts), a session timeline, and a context-pressure chart](docs/assets/session-render.png)
+![A finished Tilth run rendered by `tilth visualize`: the dashboard band — a header with an `all_done` status chip plus token-cost and event-count chips, a "Limit utilization" row of cost-budget, wall-clock, and per-task iteration meters, a stat band (tokens, cost, model and tool calls, verdicts), a session timeline, and a context-pressure chart](https://raw.githubusercontent.com/AlteredCraft/tilth/main/docs/assets/session-render.png)
 
 *A finished run, rendered by `tilth visualize`.*
 
@@ -29,17 +29,18 @@ It's an early example of the goal, not a finished product. For the full product 
 ## Quickstart
 
 ```bash
-git clone git@github.com:AlteredCraft/tilth.git
-cd tilth
-# This will put `tilth` on your PATH, runnable from anywhere, but point to the local code
-#   here. This enalbes you to iterate on the codebase without having to reinstall the tool.
-uv tool install --editable .   # puts `tilth` on your PATH, runnable from anywhere
+# Install the CLI from PyPI (puts `tilth` on your PATH, runnable from anywhere)
+uv tool install tilth
+# …or run it without installing, npx-style:   uvx tilth --help
+# …or with pipx:                               pipx install tilth
 
 tilth init                     # scaffolds ~/.tilth/.env
 # edit ~/.tilth/.env — TILTH_BASE_URL, TILTH_API_KEY, TILTH_WORKER_MODEL are all
 # required (Tilth refuses to start without them so a misconfigured run can't
 # silently fall back to a provider/model your account doesn't have)
 ```
+
+> **Working *on* Tilth?** Install from a clone instead: `uv tool install --editable .` puts `tilth` on your PATH while tracking your working copy — see [Working with the codebase](#working-with-the-codebase).
 
 Tilth keeps all per-user state under `~/.tilth/` — the `.env` above and every run's `sessions/<id>/`. Relocate it with `$TILTH_HOME` (whole tree) or `$TILTH_SESSIONS_DIR` (just the runs).
 

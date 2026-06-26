@@ -4,20 +4,58 @@ version = "0.1.0"
 description = "Tilth — minimal long-running agent harness against any OpenAI-compatible endpoint. Brain/Hands/Session split, Ralph loop, four memory channels."
 readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Sam Keen", email = "sam@alteredcraft.com" },
+]
+keywords = [
+    "agent",
+    "llm",
+    "ralph-loop",
+    "long-running-agents",
+    "autonomous-agents",
+    "openai-compatible",
+    "openrouter",
+    "agent-harness",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Code Generators",
+]
 dependencies = [
     "openai>=1.40",
     "pydantic>=2.6",
     "rich>=13.7",
     "python-dotenv>=1.0",
-    "pytest>=8.0",
-    "ruff>=0.5",
 ]
+
+[project.urls]
+Homepage = "https://github.com/AlteredCraft/tilth"
+Documentation = "https://alteredcraft.github.io/tilth/"
+Repository = "https://github.com/AlteredCraft/tilth"
+Issues = "https://github.com/AlteredCraft/tilth/issues"
 
 [project.optional-dependencies]
 docs = [
     "mkdocs>=1.6",
     "mkdocs-material>=9.5",
     "mkdocs-glightbox>=0.4",
+]
+
+# Dev-only tooling (PEP 735). Installed by `uv sync` for contributors but never
+# shipped to end users of `uvx tilth` / `pip install tilth` — keep runtime
+# dependencies (above) lean.
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.5",
 ]
 
 [project.scripts]

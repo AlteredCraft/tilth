@@ -9,24 +9,40 @@ Tilth is a small Python package; setup is straight `uv` plumbing plus a `.env`.
 - **`git`** — Tilth uses git worktrees as session sandboxes, so a working git is non-optional.
 - **An OpenAI-compatible LLM endpoint and API key.** Tilth is actively tested against [OpenRouter](https://openrouter.ai); other OpenAI-flavour gateways should work via the OpenAI SDK but haven't been validated yet.
 
-## Clone and install
+## Install
 
-> **Install-from-source, for now.** Tilth is early research, so the supported install path today is cloning the repo and installing it as a `uv` tool (below). There's no `pip install tilth` or prebuilt binary yet — publishing to PyPI is on the roadmap, not here.
-
-Tilth and the project you point it at are **independent checkouts** — Tilth lives in its own directory, and the codebase it works on lives somewhere else. Installing Tilth as a tool puts `tilth` on your PATH so it runs from any directory; the command takes a feature directory as a plain path argument (`tilth run <repo>/.tilth/<feature>`) and derives the enclosing repo from it, so any layout works.
+Tilth publishes to PyPI, so the CLI installs like any other Python tool. Pick whichever runner you already use:
 
 ```bash
-git clone git@github.com:AlteredCraft/tilth.git
-cd tilth
-uv tool install --editable .   # `tilth` on your PATH; --editable tracks the clone
+# uv (recommended — Tilth is uv-native)
+uv tool install tilth          # `tilth` on your PATH, runnable from any directory
+uvx tilth --help               # …or run it ephemerally, npx-style, with no install
 
+# pipx
+pipx install tilth             # persistent
+pipx run tilth --help          # ephemeral
+```
+
+Tilth and the project you point it at are **independent checkouts** — Tilth lives wherever you install it, and the codebase it works on lives somewhere else. The command takes a feature directory as a plain path argument (`tilth run <repo>/.tilth/<feature>`) and derives the enclosing repo from it, so any layout works.
+
+```bash
 tilth init                     # scaffolds ~/.tilth/.env from the template
 # edit ~/.tilth/.env, set TILTH_BASE_URL, TILTH_API_KEY, and TILTH_WORKER_MODEL
 ```
 
 `tilth init` creates the per-user home (`~/.tilth/`) with a `sessions/` directory and a `.env` you fill in. It never overwrites an existing `.env`.
 
-> **Contributor path.** If you're working *on* the harness rather than using it, skip the tool install: `uv sync` for the dev env, then run the CLI from the clone with `uv run tilth …`. Either way, state lands under `~/.tilth/` unless you override it (below).
+### Install from source (maintainers)
+
+Working *on* the harness, or want to run an unreleased revision? Install it editable from a clone — `tilth` goes on your PATH but resolves to your working copy, so edits take effect without reinstalling:
+
+```bash
+git clone git@github.com:AlteredCraft/tilth.git
+cd tilth
+uv tool install --editable .   # `tilth` on your PATH; --editable tracks the clone
+```
+
+> **Contributor path.** If you're iterating on the code rather than using the installed tool, skip the tool install entirely: `uv sync` for the dev env, then run the CLI from the clone with `uv run tilth …`. Either way, state lands under `~/.tilth/` unless you override it (below). Cutting and shipping a release is documented in [Releasing to PyPI](../reference/releasing.md).
 
 > **About the example paths in these docs.** Later pages show commands like `tilth run ~/projects/project-x/.tilth/<feature>` and reference paths such as `~/.tilth/sessions/<id>/`. The feature-directory path (and the feature name) is just one illustrative choice — substitute whatever matches your own setup.
 

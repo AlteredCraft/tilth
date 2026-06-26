@@ -885,10 +885,8 @@ source = { editable = "." }
 dependencies = [
     { name = "openai" },
     { name = "pydantic" },
-    { name = "pytest" },
     { name = "python-dotenv" },
     { name = "rich" },
-    { name = "ruff" },
 ]
 
 [package.optional-dependencies]
@@ -898,6 +896,12 @@ docs = [
     { name = "mkdocs-material" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6" },
@@ -905,12 +909,16 @@ requires-dist = [
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.5" },
     { name = "openai", specifier = ">=1.40" },
     { name = "pydantic", specifier = ">=2.6" },
-    { name = "pytest", specifier = ">=8.0" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "rich", specifier = ">=13.7" },
-    { name = "ruff", specifier = ">=0.5" },
 ]
 provides-extras = ["docs"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "ruff", specifier = ">=0.5" },
+]
 
 [[package]]
 name = "tqdm"

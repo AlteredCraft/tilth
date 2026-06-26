@@ -131,6 +131,12 @@ nav:
       # isolation, and an honest list of what is *not* guarded (no dollar cap,
       # no mid-task cutoff, no network allowlist).
       - Safety guards: reference/safety-guards.md
+      # Maintainer release runbook: how Tilth gets to PyPI. The trusted-publishing
+      # (OIDC) GitHub Actions workflow, the one-time pending-publisher + GitHub
+      # environment setup, the version-bump → tag → publish flow, the manual
+      # token fallback, and what does/doesn't ship in the wheel. Reach for this
+      # when cutting a release or changing packaging.
+      - Releasing to PyPI: reference/releasing.md
 
 # Contributor-only references that live under docs/ for co-location but are
 # deliberately excluded from the published nav. Listed here so --strict

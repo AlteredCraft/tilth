@@ -1,0 +1,36 @@
+name: Release to PyPI
+
+# Publishes the package to PyPI when a GitHub Release is published.
+# Tag the release `vX.Y.Z` and match it to `version` in pyproject.toml.
+#
+# Authentication is PyPI Trusted Publishing (OIDC) — no API token is stored
+# anywhere. One-time setup: add this repo + workflow as a "pending publisher"
+# on PyPI before the first release. See docs/reference/releasing.md.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  id-token: write   # required for OIDC trusted publishing
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi   # configure this environment on the repo (optional gate)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Verify the wheel exposes the tilth entry point
+        run: uv run --isolated --no-project --with dist/*.whl tilth --help
+
+      - name: Publish to PyPI
+        run: uv publish
