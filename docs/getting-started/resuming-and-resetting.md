@@ -48,6 +48,41 @@ On wake, `Session.wake()` (`session.py`) reads `checkpoint.json` to reconstruct 
 
 Resume doesn't loop endlessly: if a retried task hits a task-halting stop *again*, the outer loop halts with that reason just like the original run, and the next `tilth resume` would retry once more. Each resume is a fresh ride through the same loop.
 
+## Getting the work out
+
+When a run finishes, the commits live on the `session/<id>` branch — but that branch is **checked out in the worktree** under `~/.tilth/sessions/<id>/workspace/`, not in your repo. Reaching for it the obvious way fails:
+
+```
+$ git switch session/20260626-101715-1f38db
+fatal: 'session/20260626-101715-1f38db' is already used by worktree at
+'/Users/you/.tilth/sessions/20260626-101715-1f38db/workspace'
+```
+
+That's git refusing to check out a branch that's already live in another worktree — see [Why a worktree, not just a branch](../deep-dives/session-layout.md#why-a-worktree-not-just-a-branch). There are two ways forward, and the run summary prints both:
+
+**Work with it locally** — `cd` into the worktree, where the branch is already checked out:
+
+```bash
+cd ~/.tilth/sessions/<id>/workspace   # build, test, inspect the diff
+```
+
+**Send it to a remote** for review:
+
+```bash
+tilth push                 # push session/<id> to origin (latest session)
+tilth push <session_id>    # or name one; --remote NAME for a non-origin remote
+tilth pr                   # ensure the branch is on the remote, then open a PR
+tilth pr --base develop    # PR against a non-default base; --web to skip gh
+```
+
+`tilth pr` is **hybrid**: with the [`gh` CLI](https://cli.github.com/) installed and authenticated it creates the PR and prints its URL; otherwise (or with `--web`) it pushes the branch and prints the GitHub *compare* URL for you to open the PR yourself. Both commands are opt-in and user-invoked — Tilth never pushes during a run, and never merges (the `session/*` branch is yours to review like any other). The PR base defaults to the remote's tracked default branch, then `main`.
+
+For a run that stopped short (a cap, an interrupt, or a failed task), the summary points at `tilth resume` instead — finish the work first, then publish.
+
+### Under the hood
+
+`do_push_cmd` / `do_pr_cmd` (`loop.py`) mirror resume's resolution (latest session by default → `Session.wake()`), then operate on the source repo recovered from the checkpoint: `ws.push_branch()` runs `git push -u`, while `ws.remote_url()` / `ws.branch_on_remote()` / `ws.default_remote_branch()` (`workspace.py`) gate the PR step. `gh pr create` is shelled out only when `gh` is on `PATH`; otherwise `ws.remote_web_url()` builds the compare link. None of it runs inside the loop.
+
 ## Resetting
 
 ```bash

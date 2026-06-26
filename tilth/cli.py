@@ -4,6 +4,8 @@ Subcommands:
 
     tilth run       <feature-dir>
     tilth resume    [<session_id>]
+    tilth push      [<session_id>] [--remote NAME]
+    tilth pr        [<session_id>] [--base BRANCH] [--remote NAME] [--web]
     tilth reset     [<session_id>] [-y]
     tilth visualize [<session_id>] [--port N]
     tilth info      [<session_id>]
@@ -33,7 +35,9 @@ from tilth import loop, paths
 
 console = Console()
 
-SUBCOMMANDS = frozenset({"init", "run", "resume", "reset", "visualize", "info", "config"})
+SUBCOMMANDS = frozenset(
+    {"init", "run", "resume", "push", "pr", "reset", "visualize", "info", "config"}
+)
 
 
 def _load_env() -> None:
@@ -128,6 +132,51 @@ def _build_parser():
         help="Session ID to resume; defaults to the latest session.",
     )
 
+    push_p = sub.add_parser(
+        "push",
+        help="Push a session's branch to a remote (default origin).",
+        description=(
+            "Push the session/<id> branch to a remote so the work can be reviewed "
+            "off your machine. User-invoked and opt-in; Tilth never merges it for you."
+        ),
+    )
+    push_p.add_argument(
+        "session_id",
+        nargs="?",
+        help="Session ID to push; defaults to the latest session.",
+    )
+    push_p.add_argument(
+        "--remote", default="origin", help="Remote to push to (default: origin)."
+    )
+
+    pr_p = sub.add_parser(
+        "pr",
+        help="Push a session's branch and open a pull request.",
+        description=(
+            "Ensure the session/<id> branch is on the remote, then open a PR against "
+            "the base branch. Uses the gh CLI when available; otherwise prints the "
+            "GitHub compare URL so you can open the PR yourself. Never merges."
+        ),
+    )
+    pr_p.add_argument(
+        "session_id",
+        nargs="?",
+        help="Session ID to open a PR for; defaults to the latest session.",
+    )
+    pr_p.add_argument(
+        "--base",
+        default=None,
+        help="Base branch for the PR (default: the remote's default branch, then main).",
+    )
+    pr_p.add_argument(
+        "--remote", default="origin", help="Remote to push to (default: origin)."
+    )
+    pr_p.add_argument(
+        "--web",
+        action="store_true",
+        help="Skip gh; just print the compare URL to open the PR in a browser.",
+    )
+
     reset_p = sub.add_parser(
         "reset",
         help="Tear down a session (worktree, branch, session dir).",
@@ -203,6 +252,12 @@ def _dispatch(args) -> int:
         return loop.do_run_cmd(args.feature_dir)
     if args.command == "resume":
         return loop.do_resume_cmd(args.session_id)
+    if args.command == "push":
+        return loop.do_push_cmd(args.session_id, remote=args.remote)
+    if args.command == "pr":
+        return loop.do_pr_cmd(
+            args.session_id, base=args.base, remote=args.remote, web=args.web
+        )
     if args.command == "reset":
         return loop.do_reset_cmd(args.session_id, args.yes)
     if args.command == "visualize":

@@ -83,6 +83,8 @@ For each pending task, Tilth resets context from disk, lets the worker work with
 
 ```bash
 tilth resume                 # continue the latest session
+tilth push                   # push the session branch to origin for review
+tilth pr                     # push + open a PR against main (gh if present, else a compare URL)
 tilth reset                  # tear down a session's worktree + branch + dir
 tilth visualize              # serve the live session viewer (127.0.0.1:8765)
 tilth info                   # list sessions (status, progress, tokens); `tilth info <id>` for one session's detail

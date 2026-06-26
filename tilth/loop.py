@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
 import sys
 import time
 import uuid
@@ -1259,6 +1261,63 @@ def _print_summary(session: Session, client: LLMClient) -> None:
         console.print(f"            [dim]{line}[/dim]")
     console.print(f"  cost      {usage.format_cost(cost_used)} [dim]{cost_dim}[/dim]")
     console.print(f"  tasks     {' '.join(task_bits + extras)}")
+    _print_working_with_session(session, counts)
+
+
+def _print_working_with_session(session: Session, counts: dict[str, int]) -> None:
+    """Post-run guidance: how to work with the session's branch next.
+
+    The branch is checked out *in the worktree*, so `git switch <branch>` in the
+    source repo fails ("already used by worktree"). Name that gotcha, then point
+    at the next step: push / open a PR when the run finished cleanly, or resume
+    when it stopped short (cap / interrupt / failed task). Runs inside
+    `_print_summary`'s call from a `finally`, so every git lookup is failure-tolerant.
+    """
+    sid = session.session_id
+    worktree = session.workspace
+    branch = session.branch
+    total = sum(counts.values())
+    all_done = total > 0 and counts.get("pending", 0) == 0 and counts.get("failed", 0) == 0
+
+    console.print()
+    console.print("[bold]── working with this session ──[/bold]")
+    if branch:
+        console.print(
+            f"  [dim]the {branch} branch is checked out in the worktree — "
+            f"`git switch {branch}` in your repo won't work; use it there:[/dim]",
+            soft_wrap=True,
+        )
+    if worktree:
+        console.print("  inspect / build locally")
+        console.print(f"    cd {_abbrev_home(worktree)}", soft_wrap=True)
+
+    if all_done:
+        has_remote = (
+            session.source is not None
+            and session.source.exists()
+            and ws.remote_url(session.source) is not None
+        )
+        if has_remote:
+            console.print("  get the work to origin")
+            console.print(
+                f"    tilth push {sid}   [dim]# push {branch} to origin[/dim]", soft_wrap=True
+            )
+            console.print(
+                f"    tilth pr {sid}     [dim]# push + open a PR against main[/dim]",
+                soft_wrap=True,
+            )
+        else:
+            console.print(
+                "  [dim]no `origin` remote — add one to publish "
+                "(git -C <repo> remote add origin <url>), then `tilth push`[/dim]",
+                soft_wrap=True,
+            )
+    else:
+        console.print("  continue the run")
+        console.print(
+            f"    tilth resume {sid}   [dim]# retry the failed/pending task(s)[/dim]",
+            soft_wrap=True,
+        )
 
 
 # --- reset ------------------------------------------------------------------
@@ -1723,6 +1782,139 @@ def do_resume_cmd(maybe_id: str | None) -> int:
     plan = _prepare_resume(session, worktree)
     console.print(f"[bold]resume plan[/bold] {plan}")
     return _run_session(session, worktree, client, config, overview, static_tasks)
+
+
+# --- publishing (push / pr) -------------------------------------------------
+#
+# User-invoked, opt-in ways to get a session branch out to a remote. They mirror
+# resume's session resolution (latest-by-default → Session.wake) but skip the
+# config/client/tasks load — they only need the source repo + branch, which the
+# worktree shares with the source's object store. Never auto-run inside the loop;
+# the branch is pushed/PR'd, never merged (invariant #5).
+
+
+def _wake_for_publish(maybe_id: str | None, verb: str) -> Session | None:
+    """Resolve + wake a session for push/pr. Prints and returns None on any problem
+    (no sessions, missing source/branch, source repo gone) — callers map that to exit 2."""
+    sid = _resolve_session_id(maybe_id)
+    if not sid:
+        console.print(f"[red]no sessions found under {SESSIONS_DIR}[/red]", soft_wrap=True)
+        _print_migration_hint()
+        return None
+    if not maybe_id:
+        console.print(f"[dim]{verb}: latest session is {sid}[/dim]")
+    session = Session.wake(SESSIONS_DIR, sid)
+    if session.source is None or session.branch is None:
+        console.print(f"[red]session has no source repo / branch recorded; cannot {verb}[/red]")
+        return None
+    if not session.source.exists():
+        console.print(f"[red]source repo not found: {_abbrev_home(session.source)}[/red]")
+        return None
+    return session
+
+
+def _no_remote_msg(source: Path, remote: str) -> None:
+    console.print(f"[red]no '{remote}' remote on {_abbrev_home(source)}[/red]")
+    console.print(
+        f"[dim]add one then retry: git -C {source} remote add {remote} <url>[/dim]",
+        soft_wrap=True,
+    )
+
+
+def do_push_cmd(maybe_id: str | None, remote: str = "origin") -> int:
+    """Push a session's branch to `remote`. Latest session if no id given."""
+    session = _wake_for_publish(maybe_id, "push")
+    if session is None:
+        return 2
+    source, branch = session.source, session.branch
+    if ws.remote_url(source, remote) is None:
+        _no_remote_msg(source, remote)
+        return 2
+    try:
+        ws.push_branch(source, branch, remote)
+    except ws.WorkspaceError as exc:
+        console.print(f"[red]{exc}[/red]")
+        return 3
+    console.print(f"[green]✓ pushed {branch} to {remote}[/green]")
+    console.print(f"[dim]open a PR: tilth pr {session.session_id}[/dim]")
+    return 0
+
+
+def do_pr_cmd(
+    maybe_id: str | None,
+    base: str | None = None,
+    remote: str = "origin",
+    web: bool = False,
+) -> int:
+    """Ensure a session's branch is on `remote`, then open a PR against `base`.
+
+    Hybrid: uses `gh` when present (and not `--web`), else prints the GitHub
+    compare URL. `base` defaults to the remote's tracked default branch, then 'main'.
+    """
+    session = _wake_for_publish(maybe_id, "pr")
+    if session is None:
+        return 2
+    source, branch = session.source, session.branch
+    url = ws.remote_url(source, remote)
+    if url is None:
+        _no_remote_msg(source, remote)
+        return 2
+    base = base or ws.default_remote_branch(source, remote) or "main"
+
+    if not ws.branch_on_remote(source, branch, remote):
+        console.print(f"[dim]{branch} not on {remote} yet; pushing…[/dim]")
+        try:
+            ws.push_branch(source, branch, remote)
+        except ws.WorkspaceError as exc:
+            console.print(f"[red]{exc}[/red]")
+            return 3
+        console.print(f"[green]✓ pushed {branch} to {remote}[/green]")
+
+    if not web and shutil.which("gh"):
+        rc = _gh_open_pr(source, branch, base, session)
+        if rc is not None:
+            return rc  # gh handled it (opened or reported existing); else fall through
+
+    web_base = ws.remote_web_url(url)
+    if web_base:
+        console.print(f"[bold]open a PR:[/bold] {web_base}/compare/{base}...{branch}?expand=1")
+    else:
+        console.print(f"[green]✓ branch {branch} is on {remote}[/green]")
+        console.print("[dim]open a pull/merge request in your host's web UI[/dim]")
+    return 0
+
+
+def _gh_open_pr(source: Path, branch: str, base: str, session: Session) -> int | None:
+    """Open (or report an already-open) PR via `gh`. Returns an exit code on success,
+    or None to signal the caller to fall back to the compare URL."""
+    view = subprocess.run(
+        ["gh", "pr", "view", branch, "--json", "url", "-q", ".url"],
+        cwd=str(source), capture_output=True, text=True, check=False,
+    )
+    if view.returncode == 0 and view.stdout.strip():
+        console.print(f"[green]PR already open:[/green] {view.stdout.strip()}")
+        return 0
+
+    feature = session.feature_dir.name if session.feature_dir else "work"
+    title = f"{feature} (tilth session {session.session_id})"
+    body = (
+        f"Automated changes from Tilth session `{session.session_id}` on branch "
+        f"`{branch}`.\n\nGenerated by Tilth — review before merging."
+    )
+    create = subprocess.run(
+        ["gh", "pr", "create", "--base", base, "--head", branch,
+         "--title", title, "--body", body],
+        cwd=str(source), capture_output=True, text=True, check=False,
+    )
+    if create.returncode == 0:
+        console.print(f"[green]✓ opened PR[/green] {create.stdout.strip()}")
+        return 0
+    console.print(
+        f"[yellow]gh pr create failed ({create.stderr.strip() or 'unknown error'}); "
+        "falling back to a compare URL[/yellow]",
+        soft_wrap=True,
+    )
+    return None
 
 
 def do_run_cmd(feature_dir: Path) -> int:

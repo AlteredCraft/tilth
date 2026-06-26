@@ -29,6 +29,8 @@ def patched_handlers(monkeypatch):
 
     monkeypatch.setattr(loop, "do_run_cmd", make_stub("run"))
     monkeypatch.setattr(loop, "do_resume_cmd", make_stub("resume"))
+    monkeypatch.setattr(loop, "do_push_cmd", make_stub("push"))
+    monkeypatch.setattr(loop, "do_pr_cmd", make_stub("pr"))
     monkeypatch.setattr(loop, "do_reset_cmd", make_stub("reset"))
     monkeypatch.setattr(loop, "do_visualize_cmd", make_stub("visualize"))
     monkeypatch.setattr(loop, "do_info_cmd", make_stub("info"))
@@ -96,6 +98,30 @@ def test_resume_with_id(monkeypatch, patched_handlers):
 def test_resume_without_id_passes_none(monkeypatch, patched_handlers):
     _run(monkeypatch, ["resume"])
     assert patched_handlers == [("resume", (None,), {})]
+
+
+def test_push_with_id_default_remote(monkeypatch, patched_handlers):
+    _run(monkeypatch, ["push", "20260525-100000-aaa"])
+    assert patched_handlers == [("push", ("20260525-100000-aaa",), {"remote": "origin"})]
+
+
+def test_push_without_id_custom_remote(monkeypatch, patched_handlers):
+    _run(monkeypatch, ["push", "--remote", "upstream"])
+    assert patched_handlers == [("push", (None,), {"remote": "upstream"})]
+
+
+def test_pr_with_id_defaults(monkeypatch, patched_handlers):
+    _run(monkeypatch, ["pr", "20260525-100000-aaa"])
+    assert patched_handlers == [
+        ("pr", ("20260525-100000-aaa",), {"base": None, "remote": "origin", "web": False})
+    ]
+
+
+def test_pr_with_flags(monkeypatch, patched_handlers):
+    _run(monkeypatch, ["pr", "--base", "develop", "--remote", "upstream", "--web"])
+    assert patched_handlers == [
+        ("pr", (None,), {"base": "develop", "remote": "upstream", "web": True})
+    ]
 
 
 def test_reset_with_id_and_yes(monkeypatch, patched_handlers):

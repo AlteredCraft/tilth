@@ -42,9 +42,11 @@ nav:
       # provider config + caps, keys masked) for read-only inspection.
       # `tilth resume`: re-reads the feature, retries the trailing `failed` task
       # (unwinding its FAILED placeholder), resets wall-clock, preserves
-      # cumulative tokens. `tilth reset`: tears a session down (worktree + branch
-      # + sessions/<id>/), idempotent, gated by `[y/N]`/`--yes`. Includes the
-      # under-the-hood src pointers for each.
+      # cumulative tokens. `tilth push` / `tilth pr`: get the session branch out
+      # to a remote (the worktree-checkout gotcha, hybrid gh-or-compare-URL PR).
+      # `tilth reset`: tears a session down (worktree + branch + sessions/<id>/),
+      # idempotent, gated by `[y/N]`/`--yes`. Includes the under-the-hood src
+      # pointers for each.
       - Resuming & resetting a session: getting-started/resuming-and-resetting.md
       # The "honest version" of using Tilth on your own (non-demo) codebase:
       # what prep your repo actually needs (a clean git repo, optionally an

@@ -9,6 +9,7 @@ branch.
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -151,6 +152,68 @@ def commit_task(worktree: Path, task_id: str, title: str) -> str | None:
         raise WorkspaceError(f"commit failed: {proc.stderr.strip() or proc.stdout.strip()}")
     sha = _git(["rev-parse", "--short", "HEAD"], worktree).stdout.strip()
     return sha or None
+
+
+# --- remote / publishing ----------------------------------------------------
+#
+# Used by the user-invoked `tilth push` / `tilth pr` to get a session branch out
+# to a remote. They run against the *source* repo (which holds the remote and
+# shares its object store with the worktree's branch), never inside the loop.
+
+
+def remote_url(source: Path, remote: str = "origin") -> str | None:
+    """The configured URL of `remote` in `source`, or None if it isn't set."""
+    proc = _git(["remote", "get-url", remote], source)
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip() or None
+
+
+def branch_on_remote(source: Path, branch: str, remote: str = "origin") -> bool:
+    """Whether `branch` already exists on `remote` (a `git ls-remote --heads` hit)."""
+    proc = _git(["ls-remote", "--heads", remote, branch], source)
+    return proc.returncode == 0 and bool(proc.stdout.strip())
+
+
+def push_branch(source: Path, branch: str, remote: str = "origin") -> None:
+    """Push `branch` to `remote`, setting upstream. Raises WorkspaceError on failure."""
+    proc = _git(["push", "-u", remote, branch], source)
+    if proc.returncode != 0:
+        raise WorkspaceError(
+            f"failed to push {branch} to {remote}: {proc.stderr.strip() or proc.stdout.strip()}"
+        )
+
+
+def default_remote_branch(source: Path, remote: str = "origin") -> str | None:
+    """Best-effort default branch of `remote` (e.g. 'main') from its tracked HEAD.
+
+    Returns None when the remote's HEAD isn't known locally (never fetched, or
+    `set-head` not run) — the caller falls back to 'main'.
+    """
+    proc = _git(["symbolic-ref", f"refs/remotes/{remote}/HEAD"], source)
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return None
+    return proc.stdout.strip().rsplit("/", 1)[-1] or None
+
+
+def remote_web_url(url: str) -> str | None:
+    """Normalise a GitHub remote URL to its `https://github.com/<owner>/<repo>` web base.
+
+    Handles the scp-like (`git@github.com:O/r.git`), https, and ssh forms, with or
+    without a trailing `.git`. Returns None for non-GitHub or unparseable remotes —
+    the caller then can't offer a compare link.
+    """
+    url = (url or "").strip()
+    if not url:
+        return None
+    m = re.match(r"^git@github\.com:(?P<path>.+?)(?:\.git)?/?$", url)
+    if not m:
+        m = re.match(
+            r"^(?:https?|ssh)://(?:[^@/]+@)?github\.com/(?P<path>.+?)(?:\.git)?/?$", url
+        )
+    if not m:
+        return None
+    return f"https://github.com/{m.group('path')}"
 
 
 def reset_session_state(
