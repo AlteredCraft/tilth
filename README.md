@@ -40,7 +40,7 @@ tilth init                     # scaffolds ~/.tilth/.env
 # silently fall back to a provider/model your account doesn't have)
 ```
 
-> **Working *on* Tilth?** Install from a clone instead: `uv tool install --editable .` puts `tilth` on your PATH while tracking your working copy — see [Working with the codebase](#working-with-the-codebase).
+> **Working *on* Tilth?** Install from a clone instead — see [Working with the codebase](#working-with-the-codebase).
 
 Tilth keeps all per-user state under `~/.tilth/` — the `.env` above and every run's `sessions/<id>/`. Relocate it with `$TILTH_HOME` (whole tree) or `$TILTH_SESSIONS_DIR` (just the runs).
 
@@ -94,6 +94,17 @@ The `TILTH_*` env-var table (caps, evaluator routing, context-file selection) is
 ## Working with the codebase
 
 Working *on* Tilth itself rather than using it? `uv sync` for the dev env, then run the CLI straight from the clone with `uv run tilth …` (no install needed — sessions still land in `~/.tilth/` unless you set `$TILTH_HOME`).
+
+Prefer `tilth` on your PATH while still tracking your working copy? Install it editable from the clone instead:
+
+```bash
+uv tool install --editable .   # `tilth` on your PATH; resolves to this clone
+```
+
+Edits to the Python source then take effect immediately, with two caveats:
+
+- **Code edits are live; structural changes aren't.** Changing *dependencies*, the *entry point*, or the *version* in `pyproject.toml` needs a `uv tool install --editable . --reinstall`; plain `.py` edits don't.
+- **It shadows the published build.** While the editable install is active, `tilth` always runs this clone, not the PyPI release. To temp-test the *published* release without disturbing this install, run it ephemerally with `uvx` (e.g. `uvx tilth@0.1.0 --help`; add `--refresh` to bypass uv's cache and re-pull from PyPI) — or `uv tool uninstall tilth && uv tool install tilth` to point the PATH command back at PyPI.
 
 ```bash
 # Lint
