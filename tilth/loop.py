@@ -1515,6 +1515,7 @@ def _session_brief(sid: str) -> dict[str, Any]:
         "workspace": cp.get("workspace"),
         "feature_dir": cp.get("feature_dir"),
         "started_at": summ.get("started_at"),
+        "archived": cp.get("archived", False),
     }
 
 
@@ -1557,8 +1558,9 @@ def _info_detail(sid: str) -> int:
     latest = _latest_session_id(SESSIONS_DIR)
 
     latest_tag = "  [dim](latest)[/dim]" if sid == latest else ""
+    archived_tag = "  [dim](archived)[/dim]" if b.get("archived") else ""
     console.print(f"[bold]session[/bold]   {sid}{latest_tag}")
-    console.print(f"  status    {b['status']}")
+    console.print(f"  status    {b['status']}{archived_tag}")
     console.print(
         f"  source    {_abbrev_home(source) if source else '[dim](unknown)[/dim]'}"
     )
@@ -1568,7 +1570,14 @@ def _info_detail(sid: str) -> int:
     else:
         console.print("  feature   [dim](unknown)[/dim]")
 
-    if worktree:
+    if worktree and b.get("archived"):
+        # cleansed: the worktree + branch were intentionally removed, the record kept.
+        console.print(
+            f"  worktree  {_abbrev_home(worktree)}  "
+            "[dim](archived — worktree removed, record kept)[/dim]",
+            soft_wrap=True,
+        )
+    elif worktree:
         present = "present" if worktree.exists() else "[yellow]missing[/yellow]"
         console.print(f"  worktree  {_abbrev_home(worktree)}  [dim]{present}[/dim]")
         gitdir = ws.worktree_gitdir(worktree) if worktree.exists() else None
@@ -1793,7 +1802,7 @@ def do_resume_cmd(maybe_id: str | None) -> int:
 # the branch is pushed/PR'd, never merged (invariant #5).
 
 
-def _wake_for_publish(maybe_id: str | None, verb: str) -> Session | None:
+def _wake_for_op(maybe_id: str | None, verb: str) -> Session | None:
     """Resolve + wake a session for push/pr. Prints and returns None on any problem
     (no sessions, missing source/branch, source repo gone) — callers map that to exit 2."""
     sid = _resolve_session_id(maybe_id)
@@ -1823,7 +1832,7 @@ def _no_remote_msg(source: Path, remote: str) -> None:
 
 def do_push_cmd(maybe_id: str | None, remote: str = "origin") -> int:
     """Push a session's branch to `remote`. Latest session if no id given."""
-    session = _wake_for_publish(maybe_id, "push")
+    session = _wake_for_op(maybe_id, "push")
     if session is None:
         return 2
     source, branch = session.source, session.branch
@@ -1851,7 +1860,7 @@ def do_pr_cmd(
     Hybrid: uses `gh` when present (and not `--web`), else prints the GitHub
     compare URL. `base` defaults to the remote's tracked default branch, then 'main'.
     """
-    session = _wake_for_publish(maybe_id, "pr")
+    session = _wake_for_op(maybe_id, "pr")
     if session is None:
         return 2
     source, branch = session.source, session.branch
@@ -1915,6 +1924,86 @@ def _gh_open_pr(source: Path, branch: str, base: str, session: Session) -> int |
         soft_wrap=True,
     )
     return None
+
+
+# --- cleanse (retire a finished session, keep its audit record) --------------
+
+
+def do_cleanse_cmd(maybe_id: str | None, assume_yes: bool = False) -> int:
+    """Retire a finished, integrated session: remove its worktree + branch but keep
+    the session dir as the audit record (still inspectable via `tilth visualize`).
+
+    Refuses unless the branch is merged into another branch or pushed to a remote —
+    use `tilth reset` to discard unintegrated work instead. Prompts before acting
+    (skip with --yes), since the bare form targets the latest session."""
+    session = _wake_for_op(maybe_id, "cleanse")
+    if session is None:
+        return 2
+    if session.archived:
+        console.print(
+            f"[dim]{session.session_id} is already cleansed; record kept at "
+            f"{_abbrev_home(session.root)}.[/dim]",
+            soft_wrap=True,
+        )
+        return 0
+    source, branch = session.source, session.branch
+
+    if ws.branch_exists(source, branch) and not ws.branch_integrated(source, branch):
+        console.print(
+            f"[yellow]{branch} isn't merged into another branch or pushed to a "
+            "remote — cleanse would lose its commits.[/yellow]",
+            soft_wrap=True,
+        )
+        console.print(
+            "[dim]land it first (merge to main, or tilth push / tilth pr), then "
+            "retry — or tilth reset to discard it. If you merged it on the remote, "
+            "run git fetch first so this can see it.[/dim]",
+            soft_wrap=True,
+        )
+        return 2
+
+    console.print(f"[bold]cleanse session[/bold] {session.session_id}")
+    console.print(f"  status    {session.status}")
+    console.print(f"  branch    {branch}  [dim](removed)[/dim]")
+    if session.workspace:
+        console.print(
+            f"  worktree  {_abbrev_home(session.workspace)}  [dim](removed)[/dim]"
+        )
+    console.print(f"  keeps     {_abbrev_home(session.root)}  [dim](audit record)[/dim]")
+    if not assume_yes:
+        try:
+            answer = input("Continue? [y/N] ").strip().lower()
+        except EOFError:
+            answer = ""
+        if answer not in {"y", "yes"}:
+            console.print("[yellow]aborted[/yellow]")
+            return 1
+
+    try:
+        notes = ws.cleanse_session_state(source, session.workspace, branch)
+    except ws.WorkspaceError as exc:
+        console.print(f"[red]{exc}[/red]")
+        console.print(
+            "[yellow]hint: a process may be holding the worktree, or locks/"
+            "permissions are blocking removal.[/yellow]",
+            soft_wrap=True,
+        )
+        return 3
+
+    for note in notes:
+        console.print(f"  {note}")
+    session.log(
+        "archived",
+        {"branch": branch, "worktree": str(session.workspace) if session.workspace else None},
+    )
+    session.mark_archived()
+    console.print(f"[green]✓ cleansed {session.session_id}[/green]")
+    console.print(
+        f"[dim]kept the session record at {_abbrev_home(session.root)} — "
+        f"inspect anytime with: tilth visualize {session.session_id}[/dim]",
+        soft_wrap=True,
+    )
+    return 0
 
 
 def do_run_cmd(feature_dir: Path) -> int:

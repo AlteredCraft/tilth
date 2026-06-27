@@ -143,6 +143,10 @@ Event types:
                          viewer shows "N tasks" before every task has an event).
     session_resume     — resume woke a session; payload carries the resume plan
                          (which failed tasks were retried, FAILED commit unwound, etc.)
+    archived           — `tilth cleanse` retired the session: worktree + branch
+                         removed, this dir kept as the audit record. Payload:
+                         {branch, worktree}. Sets checkpoint `archived: true`;
+                         the run-outcome `status` is left intact.
     stop               — run terminated; payload.reason ∈
                          {all_done, wall_clock, token_cap, iter_cap, evaluator_cap,
                          provider_failure, no_case, interrupted, error}.
@@ -234,6 +238,8 @@ class Session:
         default_factory=lambda: {"worker": zero_usage(), "evaluator": zero_usage()}
     )
     status: str = "running"             # running | all_done | failed
+    archived: bool = False              # `tilth cleanse`: worktree+branch removed,
+                                        # session dir kept as the audit record
 
     @classmethod
     def new(cls, sessions_root: Path) -> Session:
@@ -283,6 +289,7 @@ class Session:
             tokens_used=cp.get("tokens_used", 0),
             usage=_restore_usage(cp.get("usage")),
             status=cp.get("status", "running"),
+            archived=cp.get("archived", False),
         )
         s.save_checkpoint()
         return s
@@ -359,6 +366,7 @@ class Session:
             "tokens_used": self.tokens_used,
             "usage": self.usage,
             "status": self.status,
+            "archived": self.archived,
         }
         self.checkpoint_path.write_text(json.dumps(cp, indent=2))
 
@@ -368,6 +376,13 @@ class Session:
                 f"unknown session status {status!r}; expected one of {sorted(SESSION_STATUSES)}"
             )
         self.status = status
+        self.save_checkpoint()
+
+    def mark_archived(self) -> None:
+        """Record that `tilth cleanse` removed the worktree + branch but kept this
+        session dir as the audit record. Separate from `status`, which preserves
+        how the run ended (all_done / failed)."""
+        self.archived = True
         self.save_checkpoint()
 
     def record_usage(self, u: dict[str, Any], phase: str | None = None) -> None:

@@ -44,7 +44,10 @@ nav:
       # (unwinding its FAILED placeholder), resets wall-clock, preserves
       # cumulative tokens. `tilth push` / `tilth pr`: get the session branch out
       # to a remote (the worktree-checkout gotcha, hybrid gh-or-compare-URL PR).
-      # `tilth reset`: tears a session down (worktree + branch + sessions/<id>/),
+      # `tilth cleanse`: retire a merged/pushed session — worktree + branch gone,
+      # audit record kept (the safe, gated counterpart to reset; `[y/N]`/`--yes`).
+      # `tilth reset`:
+      # tears a session down completely (worktree + branch + sessions/<id>/),
       # idempotent, gated by `[y/N]`/`--yes`. Includes the under-the-hood src
       # pointers for each.
       - Resuming & resetting a session: getting-started/resuming-and-resetting.md

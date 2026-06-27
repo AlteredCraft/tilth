@@ -6,6 +6,7 @@ Subcommands:
     tilth resume    [<session_id>]
     tilth push      [<session_id>] [--remote NAME]
     tilth pr        [<session_id>] [--base BRANCH] [--remote NAME] [--web]
+    tilth cleanse   [<session_id>] [-y]
     tilth reset     [<session_id>] [-y]
     tilth visualize [<session_id>] [--port N]
     tilth info      [<session_id>]
@@ -36,7 +37,7 @@ from tilth import loop, paths
 console = Console()
 
 SUBCOMMANDS = frozenset(
-    {"init", "run", "resume", "push", "pr", "reset", "visualize", "info", "config"}
+    {"init", "run", "resume", "push", "pr", "cleanse", "reset", "visualize", "info", "config"}
 )
 
 
@@ -177,6 +178,25 @@ def _build_parser():
         help="Skip gh; just print the compare URL to open the PR in a browser.",
     )
 
+    cleanse_p = sub.add_parser(
+        "cleanse",
+        help="Retire a finished, integrated session (keep its audit record).",
+        description=(
+            "Remove a session's worktree and session/<id> branch, but KEEP "
+            "~/.tilth/sessions/<id>/ as the audit record (still inspectable with "
+            "tilth visualize). Refuses unless the branch is merged into another "
+            "branch or pushed to a remote — use tilth reset to discard instead."
+        ),
+    )
+    cleanse_p.add_argument(
+        "session_id",
+        nargs="?",
+        help="Session ID to cleanse; defaults to the latest session.",
+    )
+    cleanse_p.add_argument(
+        "-y", "--yes", action="store_true", help="Skip the confirmation prompt."
+    )
+
     reset_p = sub.add_parser(
         "reset",
         help="Tear down a session (worktree, branch, session dir).",
@@ -258,6 +278,8 @@ def _dispatch(args) -> int:
         return loop.do_pr_cmd(
             args.session_id, base=args.base, remote=args.remote, web=args.web
         )
+    if args.command == "cleanse":
+        return loop.do_cleanse_cmd(args.session_id, args.yes)
     if args.command == "reset":
         return loop.do_reset_cmd(args.session_id, args.yes)
     if args.command == "visualize":

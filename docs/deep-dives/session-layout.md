@@ -34,6 +34,7 @@ The flip side: the target repo stays pristine. Tilth never asks you to add anyth
 |---|---|---|---|
 | `session_start` | A session begins (worktree created) | `source`, `phase: "run"`, `worktree`, `branch`, `worker_model`, `evaluator_model`, `base_url` | card |
 | `session_resume` | `tilth resume` woke a session | `last_stop`, `retried`, `pending`, `unwound_commit` | card |
+| `archived` | `tilth cleanse` retired the session (worktree + branch removed, dir kept) | `branch`, `worktree` | — |
 | `context_reset` | A new task starts; messages rebuilt from disk | `task_id` | card |
 | `prompt_assembled` | A user message is assembled, pre-send | `role` (`worker` \| `evaluator`), `iter`, `content` (capped) | — |
 | `memory_load` | Memory channels loaded into a prompt | per-channel `present`/`chars`/`truncated`/`sha256_8` | — |

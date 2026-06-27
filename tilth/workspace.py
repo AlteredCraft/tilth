@@ -216,6 +216,73 @@ def remote_web_url(url: str) -> str | None:
     return f"https://github.com/{m.group('path')}"
 
 
+# --- cleanse (retire a finished session: worktree + branch gone, dir kept) -----
+
+
+def branch_exists(source: Path, branch: str) -> bool:
+    """Whether `branch` is a live local head in `source`."""
+    return (
+        _git(["rev-parse", "--verify", "-q", f"refs/heads/{branch}"], source).returncode == 0
+    )
+
+
+def branch_integrated(source: Path, branch: str) -> bool:
+    """True if `branch`'s tip is reachable from another local or remote ref — its
+    work is merged into another branch (e.g. main) or pushed to a remote.
+
+    The safety gate for `tilth cleanse`: deleting the branch only loses nothing
+    when the commits survive elsewhere. The branch's own head is excluded; any
+    other local head or remote-tracking ref containing the tip counts. Reflects
+    local knowledge only — a merge that happened solely on the remote needs a
+    `git fetch` first to be seen.
+    """
+    tip = _git(["rev-parse", "--verify", "-q", branch], source).stdout.strip()
+    if not tip:
+        return False
+    proc = _git(
+        ["for-each-ref", "--contains", tip, "--format=%(refname)",
+         "refs/heads/", "refs/remotes/"],
+        source,
+    )
+    if proc.returncode != 0:
+        return False
+    own = f"refs/heads/{branch}"
+    return any(r.strip() and r.strip() != own for r in proc.stdout.splitlines())
+
+
+def cleanse_session_state(
+    source: Path, worktree: Path | None, branch: str | None
+) -> list[str]:
+    """Remove a session's worktree (+ its admin entry) and branch, KEEPING the
+    session dir. The `tilth cleanse` counterpart to `reset_session_state`, which
+    also drops the dir. Raises WorkspaceError if the worktree can't be removed.
+    """
+    notes: list[str] = []
+    if worktree is not None:
+        if worktree.exists():
+            proc = _git(["worktree", "remove", "--force", str(worktree)], source)
+            if proc.returncode != 0:
+                raise WorkspaceError(
+                    f"worktree remove failed: {proc.stderr.strip() or proc.stdout.strip()}"
+                )
+            notes.append(f"removed worktree {worktree}")
+        else:
+            _git(["worktree", "prune"], source)
+            notes.append(f"worktree already gone (pruned admin entries) {worktree}")
+    if branch:
+        proc = _git(["branch", "-D", branch], source)
+        if proc.returncode == 0:
+            notes.append(f"deleted branch {branch}")
+        else:
+            err = (proc.stderr.strip() or proc.stdout.strip()) or "unknown error"
+            notes.append(
+                f"branch {branch} already gone"
+                if "not found" in err.lower()
+                else f"branch delete warning: {err}"
+            )
+    return notes
+
+
 def reset_session_state(
     source: Path | None,
     worktree: Path | None,

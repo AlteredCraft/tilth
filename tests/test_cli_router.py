@@ -31,6 +31,7 @@ def patched_handlers(monkeypatch):
     monkeypatch.setattr(loop, "do_resume_cmd", make_stub("resume"))
     monkeypatch.setattr(loop, "do_push_cmd", make_stub("push"))
     monkeypatch.setattr(loop, "do_pr_cmd", make_stub("pr"))
+    monkeypatch.setattr(loop, "do_cleanse_cmd", make_stub("cleanse"))
     monkeypatch.setattr(loop, "do_reset_cmd", make_stub("reset"))
     monkeypatch.setattr(loop, "do_visualize_cmd", make_stub("visualize"))
     monkeypatch.setattr(loop, "do_info_cmd", make_stub("info"))
@@ -122,6 +123,21 @@ def test_pr_with_flags(monkeypatch, patched_handlers):
     assert patched_handlers == [
         ("pr", (None,), {"base": "develop", "remote": "upstream", "web": True})
     ]
+
+
+def test_cleanse_with_id(monkeypatch, patched_handlers):
+    _run(monkeypatch, ["cleanse", "20260525-100000-aaa"])
+    assert patched_handlers == [("cleanse", ("20260525-100000-aaa", False), {})]
+
+
+def test_cleanse_with_id_and_yes(monkeypatch, patched_handlers):
+    _run(monkeypatch, ["cleanse", "20260525-100000-aaa", "-y"])
+    assert patched_handlers == [("cleanse", ("20260525-100000-aaa", True), {})]
+
+
+def test_cleanse_without_id_passes_none(monkeypatch, patched_handlers):
+    _run(monkeypatch, ["cleanse"])
+    assert patched_handlers == [("cleanse", (None, False), {})]
 
 
 def test_reset_with_id_and_yes(monkeypatch, patched_handlers):

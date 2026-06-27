@@ -83,6 +83,33 @@ For a run that stopped short (a cap, an interrupt, or a failed task), the summar
 
 `do_push_cmd` / `do_pr_cmd` (`loop.py`) mirror resume's resolution (latest session by default → `Session.wake()`), then operate on the source repo recovered from the checkpoint: `ws.push_branch()` runs `git push -u`, while `ws.remote_url()` / `ws.branch_on_remote()` / `ws.default_remote_branch()` (`workspace.py`) gate the PR step. `gh pr create` is shelled out only when `gh` is on `PATH`; otherwise `ws.remote_web_url()` builds the compare link. None of it runs inside the loop.
 
+## Cleansing — keep the record, retire the rest
+
+Once a session's branch is **merged or pushed**, you usually don't need its worktree and `session/<id>` branch anymore — but you'll often want to keep the run's **audit record** (the `events.jsonl` and friends) so you can still replay it in [`tilth visualize`](visualizing.md). That's what `tilth cleanse` is for — the *safe* counterpart to `reset`:
+
+```bash
+tilth cleanse                # the latest session
+tilth cleanse <session_id>   # or name one explicitly
+tilth cleanse --yes          # skip the y/N confirmation
+```
+
+It removes the worktree (and its `.git/worktrees/workspace*` admin entry) and deletes the `session/<id>` branch, but **keeps `~/.tilth/sessions/<id>/`** and marks the run `archived`. `tilth info` then shows it as *archived* (rather than an alarming *missing* worktree), and the visualizer still lists and replays it.
+
+Like `reset`, `cleanse` prints what it's about to remove (status, branch, the worktree it deletes, the record it keeps) and waits for a `[y/N]` confirmation — the bare form defaults to the *latest* session, which is often the one you're still working in, so the prompt is the guard against retiring the wrong run. Pass `--yes` to skip it. Re-running on an already-cleansed session is a calm no-op.
+
+Unlike `reset`, `cleanse` is **gated**: it refuses unless the branch is merged into another branch or present on a remote, so it can't silently drop unintegrated commits. If you merged the work *only* on the remote (e.g. via a PR), run `git fetch` first so cleanse can see it; if you genuinely want to throw the work away, use `reset`.
+
+| | `tilth cleanse` | `tilth reset` |
+|---|---|---|
+| Intent | retire *finished, integrated* work | discard *unwanted* work |
+| Safety | refuses unless merged or pushed | force-removes anything |
+| Worktree + `session/<id>` branch | removed | removed |
+| `~/.tilth/sessions/<id>/` (audit record) | **kept** | deleted |
+
+### Under the hood
+
+`do_cleanse_cmd` (`loop.py`) wakes the session (like resume), checks `ws.branch_integrated()` (`workspace.py` — is the tip reachable from another local head or any remote-tracking ref), then `ws.cleanse_session_state()` removes the worktree + branch while leaving the dir. `Session.mark_archived()` sets `archived: true` in the checkpoint and an `archived` event lands in `events.jsonl`, so the record itself notes it was retired — the run-outcome `status` (`all_done` / `failed`) stays intact.
+
 ## Resetting
 
 ```bash
