@@ -1,6 +1,6 @@
 [project]
 name = "tilth"
-version = "0.1.0"
+version = "0.2.0"
 description = "Tilth — minimal long-running agent harness against any OpenAI-compatible endpoint. Brain/Hands/Session split, Ralph loop, four memory channels."
 readme = "README.md"
 requires-python = ">=3.12"
