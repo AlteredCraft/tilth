@@ -2,7 +2,7 @@
 
 A single Tilth run has artifacts on disk in two distinct places: the **harness side** (under `~/.tilth/sessions/<id>/`) and the **target repo side** (a branch and a worktree admin entry inside the repo's `.git/`). This split is deliberate.
 
-![Filesystem trees for one Tilth run: HARNESS SIDE under ~/.tilth/sessions/<id>/ holds workspace/, events.jsonl, summary.json, checkpoint.json; TARGET REPO SIDE under ~/projects/tilth-demo/.git/ holds refs/heads/session/<id> and worktrees/<id>/. A sage-green arrow labeled 'git worktree binds these' connects the workspace/ on the left to the worktrees/<id>/ admin entry on the right.](../assets/session-layout.png)
+![Filesystem trees for one Tilth run: HARNESS SIDE under ~/.tilth/sessions/<id>/ holds workspace/, events.jsonl, summary.json, checkpoint.json; TARGET REPO SIDE under ~/projects/tilth-demo/.git/ holds refs/heads/session/<id> and worktrees/workspace/. A sage-green arrow labeled 'git worktree binds these' connects the workspace/ on the left to the worktrees/workspace/ admin entry on the right.](../assets/session-layout.png)
 
 *One session, two locations. The sage-green link is the `git worktree` registration that binds them.*
 {: .caption }
@@ -24,7 +24,7 @@ The flip side: the target repo stays pristine. Tilth never asks you to add anyth
 - **`ls` in the target repo won't show the worktree.** If you're looking for "where is the agent editing right now," look under `~/.tilth/sessions/<id>/workspace/`, not in the target repo.
 - **Branches accumulate in the target repo, not in Tilth.** Every run leaves a `session/<id>` branch in the target repo's `.git/refs/heads/`. If you delete your Tilth clone without resetting first, those branches stay behind in your project. Clean them up the same way you would any feature branch (`git branch -D session/<id>` or `tilth reset` before you blow Tilth away).
 - **Multiple concurrent sessions against the same target repo are fine.** Each gets its own `sessions/<id>/workspace/` directory on the left and its own branch + admin entry on the right. Git is happy to host many worktrees off one repo.
-- **The admin entry is the link.** If the working tree directory under Tilth gets removed manually (e.g., `rm -rf`), the `.git/worktrees/<id>/` admin entry becomes stale; `git worktree prune` cleans it up. `tilth reset` does this correctly.
+- **The admin entry is the link.** If the working tree directory under Tilth gets removed manually (e.g., `rm -rf`), the `.git/worktrees/workspace/` admin entry becomes stale; `git worktree prune` cleans it up. `tilth reset` does this correctly.
 
 ## Event types
 
