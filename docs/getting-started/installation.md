@@ -16,9 +16,10 @@ Tilth publishes to PyPI, so the CLI installs like any other Python tool. Pick wh
 ```bash
 # uv (recommended — Tilth is uv-native)
 uv tool install tilth          # `tilth` on your PATH, runnable from any directory
+# -- OR -- 
 uvx tilth --help               # …or run it ephemerally, npx-style, with no install
 
-# pipx
+# pipx: Installing with pipx is another option
 pipx install tilth             # persistent
 pipx run tilth --help          # ephemeral
 ```
