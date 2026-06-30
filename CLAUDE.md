@@ -55,6 +55,7 @@ tilth/
 │   ├── data/              # env.example template (shipped in the wheel for `tilth init`)
 │   └── visualize/         # tilth visualize: live web viewer over ~/.tilth/sessions/ (stdlib http server)
 ├── examples/seed-reference/  # frozen pre-prompt-driven example (historical teaching artifact)
+├── skills/                # shipped, optional Claude Code skills users install into ~/.claude/skills/ (not part of the harness — e.g. tilth-feature-author, which interviews + authors a .tilth/<feature>/ dir)
 └── tests/                 # the harness's own pytest suite (run state now lives in ~/.tilth/)
 ```
 

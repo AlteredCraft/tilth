@@ -57,6 +57,13 @@ nav:
       # picking an evaluator model, when this is the wrong tool, and what to
       # do on a first run.
       - Using on your own project: getting-started/your-own-project.md
+      # The optional `tilth-feature-author` Claude Code skill (ships in the repo
+      # under `skills/`): how to install it, the scan → interview → slice →
+      # author workflow it runs to produce a `.tilth/<feature>/` directory, its
+      # what/where-not-how altitude ceiling, and when to skip it (single-task
+      # fixes, non-Claude-Code users). The purpose-built way to author the
+      # contract; the harness runs the same with or without it.
+      - Authoring a feature with the skill: getting-started/feature-author-skill.md
 
   - Architecture:
       # The Brain / Hands / Session split, generator/evaluator separation

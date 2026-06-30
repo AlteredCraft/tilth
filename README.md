@@ -46,6 +46,8 @@ Tilth keeps all per-user state under `~/.tilth/` — the `.env` above and every 
 
 You author the feature as markdown in the target repo, then run it — there's no interview step. The work lives in a feature directory you name under `<repo>/.tilth/<feature>/` (one repo can hold several features):
 
+> **Don't want to hand-write it?** Tilth ships an optional Claude Code skill, [`tilth-feature-author`](skills/tilth-feature-author/) (`skills/` in this repo), that interviews you against your repo's code and writes the `.tilth/<feature>/` directory in the format below. See [Authoring a feature with the skill](https://alteredcraft.github.io/tilth/getting-started/feature-author-skill/).
+
 ```
 .tilth/todo-cli/
 ├── overview.md            # the feature's goal + scope boundaries (required)

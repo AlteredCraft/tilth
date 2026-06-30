@@ -98,7 +98,7 @@ A few notes worth pulling out of the table:
 - **Not harness state.** The harness never writes under `.tilth/` — status, progress, and ledgers all live under `~/.tilth/sessions/<id>/`. Deleting a session (`tilth reset`) leaves your authored files untouched.
 - **Not a queue the agent manages.** The worker sees the plan as read-only prose; scheduling is `_next_pending` in code.
 - **Not versioned.** There's no format-version field, and the schema isn't formally pinned. The frontmatter reader ignores unknown keys, so additive extensions (e.g. task dependencies, per-task budget hints) have room — but nothing of the sort exists yet.
-- **Not generated.** Earlier Tilth had an interview step (`prep-feature`) that produced a machine-written `prd.json`; the prompt-driven refactor replaced it with this hand-authored format. Draft the files with whatever agent you like — the templates are designed to be model-fillable — but you sign the contract.
+- **Not generated.** Earlier Tilth had an interview step (`prep-feature`) that produced a machine-written `prd.json`; the prompt-driven refactor replaced it with this hand-authored format. Draft the files with whatever agent you like — the templates are designed to be model-fillable — but you sign the contract. The interview lives *outside* the harness now, as the optional [`tilth-feature-author` skill](../getting-started/feature-author-skill.md) that writes this format for you.
 
 ## Where to look in the code
 

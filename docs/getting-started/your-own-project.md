@@ -24,7 +24,7 @@ A few authoring habits that pay off:
 - **Acceptance criteria the evaluator can check against a diff.** "Running `cli export --format json` writes valid JSON to stdout" beats "export works correctly."
 - **Tight scope boundaries in `overview.md`.** The "Out of scope" list is what keeps slices from growing — the evaluator hard-rejects cross-task interference, so tell it where the lines are.
 
-You can draft the files with any agent you like (the templates are designed to be model-fillable) — but read what it wrote before running; you're signing the contract.
+You can draft the files with any agent you like (the templates are designed to be model-fillable) — but read what it wrote before running; you're signing the contract. If you use Claude Code, the [`tilth-feature-author` skill](feature-author-skill.md) is the purpose-built way to do this: it interviews you against your repo's code and writes the `.tilth/<feature>/` directory in this exact format.
 
 ## 3. Run it
 
