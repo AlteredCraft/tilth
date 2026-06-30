@@ -1,0 +1,1771 @@
+<!DOCTYPE html><html lang="en" class="no-js"><head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A minimal long-running agent harness against any OpenAI-compatible LLM endpoint.">
+      
+      
+        <meta name="author" content="Altered Craft">
+      
+      
+        <link rel="canonical" href="https://alteredcraft.github.io/tilth/getting-started/resuming-and-resetting/">
+      
+      
+        <link rel="prev" href="../visualizing/">
+      
+      
+        <link rel="next" href="../your-own-project/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Resuming &amp; resetting a session - Tilth</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans:300,300i,400,400i,700,700i%7CIBM+Plex+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"IBM Plex Sans";--md-code-font:"IBM Plex Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  <link href="../../assets/stylesheets/glightbox.min.css" rel="stylesheet"><script src="../../assets/javascripts/glightbox.min.js"></script><style id="glightbox-style">
+            html.glightbox-open { overflow: initial; height: 100%; }
+            .gslide-title { margin-top: 0px; user-select: text; }
+            .gslide-desc { color: #666; user-select: text; }
+            .gslide-image img { background: white; }
+            .gscrollbar-fixer { padding-right: 15px; }
+            .gdesc-inner { font-size: 0.75rem; }
+            body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color); }
+            body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
+            body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
+        </style></head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#resuming-resetting-a-session" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Tilth" class="md-header__button md-logo" aria-label="Tilth" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Tilth
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Resuming &amp; resetting a session
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom" aria-hidden="true" type="radio" name="__palette" id="__palette_0">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required="">
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix="">
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/AlteredCraft/tilth" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    AlteredCraft/tilth
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../installation/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../architecture/overview/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../deep-dives/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Deep dives
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/safety-guards/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Tilth" class="md-nav__button md-logo" aria-label="Tilth" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+
+    </a>
+    Tilth
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/AlteredCraft/tilth" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    AlteredCraft/tilth
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix="">
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked="">
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../running-the-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running the demo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../visualizing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visualizing a session
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resuming &amp; resetting a session
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resuming &amp; resetting a session
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#inspecting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inspecting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resuming" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resuming
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Resuming">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-resume-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What resume does
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#under-the-hood" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Under the hood
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#getting-the-work-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Getting the work out
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Getting the work out">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#under-the-hood_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Under the hood
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cleansing-keep-the-record-retire-the-rest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cleansing — keep the record, retire the rest
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Cleansing — keep the record, retire the rest">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#under-the-hood_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Under the hood
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resetting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resetting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Resetting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#under-the-hood_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Under the hood
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#manual-fallback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual fallback
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../your-own-project/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Using on your own project
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../feature-author-skill/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authoring a feature with the skill
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3">
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/anatomy-of-a-run/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Anatomy of a run
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/memory-channels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory channels
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/agent-visibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent visibility
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4">
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../deep-dives/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deep dives
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deep dives
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deep-dives/hyper-observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hyper-observability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deep-dives/two-loops/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The two loops
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deep-dives/worker-evaluator-dialogue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The worker↔evaluator dialogue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deep-dives/token-recording/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Token recording
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deep-dives/task-format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The task format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deep-dives/session-layout/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Session layout
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5">
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/safety-guards/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Safety guards
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing to PyPI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#inspecting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inspecting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resuming" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resuming
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Resuming">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-resume-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What resume does
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#under-the-hood" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Under the hood
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#getting-the-work-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Getting the work out
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Getting the work out">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#under-the-hood_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Under the hood
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cleansing-keep-the-record-retire-the-rest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cleansing — keep the record, retire the rest
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Cleansing — keep the record, retire the rest">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#under-the-hood_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Under the hood
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resetting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resetting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Resetting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#under-the-hood_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Under the hood
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#manual-fallback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual fallback
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/AlteredCraft/tilth/edit/main/docs/getting-started/resuming-and-resetting.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"></path></svg>
+    </a>
+  
+  
+
+
+<h1 id="resuming-resetting-a-session">Resuming &amp; resetting a session<a class="headerlink" href="#resuming-resetting-a-session" title="Permanent link">¶</a></h1>
+<p>A Tilth session is append-only on disk: an <code>events.jsonl</code> log plus a <code>checkpoint.json</code> snapshot under <code>~/.tilth/sessions/&lt;id&gt;/</code>. That's enough state to <strong>resume</strong> the run on a fresh process — or, when you're done with it, to <strong>reset</strong> (tear it down) in one command.</p>
+<h2 id="inspecting">Inspecting<a class="headerlink" href="#inspecting" title="Permanent link">¶</a></h2>
+<p>Before you resume or reset, <code>tilth info</code> tells you what's there — and, for a single session, exactly where its worktree landed.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>tilth<span class="w"> </span>info<span class="w">                 </span><span class="c1"># every session, newest first</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>tilth<span class="w"> </span>info<span class="w"> </span>&lt;session_id&gt;<span class="w">    </span><span class="c1"># one session's full detail</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>tilth<span class="w"> </span>config<span class="w">               </span><span class="c1"># resolved provider config + run caps</span>
+</code></pre></div>
+<p>Bare <code>tilth info</code> prints the resolved locations (Tilth home, the <code>.env</code> it loaded, the sessions dir) and a table of every session — status, task progress, and tokens — newest first, with the latest tagged. <code>tilth info &lt;session_id&gt;</code> expands one run into its full dossier: source repo, feature, branch, token/cost totals, and the <strong>worktree mapping</strong> — both the worktree folder under <code>~/.tilth/sessions/&lt;id&gt;/workspace/</code> <em>and</em> the git admin dir it points at (<code>&lt;source&gt;/.git/worktrees/&lt;name&gt;</code>), cross-checked against the source repo's worktree registry so a worktree you deleted by hand shows up as <code>stale — run git worktree prune</code>. This is the quickest answer to "where is the agent's work, and is git still tracking it?"</p>
+<p><code>tilth config</code> prints the configuration the harness would run with — worker and evaluator endpoints/models, the per-task and per-run caps, and the context files — plus which <code>.env</code> it resolved. API keys are masked (<code>set (…tail)</code>), so the output is safe to paste into an issue. It works with a partial config too: missing required values are flagged rather than fatal, so you can run it before <code>tilth init</code> to see what's still unset.</p>
+<p>All three are read-only — they read <code>checkpoint.json</code>/<code>summary.json</code> and the environment, never replay the loop or touch a model.</p>
+<h2 id="resuming">Resuming<a class="headerlink" href="#resuming" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>tilth<span class="w"> </span>resume<span class="w">               </span><span class="c1"># picks the most recent session</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>tilth<span class="w"> </span>resume<span class="w"> </span>&lt;session_id&gt;<span class="w">  </span><span class="c1"># or name one explicitly</span>
+</code></pre></div>
+<p>Bare <code>tilth resume</code> selects the most recent session in <code>~/.tilth/sessions/</code> by directory name (the timestamp prefix sorts chronologically).</p>
+<p>Continuing the <a href="../../deep-dives/two-loops/#what-can-stop-a-run">cap-hit example</a> — same session (<code>20260523-082151-45f0a5</code>), with <code>TILTH_MAX_ITERATIONS_PER_TASK</code> bumped from <code>8</code> to <code>16</code> in <code>~/.tilth/.env</code> before resuming (this example was captured when the cap was <code>8</code>, below today's default of <code>32</code>):</p>
+<p><a class="glightbox" data-type="image" data-width="auto" data-height="auto" href="../../assets/resume-after-iter-cap.png" data-desc-position="bottom"><img alt="Terminal capture of uv run tilth resume. The harness prints &quot;↻ resume plan: retrying T-003 (was: failed); then: T-004, T-005; last stop: iter_cap&quot;, then the session header (session id, branch, worktree, model deepseek/deepseek-v4-flash), then &quot;task T-003 iter 1&quot; with a read_file call, &quot;task T-003 iter 2&quot; with two glob calls, and &quot;task T-003 iter 3&quot; beginning." src="../../assets/resume-after-iter-cap.png"></a></p>
+<p class="caption"><em>The plan banner spells out what's about to happen: T-003 retried with a fresh iteration budget, then T-004 and T-005 in order. The iteration counter restarts at 1 — the bumped cap gives the retry 16 iterations instead of the 8 that ran out.</em></p>
+<h3 id="what-resume-does">What resume does<a class="headerlink" href="#what-resume-does" title="Permanent link">¶</a></h3>
+<ul>
+<li><strong>Re-reads the feature from your repo.</strong> Task content always comes from the feature directory you ran (<code>&lt;repo&gt;/.tilth/&lt;feature&gt;/</code>, never cached in the session), so a description you sharpen between runs is live on the retry. Tasks already marked <code>done</code> in <code>sessions/&lt;id&gt;/task-status.json</code> are skipped.</li>
+<li><strong>Retries the trailing failed task</strong>, if any. Iter-cap, evaluator-cap, and no-case stops mark the in-flight task <code>failed</code> and write a <code>FAILED (...)</code> placeholder commit; resume flips it back to <code>pending</code> and unwinds the placeholder so the retry sees the partial work as uncommitted changes — the evaluator then gets one cumulative diff, not just the new edits. Wall-clock and dollar-spend caps stop <em>between</em> tasks, so there's no failed task to unwind.</li>
+<li><strong>Re-reads the per-task ledger.</strong> The evaluator's prior verdicts survive on disk, so a retry shows both sides the verdict history from the run before — even though the conversation is gone. See <a href="../../deep-dives/worker-evaluator-dialogue/#the-per-task-ledger-memory-across-iterations">The worker↔evaluator dialogue</a>.</li>
+<li><strong>Resets the wall-clock budget</strong> for this resume — otherwise a resume the next day would trip <code>TILTH_MAX_WALL_CLOCK_MINUTES</code> immediately.</li>
+<li><strong>Preserves the spend total.</strong> If the original run hit <code>TILTH_MAX_TOKEN_DOLLAR_SPEND</code>, bump it in <code>~/.tilth/.env</code> before resuming or the new run stops on the first spend check.</li>
+</ul>
+<h3 id="under-the-hood">Under the hood<a class="headerlink" href="#under-the-hood" title="Permanent link">¶</a></h3>
+<p>On wake, <code>Session.wake()</code> (<code>session.py</code>) reads <code>checkpoint.json</code> to reconstruct <code>tokens_used</code>, <code>source</code>, <code>workspace</code>, and <code>branch</code>, and resets <code>started_at</code> (wall-clock is per-resume). <code>do_resume_cmd</code> (<code>loop.py</code>) re-reads the feature, then <code>_prepare_resume()</code> reads the trailing <code>stop</code> event to learn how the last run ended: any <code>failed</code> task is flipped back to <code>pending</code> and <code>ws.unwind_failed_commit()</code> (<code>workspace.py</code>) soft-resets the <code>FAILED (...)</code> placeholder so the partial work returns to the index. A <code>session_resume</code> event records the structured plan (<code>last_stop</code>, <code>retried</code>, <code>pending</code>, <code>unwound_commit</code>) — the resume parallel of <code>session_start</code>, auditable from <code>events.jsonl</code> alone.</p>
+<p>Resume doesn't loop endlessly: if a retried task hits a task-halting stop <em>again</em>, the outer loop halts with that reason just like the original run, and the next <code>tilth resume</code> would retry once more. Each resume is a fresh ride through the same loop.</p>
+<h2 id="getting-the-work-out">Getting the work out<a class="headerlink" href="#getting-the-work-out" title="Permanent link">¶</a></h2>
+<p>When a run finishes, the commits live on the <code>session/&lt;id&gt;</code> branch — but that branch is <strong>checked out in the worktree</strong> under <code>~/.tilth/sessions/&lt;id&gt;/workspace/</code>, not in your repo. Reaching for it the obvious way fails:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>$ git switch session/20260626-101715-1f38db
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>fatal: 'session/20260626-101715-1f38db' is already used by worktree at
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>'/Users/you/.tilth/sessions/20260626-101715-1f38db/workspace'
+</code></pre></div>
+<p>That's git refusing to check out a branch that's already live in another worktree — see <a href="../../deep-dives/session-layout/#why-a-worktree-not-just-a-branch">Why a worktree, not just a branch</a>. There are two ways forward, and the run summary prints both:</p>
+<p><strong>Work with it locally</strong> — <code>cd</code> into the worktree, where the branch is already checked out:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">cd</span><span class="w"> </span>~/.tilth/sessions/&lt;id&gt;/workspace<span class="w">   </span><span class="c1"># build, test, inspect the diff</span>
+</code></pre></div>
+<p><strong>Send it to a remote</strong> for review:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>tilth<span class="w"> </span>push<span class="w">                 </span><span class="c1"># push session/&lt;id&gt; to origin (latest session)</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>tilth<span class="w"> </span>push<span class="w"> </span>&lt;session_id&gt;<span class="w">    </span><span class="c1"># or name one; --remote NAME for a non-origin remote</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>tilth<span class="w"> </span>pr<span class="w">                   </span><span class="c1"># ensure the branch is on the remote, then open a PR</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>tilth<span class="w"> </span>pr<span class="w"> </span>--base<span class="w"> </span>develop<span class="w">    </span><span class="c1"># PR against a non-default base; --web to skip gh</span>
+</code></pre></div>
+<p><code>tilth pr</code> is <strong>hybrid</strong>: with the <a href="https://cli.github.com/"><code>gh</code> CLI</a> installed and authenticated it creates the PR and prints its URL; otherwise (or with <code>--web</code>) it pushes the branch and prints the GitHub <em>compare</em> URL for you to open the PR yourself. Both commands are opt-in and user-invoked — Tilth never pushes during a run, and never merges (the <code>session/*</code> branch is yours to review like any other). The PR base defaults to the remote's tracked default branch, then <code>main</code>.</p>
+<p>For a run that stopped short (a cap, an interrupt, or a failed task), the summary points at <code>tilth resume</code> instead — finish the work first, then publish.</p>
+<h3 id="under-the-hood_1">Under the hood<a class="headerlink" href="#under-the-hood_1" title="Permanent link">¶</a></h3>
+<p><code>do_push_cmd</code> / <code>do_pr_cmd</code> (<code>loop.py</code>) mirror resume's resolution (latest session by default → <code>Session.wake()</code>), then operate on the source repo recovered from the checkpoint: <code>ws.push_branch()</code> runs <code>git push -u</code>, while <code>ws.remote_url()</code> / <code>ws.branch_on_remote()</code> / <code>ws.default_remote_branch()</code> (<code>workspace.py</code>) gate the PR step. <code>gh pr create</code> is shelled out only when <code>gh</code> is on <code>PATH</code>; otherwise <code>ws.remote_web_url()</code> builds the compare link. None of it runs inside the loop.</p>
+<h2 id="cleansing-keep-the-record-retire-the-rest">Cleansing — keep the record, retire the rest<a class="headerlink" href="#cleansing-keep-the-record-retire-the-rest" title="Permanent link">¶</a></h2>
+<p>Once a session's branch is <strong>merged or pushed</strong>, you usually don't need its worktree and <code>session/&lt;id&gt;</code> branch anymore — but you'll often want to keep the run's <strong>audit record</strong> (the <code>events.jsonl</code> and friends) so you can still replay it in <a href="../visualizing/"><code>tilth visualize</code></a>. That's what <code>tilth cleanse</code> is for — the <em>safe</em> counterpart to <code>reset</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>tilth<span class="w"> </span>cleanse<span class="w">                </span><span class="c1"># the latest session</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>tilth<span class="w"> </span>cleanse<span class="w"> </span>&lt;session_id&gt;<span class="w">   </span><span class="c1"># or name one explicitly</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>tilth<span class="w"> </span>cleanse<span class="w"> </span>--yes<span class="w">          </span><span class="c1"># skip the y/N confirmation</span>
+</code></pre></div>
+<p>It removes the worktree (and its <code>.git/worktrees/workspace*</code> admin entry) and deletes the <code>session/&lt;id&gt;</code> branch, but <strong>keeps <code>~/.tilth/sessions/&lt;id&gt;/</code></strong> and marks the run <code>archived</code>. <code>tilth info</code> then shows it as <em>archived</em> (rather than an alarming <em>missing</em> worktree), and the visualizer still lists and replays it.</p>
+<p>Like <code>reset</code>, <code>cleanse</code> prints what it's about to remove (status, branch, the worktree it deletes, the record it keeps) and waits for a <code>[y/N]</code> confirmation — the bare form defaults to the <em>latest</em> session, which is often the one you're still working in, so the prompt is the guard against retiring the wrong run. Pass <code>--yes</code> to skip it. Re-running on an already-cleansed session is a calm no-op.</p>
+<p>Unlike <code>reset</code>, <code>cleanse</code> is <strong>gated</strong>: it refuses unless the branch is merged into another branch or present on a remote, so it can't silently drop unintegrated commits. If you merged the work <em>only</em> on the remote (e.g. via a PR), run <code>git fetch</code> first so cleanse can see it; if you genuinely want to throw the work away, use <code>reset</code>.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><code>tilth cleanse</code></th>
+<th><code>tilth reset</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Intent</td>
+<td>retire <em>finished, integrated</em> work</td>
+<td>discard <em>unwanted</em> work</td>
+</tr>
+<tr>
+<td>Safety</td>
+<td>refuses unless merged or pushed</td>
+<td>force-removes anything</td>
+</tr>
+<tr>
+<td>Worktree + <code>session/&lt;id&gt;</code> branch</td>
+<td>removed</td>
+<td>removed</td>
+</tr>
+<tr>
+<td><code>~/.tilth/sessions/&lt;id&gt;/</code> (audit record)</td>
+<td><strong>kept</strong></td>
+<td>deleted</td>
+</tr>
+</tbody>
+</table>
+<h3 id="under-the-hood_2">Under the hood<a class="headerlink" href="#under-the-hood_2" title="Permanent link">¶</a></h3>
+<p><code>do_cleanse_cmd</code> (<code>loop.py</code>) wakes the session (like resume), checks <code>ws.branch_integrated()</code> (<code>workspace.py</code> — is the tip reachable from another local head or any remote-tracking ref), then <code>ws.cleanse_session_state()</code> removes the worktree + branch while leaving the dir. <code>Session.mark_archived()</code> sets <code>archived: true</code> in the checkpoint and an <code>archived</code> event lands in <code>events.jsonl</code>, so the record itself notes it was retired — the run-outcome <code>status</code> (<code>all_done</code> / <code>failed</code>) stays intact.</p>
+<h2 id="resetting">Resetting<a class="headerlink" href="#resetting" title="Permanent link">¶</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>tilth<span class="w"> </span>reset<span class="w">                  </span><span class="c1"># most recent session</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>tilth<span class="w"> </span>reset<span class="w"> </span>&lt;session_id&gt;<span class="w">     </span><span class="c1"># or name one explicitly</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>tilth<span class="w"> </span>reset<span class="w"> </span>--yes<span class="w">            </span><span class="c1"># skip the y/N confirmation</span>
+</code></pre></div>
+<p><code>tilth reset</code> is <strong>destructive by design</strong> — it force-removes the worktree even if dirty, since its whole purpose is to discard a session's work. The <code>[y/N]</code> prompt (or <code>--yes</code>) is the only safety gate; once you confirm, the session is gone. There's no <code>--all</code> and no "keep events" mode.</p>
+<p>A run lives on disk in two places (working tree under <code>~/.tilth/sessions/</code>; branch in the source repo's <code>.git</code> — see <a href="../../deep-dives/session-layout/">Session layout</a>), and reset tears down both halves:</p>
+<ol>
+<li>Reads <code>~/.tilth/sessions/&lt;id&gt;/checkpoint.json</code> for the worktree path and branch; reads the <code>session_start</code> event for the source repo path.</li>
+<li><code>git worktree remove --force &lt;path&gt;</code> in the source repo.</li>
+<li><code>git branch -D session/&lt;id&gt;</code> in the source repo (force-delete is correct for the <code>session/*</code> namespace, which is never auto-merged).</li>
+<li>Removes <code>~/.tilth/sessions/&lt;id&gt;/</code>.</li>
+</ol>
+<p>Each step is idempotent — already-missing pieces are reported as skipped, not errored, so you can run <code>tilth reset</code> against a half-cleaned-up state and it finishes the job.</p>
+<h3 id="under-the-hood_3">Under the hood<a class="headerlink" href="#under-the-hood_3" title="Permanent link">¶</a></h3>
+<p>Reset runs entirely outside the normal loop — no model calls, no evaluator. <code>_read_checkpoint()</code> recovers <code>workspace</code> and <code>branch</code>; <code>_source_for_session()</code> scans <code>events.jsonl</code> for the <code>session_start</code> event to recover the source repo; <code>ws.reset_session_state()</code> (<code>workspace.py</code>) performs the three teardown operations above. <code>tilth reset</code> discards <code>~/.tilth/sessions/&lt;id&gt;/</code>, so it drops the ledgers too.</p>
+<h3 id="manual-fallback">Manual fallback<a class="headerlink" href="#manual-fallback" title="Permanent link">¶</a></h3>
+<p>If <code>tilth reset</code> itself can't run (e.g. the session metadata is missing), the manual recipe still works:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nb">cd</span><span class="w"> </span>&lt;demo-clone-path&gt;<span class="w">                  </span><span class="c1"># e.g. ~/projects/tilth-demo</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>git<span class="w"> </span>worktree<span class="w"> </span>prune
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>git<span class="w"> </span>branch<span class="w"> </span>-D<span class="w"> </span>session/&lt;id&gt;<span class="w">            </span><span class="c1"># if it still exists</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>rm<span class="w"> </span>-rf<span class="w"> </span>~/.tilth/sessions/&lt;id&gt;/<span class="w">        </span><span class="c1"># or $TILTH_SESSIONS_DIR/&lt;id&gt;/ if overridden</span>
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden="">
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"></path></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.indexes", "navigation.top", "toc.follow", "content.code.copy", "content.action.edit", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  
+<script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(()=>{ lightbox.reload(); });
+</script></body></html>

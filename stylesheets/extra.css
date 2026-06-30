@@ -1,0 +1,378 @@
+/* ============================================================================
+   Tilth docs — "Hex" style theme.
+
+   Source of truth: docs/assets/SITE_STYLE.md (Hex — refero.design). This file
+   defines the Hex design tokens and wires them onto Material for MkDocs'
+   --md-* CSS variables. Material handles the heavy lifting (layout,
+   navigation, search); we override colour, typography and elevation only.
+
+   Font loading: Material loads IBM Plex Sans / IBM Plex Mono via theme.font
+   in mkdocs.yml. Playfair Display (display headlines) and Archivo (section
+   headings) are free Google Fonts substitutes for the proprietary PP
+   Editorial New / PP Formula family and are imported here.
+   ============================================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@200;300;400&family=Archivo:wght@500;600;700;800&display=swap');
+
+/* ----------------------------------------------------------------------------
+   Hex design tokens
+   ---------------------------------------------------------------------------- */
+
+:root {
+  --color-canvas-white: #fffcfc;
+  --color-obsidian-ink: #01011b;
+  --color-eggplant-gray: #31263b;
+  --color-charcoal-grey: #14141c;
+  --color-cement-gray: #717a94;
+  --color-dusk-violet: #43394c;
+  --color-platinum-mist: #ecedf2;
+  --color-slate-cloud: #dbd7da;
+  --color-minsk-violet: #473982;
+  --color-indigo-punch: #6f63b7;
+  --color-lavender-field: #9e91d6;
+  --color-rose-quartz: #f5c0c0;
+
+  --font-display: "Playfair Display", "PP Editorial New", Georgia, serif;
+  --font-heading: "Archivo", "PP Formula", "IBM Plex Sans", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 12px;
+  --radius-pill: 9999px;
+
+  /* The signature Hex card shadow */
+  --shadow-card:
+    rgba(49, 38, 59, 0.22) 0 0 0 1px,
+    rgba(49, 38, 59, 0.09) 0 103px 103px 0,
+    rgba(49, 38, 59, 0.1) 0 26px 57px 0;
+  --shadow-card-hover:
+    rgba(49, 38, 59, 0.22) 0 0 0 1px,
+    rgba(49, 38, 59, 0.1) 0 26px 57px 0;
+  --shadow-subtle: rgba(71, 57, 130, 0.1) 0 0 0 1px inset;
+  --shadow-focus: rgba(71, 57, 130, 0.15) 0 0 0 4px;
+}
+
+/* ----------------------------------------------------------------------------
+   Material variable overrides (light scheme).
+   ---------------------------------------------------------------------------- */
+
+[data-md-color-scheme="default"] {
+  --md-default-bg-color: var(--color-canvas-white);
+  --md-default-bg-color--light: var(--color-canvas-white);
+  --md-default-bg-color--lighter: var(--color-platinum-mist);
+  --md-default-bg-color--lightest: var(--color-platinum-mist);
+
+  --md-default-fg-color: var(--color-obsidian-ink);
+  --md-default-fg-color--light: var(--color-dusk-violet);
+  --md-default-fg-color--lighter: var(--color-cement-gray);
+  --md-default-fg-color--lightest: var(--color-slate-cloud);
+
+  --md-primary-fg-color: var(--color-canvas-white);
+  --md-primary-fg-color--light: var(--color-canvas-white);
+  --md-primary-fg-color--dark: var(--color-platinum-mist);
+  --md-primary-bg-color: var(--color-obsidian-ink);
+  --md-primary-bg-color--light: var(--color-eggplant-gray);
+
+  --md-accent-fg-color: var(--color-minsk-violet);
+  --md-accent-fg-color--transparent: rgba(71, 57, 130, 0.1);
+  --md-accent-bg-color: var(--color-canvas-white);
+  --md-accent-bg-color--light: var(--color-platinum-mist);
+
+  --md-typeset-color: var(--color-obsidian-ink);
+  --md-typeset-a-color: var(--color-minsk-violet);
+
+  --md-code-fg-color: var(--color-obsidian-ink);
+  --md-code-bg-color: var(--color-platinum-mist);
+  --md-code-hl-color: rgba(71, 57, 130, 0.12);
+
+  --md-typeset-table-color: var(--color-slate-cloud);
+
+  --md-admonition-fg-color: var(--color-obsidian-ink);
+  --md-admonition-bg-color: var(--color-canvas-white);
+
+  --md-text-font-family: var(--font-body);
+  --md-code-font-family: var(--font-mono);
+}
+
+/* ----------------------------------------------------------------------------
+   Typography
+   ---------------------------------------------------------------------------- */
+
+.md-typeset {
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  letter-spacing: -0.01em;
+  line-height: 1.6;
+}
+
+.md-typeset h1 {
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-size: 2.6rem;
+  line-height: 1.15;
+  letter-spacing: -0.024em;
+  color: var(--color-obsidian-ink);
+  margin-top: 0.4em;
+  margin-bottom: 0.6em;
+}
+
+.md-typeset h2,
+.md-typeset h3,
+.md-typeset h4 {
+  font-family: var(--font-heading);
+  color: var(--color-charcoal-grey);
+  letter-spacing: -0.025em;
+}
+
+.md-typeset h2 {
+  font-weight: 700;
+  font-size: 1.45rem;
+  margin-top: 2em;
+  margin-bottom: 0.6em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--color-slate-cloud);
+}
+
+.md-typeset h3 {
+  font-weight: 600;
+  font-size: 1.15rem;
+}
+
+.md-typeset h4 {
+  font-weight: 600;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+}
+
+.md-typeset blockquote {
+  border-left: 2px solid var(--color-minsk-violet);
+  color: var(--color-dusk-violet);
+  font-style: italic;
+}
+
+.md-typeset a {
+  text-decoration: none;
+  border-bottom: 1px solid rgba(71, 57, 130, 0.25);
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.md-typeset a:hover {
+  color: var(--color-indigo-punch);
+  border-bottom-color: var(--color-indigo-punch);
+}
+
+/* Tone down the heading anchor pilcrow — by default it inherits the heading's
+   serif display font and weight, which on H1 renders as a giant ornamental
+   ¶. Override appearance only (no `color`, no `opacity`) so Material's
+   parent-hover rules can still do their fade-in without specificity fights. */
+.md-typeset .headerlink {
+  font-family: var(--font-body);
+  font-size: 0.6em;
+  font-weight: 400;
+  border-bottom: none;
+}
+
+/* ----------------------------------------------------------------------------
+   Header & navigation
+   ---------------------------------------------------------------------------- */
+
+.md-header {
+  background-color: var(--color-canvas-white);
+  color: var(--color-obsidian-ink);
+  box-shadow: 0 1px 0 0 var(--color-slate-cloud);
+}
+
+.md-header__title {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.md-tabs {
+  background-color: var(--color-canvas-white);
+  color: var(--color-eggplant-gray);
+  border-bottom: 1px solid var(--color-slate-cloud);
+}
+
+.md-tabs__link {
+  font-family: var(--font-body);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  opacity: 1;
+  color: var(--color-eggplant-gray);
+}
+
+.md-tabs__link--active,
+.md-tabs__link:hover {
+  color: var(--color-minsk-violet);
+}
+
+.md-nav__title {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  color: var(--color-charcoal-grey);
+  letter-spacing: -0.02em;
+}
+
+.md-nav__link {
+  color: var(--color-dusk-violet);
+}
+
+.md-nav__link--active,
+.md-nav__link:hover {
+  color: var(--color-minsk-violet);
+}
+
+.md-search__input {
+  background-color: var(--color-platinum-mist);
+  border-radius: var(--radius-md);
+}
+
+/* ----------------------------------------------------------------------------
+   Code blocks
+   ---------------------------------------------------------------------------- */
+
+.md-typeset code {
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  background-color: var(--color-platinum-mist);
+  border-radius: var(--radius-sm);
+  padding: 0.1em 0.35em;
+  color: var(--color-obsidian-ink);
+}
+
+.md-typeset pre > code {
+  padding: 0;
+  background: transparent;
+}
+
+.md-typeset .highlight pre,
+.md-typeset pre {
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-subtle);
+  background-color: #faf8f9;
+}
+
+.highlight .linenos {
+  color: var(--color-cement-gray);
+}
+
+/* ----------------------------------------------------------------------------
+   Admonitions & collapsibles — Hex card treatment
+   ---------------------------------------------------------------------------- */
+
+.md-typeset .admonition,
+.md-typeset details {
+  border: none;
+  border-radius: var(--radius-md);
+  background-color: var(--color-canvas-white);
+  box-shadow: var(--shadow-card);
+  font-size: 0.85rem;
+  margin: 1.8em 0;
+}
+
+.md-typeset .admonition-title,
+.md-typeset summary {
+  background-color: transparent;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-charcoal-grey);
+  border-bottom: 1px solid var(--color-slate-cloud);
+}
+
+.md-typeset .admonition-title::before,
+.md-typeset summary::before {
+  background-color: var(--color-minsk-violet);
+}
+
+/* ----------------------------------------------------------------------------
+   Tables
+   ---------------------------------------------------------------------------- */
+
+.md-typeset table:not([class]) {
+  border: 1px solid var(--color-slate-cloud);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-subtle);
+  overflow: hidden;
+  font-size: 0.82rem;
+}
+
+.md-typeset table:not([class]) th {
+  background-color: var(--color-platinum-mist);
+  color: var(--color-charcoal-grey);
+  font-family: var(--font-heading);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  border-bottom: 1px solid var(--color-slate-cloud);
+}
+
+.md-typeset table:not([class]) td {
+  border-top: 1px solid var(--color-slate-cloud);
+}
+
+/* ----------------------------------------------------------------------------
+   Buttons — Hex ghost-button look (applies to Material's .md-button)
+   ---------------------------------------------------------------------------- */
+
+.md-typeset .md-button {
+  background: transparent;
+  color: var(--color-obsidian-ink);
+  border: 1px solid var(--color-eggplant-gray);
+  border-radius: var(--radius-sm);
+  padding: 0.6em 0.9em;
+  font-family: var(--font-body);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  transition: box-shadow 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+.md-typeset .md-button:hover {
+  color: var(--color-minsk-violet);
+  border-color: var(--color-minsk-violet);
+  box-shadow: var(--shadow-focus);
+}
+
+.md-typeset .md-button--primary {
+  background-color: var(--color-obsidian-ink);
+  color: var(--color-canvas-white);
+  border-color: var(--color-obsidian-ink);
+}
+
+/* ----------------------------------------------------------------------------
+   Footer
+   ---------------------------------------------------------------------------- */
+
+.md-footer {
+  background-color: var(--color-canvas-white);
+  color: var(--color-eggplant-gray);
+  border-top: 1px solid var(--color-slate-cloud);
+}
+
+.md-footer-meta {
+  background-color: var(--color-canvas-white);
+  color: var(--color-cement-gray);
+}
+
+.md-footer-meta__inner a,
+.md-footer__link {
+  color: var(--color-eggplant-gray);
+}
+
+/* ----------------------------------------------------------------------------
+   Image caption: small, dim, centred, tucked under the image so it reads
+   as part of the figure rather than a stray paragraph. Used throughout
+   docs/ via `{: .caption }`.
+   ---------------------------------------------------------------------------- */
+
+p.caption {
+  text-align: center;
+  font-size: 0.78em;
+  color: var(--color-cement-gray);
+  font-family: var(--font-body);
+  letter-spacing: -0.014em;
+  margin-top: -1.4em;
+  margin-bottom: 2em;
+}
